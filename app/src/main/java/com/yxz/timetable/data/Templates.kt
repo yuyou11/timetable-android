@@ -225,6 +225,71 @@ data class TemplateSet(
 
     fun of(type: DayType): List<Block> = custom[type] ?: Templates.builtin(type)
 
+    // ------------------------------------------------------------------
+    //  节次 → 时刻
+    //
+    //  ⚠️ 这里曾经是个真 bug：节次时间写死在 [Slots] 里，模板里写的时刻
+    //  对**课程**完全不生效 —— 引擎永远按 Slots 摆课，模板的占位格
+    //  只被用来「找位置」。于是用户改了模板里的上课时间，
+    //  今日页看着变了（周围格子错位），课表页却纹丝不动。
+    //
+    //  现在反过来：**占位格里写的就是准的**，Slots 只作为兜底
+    //  （某种日型根本没有那一段占位格时，比如 B 型日的第 1-2 节）。
+    //
+    //  这样「课表页的节次时间」「今日页里课的位置」「课表数据的 nodes」
+    //  三者由同一个来源推导，不可能再各说各话。
+    // ------------------------------------------------------------------
+
+    /** node -> 该节次段的开始时刻，从占位格里读出来 */
+    private val slotStarts: Map<Int, Int> by lazy { buildSlotEdge(start = true) }
+
+    /** node -> 该节次段的结束时刻 */
+    private val slotEnds: Map<Int, Int> by lazy { buildSlotEdge(start = false) }
+
+    private fun buildSlotEdge(start: Boolean): Map<Int, Int> {
+        val out = mutableMapOf<Int, Int>()
+        // 按 ALL_TYPES 的固定顺序遍历，结果才是确定的
+        for (type in Templates.ALL_TYPES) {
+            for (b in of(type)) {
+                val n = b.nodes ?: continue
+                // 第一次见到就用它 —— 各种日型之间本该一致，
+                // 真不一致的话以排在前面的为准（导入时会另外提醒）
+                if (start) out.putIfAbsent(n.first, b.start) else out.putIfAbsent(n.last, b.end)
+            }
+        }
+        return out
+    }
+
+    /** 第 [node] 节所在的节次段几点开始。模板里没写就回落到内置作息表 */
+    fun slotStart(node: Int): Int = slotStarts[node] ?: Slots.start(node)
+
+    /** 第 [node] 节所在的节次段几点结束 */
+    fun slotEnd(node: Int): Int = slotEnds[node] ?: Slots.end(node)
+
+    /**
+     * 各种日型对同一个节次段的时刻是否一致。
+     *
+     * 课表页只有一列节次时间，如果 A 型日写 08:30、B 型日写 09:00，
+     * 那一列就没法同时说对。返回不一致的项，供导入时提醒用户。
+     */
+    fun slotConflicts(): List<String> {
+        val seen = mutableMapOf<Int, Pair<Int, Int>>()
+        val bad = mutableListOf<String>()
+        for (type in Templates.ALL_TYPES) {
+            for (b in of(type)) {
+                val n = b.nodes ?: continue
+                val prev = seen.putIfAbsent(n.first, b.start to b.end)
+                if (prev != null && prev != (b.start to b.end)) {
+                    bad += "第 ${n.first}-${n.last} 节：${type.name} 写的是 " +
+                            "${Slots.fmt(b.start)}-${Slots.fmt(b.end)}，" +
+                            "而另一种日型写的是 " +
+                            "${Slots.fmt(prev.first)}-${Slots.fmt(prev.second)}"
+                }
+            }
+        }
+        return bad
+    }
+
     /** 这一套是否是用户自定义过的 */
     val isCustomized: Boolean get() = custom.isNotEmpty()
 

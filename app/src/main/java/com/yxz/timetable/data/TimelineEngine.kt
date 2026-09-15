@@ -192,10 +192,14 @@ object TimelineEngine {
         val base = template(dayType(date, week, courses, templates.policy), templates)
         val todayCourses = coursesOn(date, week, courses)
 
+        // 课程占哪一段，**以模板的占位格为准**（templates.slotStart/End）。
+        //
+        // 这里原来写的是 `Slots.start(c.startNode)` —— 节次时间写死在代码里，
+        // 用户改模板里的上课时间对课程完全不生效。详见 TemplateSet 里那段注释。
         val courseBlocks = todayCourses.map { c ->
             Block(
-                start = Slots.start(c.startNode),
-                end = Slots.end(c.endNode),          // 连堂自动合并成一整块
+                start = templates.slotStart(c.startNode),
+                end = templates.slotEnd(c.endNode),   // 连堂自动合并成一整块
                 title = c.name,
                 note = "",
                 kind = Kind.CLASS,
@@ -211,8 +215,9 @@ object TimelineEngine {
         for (blk in base) {
             val nodes = blk.nodes
             if (nodes != null) {
-                // 占位格：有课就整格替换，没课就标注「无课」
-                val idx = courseBlocks.indexOfFirst { it.start == Slots.start(nodes.first) }
+                // 占位格：有课就整格替换，没课就标注「无课」。
+                // 用同一个来源（templates.slotStart）算，所以两边必然对得上。
+                val idx = courseBlocks.indexOfFirst { it.start == templates.slotStart(nodes.first) }
                 if (idx >= 0) {
                     out += courseBlocks[idx]
                     claimed += idx

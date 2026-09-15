@@ -266,12 +266,23 @@ class WeekFragment : Fragment() {
      * 差的正好就是这一个字（约 8.5dp，占这格可用宽度的四分之一）。
      * **窄容器里的文案，优先砍掉语境已经提供的信息。**
      */
+    /**
+     * 节次列的一格。
+     *
+     * ⚠️ 时刻取自 `templates.slotStart/slotEnd`（**模板的占位格**），
+     * 不是写死的 `Slots`。这一处曾经是 bug：用户在模板里改了上课时间，
+     * 今日页跟着变了，课表页却永远是老时间。
+     *
+     * 现在两个页面从同一个来源推导，不可能再各说各话。
+     */
     private fun makeTimeCell(startNode: Int, endNode: Int): TextView =
         TextView(requireContext()).apply {
+            val set = store.templates()
             layoutParams = cellParams(TIME_WEIGHT)
             gravity = Gravity.CENTER
             text = "$startNode-$endNode 节\n" +
-                    "${Slots.fmt(Slots.start(startNode))}\n${Slots.fmt(Slots.end(endNode))}"
+                    "${Slots.fmt(set.slotStart(startNode))}\n" +
+                    "${Slots.fmt(set.slotEnd(endNode))}"
             textSize = 8.5f
             setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
             includeFontPadding = false

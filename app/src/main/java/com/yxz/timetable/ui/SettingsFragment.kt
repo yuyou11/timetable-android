@@ -25,6 +25,7 @@ import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateImpact
+import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.Templates
 import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
@@ -598,6 +599,26 @@ class SettingsFragment : Fragment() {
                 append("\n⚠️ ").append(parsed.warnings.size).append(" 条提醒：\n")
                 parsed.warnings.take(5).forEach { append("· ").append(it).append('\n') }
                 if (parsed.warnings.size > 5) append("（还有更多，已省略）\n")
+            }
+
+            // 节次时间的不一致要按**导入之后**的状态算。
+            //
+            // ⚠️ 不能用 store.templates() —— 预览是在导入生效之前弹出来的，
+            // 那时候 store 里还是旧数据。这里手动拼出「导完会是什么样」，
+            // 和 doImport 里那两行赋值保持同一个口径。
+            //
+            // 为什么要提醒：课表页的节次列只有一列时间，
+            // 如果 A 型日写 08:30、B 型日写 09:00，那一列没法同时说对。
+            val effective = TemplateSet(
+                custom = parsed.templates ?: store.templates().custom,
+                policy = parsed.dayTypes ?: store.dayTypePolicy()
+            )
+            val conflicts = effective.slotConflicts()
+            if (conflicts.isNotEmpty()) {
+                append("\n⚠️ 各日型的节次时间不一致，课表页只能显示其中的一种：\n")
+                conflicts.take(3).forEach { append("· ").append(it).append('\n') }
+                if (conflicts.size > 3) append("（还有 ${conflicts.size - 3} 处）\n")
+                append("建议改成一致 —— 节次时间是学校的作息，本来就不该各日型不同。\n")
             }
         }
 
