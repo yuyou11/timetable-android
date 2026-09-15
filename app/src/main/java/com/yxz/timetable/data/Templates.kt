@@ -196,14 +196,31 @@ object Templates {
  * 这种「局部覆盖 + 缺省回落」的写法，比要求用户提供全部六套模板友好得多 ——
  * 改动小、出错面小、老数据也不用迁移。
  */
-data class TemplateSet(val custom: Map<DayType, List<Block>> = emptyMap()) {
+data class TemplateSet(
+    val custom: Map<DayType, List<Block>> = emptyMap(),
+    /**
+     * 这份配置实际启用哪几种日型。
+     *
+     * 放在这里而不是让调用方另外传，是因为**策略和模板必须同源**：
+     * 如果模板来自 A 处方、策略来自 B 处，就可能出现
+     * 「按策略这是 A 型日，但取到的却是 B 型的模板」这种错配。
+     * 让它们待在一个对象里，就没法分开传错了。
+     */
+    val policy: DayTypePolicy = DayTypePolicy.DEFAULT
+) {
 
     fun of(type: DayType): List<Block> = custom[type] ?: Templates.builtin(type)
 
     /** 这一套是否是用户自定义过的 */
     val isCustomized: Boolean get() = custom.isNotEmpty()
 
-    /** 展开成「六种都在」的完整表，导出时用 */
+    /**
+     * 展开成「六种都在」的完整表，导出时用。
+     *
+     * 注意仍然展开**全部六种**：导出的文件是一份可以拿来手改的完整底稿，
+     * 没启用的那几种也一起写出去，用户想启用时直接改 `dayTypes` 就行，
+     * 不用再去找模板正文。
+     */
     fun expanded(): Map<DayType, List<Block>> =
         Templates.ALL_TYPES.associateWith { of(it) }
 

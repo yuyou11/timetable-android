@@ -33,7 +33,7 @@ object AiPrompt {
 
 {
   "format": "timetable",
-  "version": 2,
+  "version": 3,
   "term": {
     "name": "$termName",
     "startDate": "$startDate",
@@ -116,8 +116,12 @@ object AiPrompt {
 
 {
   "format": "timetable",
-  "version": 2,
+  "version": 3,
   "courses": [],
+  "dayTypes": {
+    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
+    "fallback": "B_NORMAL"
+  },
   "templates": {
     "A": [
       { "start": "00:00", "end": "06:55", "title": "睡觉", "kind": "SLEEP" },
@@ -140,6 +144,19 @@ object AiPrompt {
   "SUNDAY"      周日
 
 **你只需要输出我改动过的那几种**，没提到的日型会自动沿用内置模板。
+
+# dayTypes 段（可选，但建议写）
+
+它决定**哪几种日型真的会被用到**。没启用的日型那天，会改用 fallback 指定的那一套。
+
+  enabled   启用的日型列表，至少一个
+  fallback  算出来的日型不在 enabled 里时，改用哪一套
+
+只把「我描述里真的出现过」的日型写进 enabled。**不要为了凑数把六种全写上** ——
+比如我没提过力量训练，就别启用 B_TRAIN_A / B_TRAIN_B，
+否则那两套没用的模板会一直参与排程，让人搞不清周二到底按哪套走。
+
+不写这个字段也可以，App 会沿用当前设置。
 
 # 每一格（block）
 

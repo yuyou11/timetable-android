@@ -142,10 +142,21 @@ class Store(context: Context) {
      * 好处有两个：省空间；将来内置模板更新了（比如你调整了作息），
      * 用户没覆盖过的那几种会自动跟着更新，而不是被旧数据钉死。
      */
+    /**
+     * 取作息配置 = 自定义模板 + 日型策略。
+     *
+     * ⚠️ 两者必须一起去取。如果只取模板而策略另取，就可能出现
+     * 「按 A 的策略算日子、却拿到 B 的模板」这种错配 ——
+     * 所以 [TemplateSet] 把策略装在一起，从源头上不给分开传的机会。
+     */
     fun templates(): TemplateSet {
         val raw = sp.getString("templates", "") ?: ""
-        if (raw.isBlank()) return TemplateSet.BUILTIN
-        return TemplateSet(ScheduleFormat.templatesFromJson(raw))
+        val custom = if (raw.isBlank()) {
+            emptyMap()
+        } else {
+            ScheduleFormat.templatesFromJson(raw)
+        }
+        return TemplateSet(custom, dayTypePolicy())
     }
 
     fun saveTemplates(map: Map<DayType, List<Block>>) {
@@ -158,6 +169,31 @@ class Store(context: Context) {
 
     /** 用户是否自定义过模板 */
     val hasCustomTemplates: Boolean get() = templates().isCustomized
+
+    // ---------------- 日型策略 ----------------
+
+    /**
+     * 这份配置实际启用哪几种日型。
+     *
+     * 没设置过就是 [DayTypePolicy.DEFAULT]（A + 没早八的 B + 周末）。
+     */
+    fun dayTypePolicy(): DayTypePolicy {
+        val raw = sp.getString(KEY_DAY_TYPES, "") ?: ""
+        if (raw.isBlank()) return DayTypePolicy.DEFAULT
+        return ScheduleFormat.dayTypesFromJson(raw)
+    }
+
+    fun saveDayTypePolicy(policy: DayTypePolicy) {
+        sp.edit().putString(KEY_DAY_TYPES, ScheduleFormat.dayTypesToJson(policy)).apply()
+    }
+
+    fun resetDayTypePolicy() {
+        sp.edit().remove(KEY_DAY_TYPES).apply()
+    }
+
+    /** 用户是否显式设置过日型策略（没设过就是默认那套） */
+    val hasCustomDayTypes: Boolean
+        get() = !sp.getString(KEY_DAY_TYPES, "").isNullOrBlank()
 
     // ---------------- 提醒 ----------------
 
@@ -208,6 +244,10 @@ class Store(context: Context) {
      * 而不是只输出用户改过的那几种。这样导出的文件是一份能直接编辑的
      * 完整底稿 —— 想改起床时间，在那 100 多行里找到对应那一行改掉就行，
      * 不用从零写一套模板。
+     *
+     * 同一档还会带上 `dayTypes` 段：导出的是「完整作息配置」，
+     * 只带模板不带策略的话，别人导入后拿到的日型和你的不一样 ——
+     * **半份配置比没有配置更容易让人困惑。**
      */
     fun exportJson(includeTemplates: Boolean = false): String =
         ScheduleFormat.serialize(
@@ -215,7 +255,8 @@ class Store(context: Context) {
             termStart,
             totalWeeks,
             courses(),
-            if (includeTemplates) templates().expanded() else emptyMap()
+            if (includeTemplates) templates().expanded() else emptyMap(),
+            if (includeTemplates) dayTypePolicy() else null
         )
 
     /** 导入时一并套用学期设置 */
@@ -292,5 +333,8 @@ class Store(context: Context) {
     companion object {
         val DEFAULT_TERM_START: LocalDate = LocalDate.of(2026, 9, 7)
         const val DEFAULT_TERM_NAME = "示例大学 2026 级 · 大一上"
+
+        /** 日型策略在 SharedPreferences 里的键 */
+        private const val KEY_DAY_TYPES = "day_types"
     }
 }

@@ -123,7 +123,8 @@ class TodayFragment : Fragment() {
         binding.tvHeaderDate.text =
             "${today.year} 年 ${today.monthValue} 月 ${today.dayOfMonth} 日 · " +
                     "${weekdayCn(today.dayOfWeek.value)} · 第 $week 教学周"
-        binding.tvHeaderDayType.text = TimelineEngine.dayType(today, week, courses).label
+        binding.tvHeaderDayType.text =
+            TimelineEngine.dayType(today, week, courses, templates.policy).label
 
         // ---- 此刻 ----
         val cur = TimelineEngine.currentAt(moments, minute)
@@ -173,7 +174,7 @@ class TodayFragment : Fragment() {
     private fun renderTomorrow(courses: List<com.yxz.timetable.data.Course>, templates: com.yxz.timetable.data.TemplateSet) {
         val tomorrow = LocalDate.now().plusDays(1)
         val week = store.weekOf(tomorrow)
-        val type = TimelineEngine.dayType(tomorrow, week, courses)
+        val type = TimelineEngine.dayType(tomorrow, week, courses, templates.policy)
         val template = TimelineEngine.template(type, templates)
         val moments = TimelineEngine.moments(tomorrow, week, courses, templates)
 

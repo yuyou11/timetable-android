@@ -139,12 +139,18 @@ class WeekFragment : Fragment() {
         buildGrid(week, courses)
     }
 
-    /** 日型提示里的一个小标签，形如「一·早八」。day 是 1..7，monday 是本周周一 */
+    /**
+     * 日型提示里的一个小标签，形如「一·早八」。day 是 1..7，monday 是本周周一。
+     *
+     * 用的是 [TimelineEngine.dayType] 而不是 naturalDayType ——
+     * 显示的必须是**实际会生效**的日型。如果这里显示 B 型、
+     * 实际却按 A 型的模板走，用户看到的就是一条假信息。
+     */
     private fun dayTypeLabel(
         day: Int, monday: LocalDate, week: Int, courses: List<Course>
     ): String {
         val date = monday.plusDays((day - 1).toLong())
-        val type = TimelineEngine.dayType(date, week, courses)
+        val type = TimelineEngine.dayType(date, week, courses, store.dayTypePolicy())
         return "${weekdayCn(day).removePrefix("周")}·${shortType(type)}"
     }
 

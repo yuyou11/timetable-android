@@ -25,6 +25,7 @@ import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateImpact
+import com.yxz.timetable.data.Templates
 import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentSettingsBinding
@@ -253,10 +254,32 @@ class SettingsFragment : Fragment() {
         binding.tvFooter.text = "${store.termName}\n数据格式 timetable v${ScheduleFormat.VERSION}"
 
         val custom = store.templates().custom
-        binding.tvTemplateState.text = if (custom.isEmpty()) {
-            "作息模板：使用内置（A 型 / B 型 / 周六 / 周日）"
-        } else {
-            "作息模板：已自定义 ${custom.size} 种 · 点此恢复内置"
+        val policy = store.dayTypePolicy()
+
+        // 这行要同时说清两件事，因为它们容易被混为一谈：
+        //
+        //   模板   —— 每种日型具体长什么样
+        //   日型   —— 这几种里，哪几种真的会被用到
+        //
+        // 只显示「使用内置（A 型 / B 型 / 周六 / 周日）」是不够的：
+        // 用户会以为四套都在生效，实际可能只启用了两种。
+        //
+        // 日型名直接用 JSON 里的写法（A、B_NORMAL…）而不是中文标签 ——
+        // 用户要改的话就是改 JSON，让他在这里先把名字认熟，比好看更重要。
+        val enabledNames = Templates.ALL_TYPES
+            .filter { it in policy.enabled }
+            .joinToString("、") { it.name }
+
+        binding.tvTemplateState.text = buildString {
+            append(
+                if (custom.isEmpty()) "作息模板：使用内置"
+                else "作息模板：已自定义 ${custom.size} 种 · 点此恢复内置"
+            )
+            append('\n')
+            append("启用日型：").append(enabledNames)
+            if (policy.enabled.size < Templates.ALL_TYPES.size) {
+                append("　（其余回落到 ").append(policy.fallback.name).append("）")
+            }
         }
     }
 
@@ -544,6 +567,29 @@ class SettingsFragment : Fragment() {
                 }
             }
 
+            // 日型策略要**在模板之后**单独说一句，因为它决定的是
+            // 「上面那些模板里，哪几种真的会被用到」——
+            // 不写出来的话，用户会以为导入了几套模板就有几套在生效。
+            val dt = parsed.dayTypes
+            if (dt != null) {
+                append('\n')
+                append("启用的日型：")
+                append(
+                    Templates.ALL_TYPES.filter { it in dt.enabled }
+                        .joinToString("、") { it.label }
+                )
+                append('\n')
+                append("未启用时回落到：")
+                append("「").append(dt.fallback.label).append("」那套模板")
+                append('\n')
+                val dropped = Templates.ALL_TYPES - dt.enabled
+                if (dropped.isNotEmpty()) {
+                    append("（不再使用：")
+                    append(dropped.joinToString("、") { it.label })
+                    append("）")
+                }
+            }
+
             if (parsed.warnings.isNotEmpty()) {
                 append("\n⚠️ ").append(parsed.warnings.size).append(" 条提醒：\n")
                 parsed.warnings.take(5).forEach { append("· ").append(it).append('\n') }
@@ -571,6 +617,7 @@ class SettingsFragment : Fragment() {
         // 这条规则贯穿整个导入流程，是防止一次误操作毁掉用户数据的关键。
         parsed.term?.let { store.applyTerm(it) }
         parsed.templates?.let { store.saveTemplates(it) }
+        parsed.dayTypes?.let { store.saveDayTypePolicy(it) }
 
         val parts = mutableListOf<String>()
 
@@ -608,7 +655,8 @@ class SettingsFragment : Fragment() {
                 changed = tmpl.keys,
                 today = today,
                 termStart = store.termStart,
-                courses = store.courses()
+                courses = store.courses(),
+                policy = store.dayTypePolicy()
             )
             showAlert("导入完成", parts.joinToString("，") + "\n\n" + impact.summary(today))
         }
@@ -752,19 +800,42 @@ class SettingsFragment : Fragment() {
     //  作息模板
     // ==================================================================
 
+    /**
+     * 恢复内置作息配置。
+     *
+     * ## 为什么连 `dayTypes` 一起重置
+     *
+     * 日型策略**只能通过导入 JSON 设置，App 里没有编辑入口**。
+     * 如果这个按钮只重置模板，用户导入一份自定义了日型的文件之后
+     * 就再也回不到默认状态了 —— 唯一的办法是手搓一份新的 JSON 导进来。
+     *
+     * 而「恢复内置」这四个字在用户听来本来就该是「全都回到出厂状态」。
+     * **凡是只能从某一个入口改的东西，就必须在那附近给一个出口。**
+     */
     private fun resetTemplates() {
-        if (!store.hasCustomTemplates) {
-            toast("当前用的就是内置模板")
+        val hasTemplates = store.hasCustomTemplates
+        val hasDayTypes = store.hasCustomDayTypes
+
+        if (!hasTemplates && !hasDayTypes) {
+            toast("当前用的就是内置配置")
             return
         }
+
         AlertDialog.Builder(requireContext())
-            .setTitle("恢复内置作息模板")
-            .setMessage("会丢弃你导入的作息模板，重新使用 A 型 / B 型 / 周六 / 周日的内置版本。\n\n课表不受影响。")
+            .setTitle("恢复内置作息")
+            .setMessage(
+                "会丢弃你导入的作息配置，重新使用内置版本：\n\n" +
+                        "· 模板：A 型 / B 型 / 周六 / 周日\n" +
+                        "· 日型：启用 A、B_NORMAL、SATURDAY、SUNDAY\n" +
+                        "　（未启用时回落到 B_NORMAL）\n\n" +
+                        "课表不受影响。"
+            )
             .setPositiveButton("恢复") { _, _ ->
                 store.resetTemplates()
+                store.resetDayTypePolicy()
                 refresh()
                 rescheduleNotification()
-                toast("已恢复内置作息模板")
+                toast("已恢复内置作息")
             }
             .setNegativeButton("取消", null)
             .show()
@@ -781,6 +852,34 @@ class SettingsFragment : Fragment() {
      * 这里能做的：跳到本应用的通知设置页（多数 ROM 的锁屏开关就在那一页），
      * 并把要找什么说清楚。查不到、点不准是常态，所以**说清楚比跳得准更重要**。
      */
+    /**
+     * 锁屏显示的引导。
+     *
+     * ## 这里曾经指错路（用户实际反馈）
+     *
+     * 原文写的是「设置 → 通知和状态栏 → 时间规划表 → 打开『锁屏通知』」。
+     * 但用户照着走，在应用级页面上**根本找不到这一项** ——
+     * 那一页只有「允许通知 / 置顶通知 / 类别」。
+     *
+     * 原因是 Android 的通知设置分**两层**，而「锁屏通知」在**第二层**：
+     *
+     *   应用级页面（时间规划表）
+     *     └─ 类别
+     *          └─ 此刻该做什么   ← **锁屏通知 / 横幅通知在这里面**
+     *
+     * 对比一下就清楚了：淘宝的通知设置页顶部写着「系统默认通道」，
+     * 那是**渠道详情页**；而应用级页面顶部写的是应用版本号。
+     * 两者长得像，但不是同一层。
+     *
+     * 所以这里做了两件事：
+     *   ① 把话说清楚：告诉用户要点进「此刻该做什么」
+     *   ② 给一个**直达渠道页**的按钮（见 [openChannelSettings]），
+     *      省掉「自己找那一行」这一步
+     *
+     * 教训：**「告诉用户去哪找」不如「直接把他送到那」**。
+     * 尤其是路径描述 —— 各家 ROM 的层级和叫法都不一样，
+     * 写死的路径迟早会和用户手机上看到的对不上。
+     */
     private fun openLockScreenHelp() {
         AlertDialog.Builder(requireContext())
             .setTitle("让通知出现在锁屏上")
@@ -789,19 +888,39 @@ class SettingsFragment : Fragment() {
                         "【第一层 · App】\n" +
                         "就是上面那个开关，控制 App 愿不愿意把内容送到锁屏。\n\n" +
                         "【第二层 · 系统】← 多数人卡在这里\n" +
-                        "荣耀 / 华为**默认不允许**第三方应用在锁屏显示通知，必须手动开：\n\n" +
-                        "　设置 → 通知和状态栏 → 找到「时间规划表」→\n" +
-                        "　· 打开「允许通知」\n" +
-                        "　· 打开「锁屏通知」（有的机型叫「在锁屏上显示」）\n" +
-                        "　· 把「此刻该做什么」这一条也打开\n\n" +
-                        "点下面的按钮跳到本应用的通知设置页。\n\n" +
-                        "⚠️ 系统没有提供查询这个开关的接口，所以 App 没法自动检测它开没开 —— " +
+                        "国产 ROM 默认不允许第三方应用在锁屏显示通知，要手动开。\n" +
+                        "但**「锁屏通知」不在应用页面上**，它在渠道里面：\n\n" +
+                        "　设置 → 通知管理 → 时间规划表 →\n" +
+                        "　　点「此刻该做什么」这一行 → 里面才有\n" +
+                        "　　「锁屏通知 / 横幅通知」的勾选\n\n" +
+                        "对比：淘宝那一页顶部写着「系统默认通道」——\n" +
+                        "那是渠道页；而写着应用版本号的那一页是应用页，两者不是同一层。\n\n" +
+                        "点下面第一个按钮可以直接跳到「此刻该做什么」这个渠道。\n\n" +
+                        "⚠️ 系统没有提供查询这个开关的接口，App 没法自动检测它开没开 —— " +
                         "只能靠你自己确认一次。"
             )
-            .setPositiveButton("打开通知设置") { _, _ -> openNotificationSettings() }
-            .setNeutralButton("打开应用详情") { _, _ -> openAppDetails() }
+            .setPositiveButton("打开渠道设置") { _, _ -> openChannelSettings(Notifier.CHANNEL_ID) }
+            .setNeutralButton("打开通知设置") { _, _ -> openNotificationSettings() }
             .setNegativeButton("知道了", null)
             .show()
+    }
+
+    /**
+     * 直接跳到**某个通知渠道**的设置页。
+     *
+     * 和 [openNotificationSettings] 的区别很关键：
+     *   ACTION_APP_NOTIFICATION_SETTINGS     → 应用级页面（只有「允许通知」等）
+     *   ACTION_CHANNEL_NOTIFICATION_SETTINGS → **渠道页**（锁屏通知在这里）
+     *
+     * 需要 API 26，正好是本项目的最低版本，所以不用做版本判断。
+     * 部分 ROM 可能拦掉这个 Action，所以失败时退回到应用级页面 ——
+     * 少一步自动跳转，但不会点了没反应。
+     */
+    private fun openChannelSettings(channelId: String) {
+        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+        launch(intent) { openNotificationSettings() }
     }
 
     // ==================================================================
@@ -902,14 +1021,29 @@ class SettingsFragment : Fragment() {
         val FORMAT_HELP = """
             【顶层】
             format    固定为 "timetable"
-            version   格式版本，当前是 1
+            version   格式版本，当前是 3
             term      学期设置（可选）
-            courses   课程数组（必需）
+            dayTypes  启用哪些日型（可选）
+            courses   课程数组（可选）
+            templates 作息模板（可选）
+
+            上面几段都是「没写 = 不要动」，不是「清空」。
 
             【term 段】
             name        学期名称，随便写
             startDate   教学第 1 周的周一，YYYY-MM-DD
             totalWeeks  总周数，默认 19
+
+            【dayTypes 段】
+            决定哪几种日型真的会被用到。不写就用默认那套。
+
+            enabled   启用的日型，至少一个，如
+                      ["A", "B_NORMAL", "SATURDAY", "SUNDAY"]
+            fallback  算出来的日型没启用时，改用哪一套
+
+            六种日型：A（有早八）、B_TRAIN_A（周二力量A）、
+            B_TRAIN_B（周四力量B）、B_NORMAL（没早八）、
+            SATURDAY、SUNDAY
 
             【每门课】
             name       课程名

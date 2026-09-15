@@ -1,10 +1,14 @@
 {
   "format": "timetable",
-  "version": 2,
+  "version": 3,
   "term": {
     "name": "示例大学 2026 级 · 大一上",
     "startDate": "2026-09-07",
     "totalWeeks": 19
+  },
+  "dayTypes": {
+    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
+    "fallback": "B_NORMAL"
   },
   "courses": [
     {

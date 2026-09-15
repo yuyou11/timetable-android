@@ -56,6 +56,8 @@ object TimelineEngine {
     // ============================================================
 
     /**
+     * **原始日历规则** —— 不算策略，只看日历。
+     *
      * 判断依据只有一条：**今天第 1-2 节有没有课**。
      *
      * 这是整个设计里我最想让你注意的一处：
@@ -64,8 +66,21 @@ object TimelineEngine {
      *
      * 改成「现算」之后，这几种情况**自动就对**了，一行特判都不用写。
      * 判断规则和文档里那句「真正需要你记住的只有一件事：今天有没有早八」完全一致。
+     *
+     * ============================================================
+     *  它和 [dayType] 的分工
+     * ============================================================
+     *
+     * 这个函数回答「**日历上是哪种日**」，[dayType] 回答「**这次实际要用哪套模板**」。
+     * 两者的差别来自 [DayTypePolicy]：这份配置可能根本没启用训练日，
+     * 那么算出来的 `B_TRAIN_A` 就要被映射成别的。
+     *
+     * 拆成两层的好处是策略可配置 —— 如果这里直接把训练日那两行删掉，
+     * 就再也没有「想让训练日生效」的余地了。
+     *
+     * **要测「日历规则」本身（比如「周二算不算训练日」）就调这个。**
      */
-    fun dayType(date: LocalDate, week: Int, courses: List<Course>): DayType {
+    fun naturalDayType(date: LocalDate, week: Int, courses: List<Course>): DayType {
         val dow = date.dayOfWeek.value           // 1=周一 … 7=周日
         if (dow == 6) return DayType.SATURDAY
         if (dow == 7) return DayType.SUNDAY
@@ -81,6 +96,25 @@ object TimelineEngine {
             else -> DayType.B_NORMAL     // 周五
         }
     }
+
+    /**
+     * **实际要用的日型** —— 原始规则再经过 [DayTypePolicy] 映射。
+     *
+     * ⚠️ **这个参数故意不给默认值。**
+     *
+     * 如果给它一个默认值，那么调用方「忘了传策略」时不会有任何提示，
+     * 程序会静悄悄地按默认策略跑 —— 而界面按 A 型显示、通知却按 B 型排，
+     * 这类不一致查起来非常费劲。
+     *
+     * 不给默认值的话，编译器会把**每一个**调用点都列出来，一个都跑不掉。
+     * **让编译器替你找调用点，比靠人记住可靠得多。**
+     */
+    fun dayType(
+        date: LocalDate,
+        week: Int,
+        courses: List<Course>,
+        policy: DayTypePolicy
+    ): DayType = policy.resolve(naturalDayType(date, week, courses))
 
     /**
      * 取某一天的模板。
@@ -124,7 +158,9 @@ object TimelineEngine {
         courses: List<Course>,
         templates: TemplateSet = TemplateSet.BUILTIN
     ): List<Moment> {
-        val base = template(dayType(date, week, courses), templates)
+        // 策略跟着模板走 —— 两者都是「用户的作息配置」的一部分，
+        // 放在一起就不会出现「用了 A 的策略、却取了 B 的模板」这种错配
+        val base = template(dayType(date, week, courses, templates.policy), templates)
         val todayCourses = coursesOn(date, week, courses)
 
         val courseBlocks = todayCourses.map { c ->

@@ -125,12 +125,16 @@ object Notifier {
         // ---- 正常状态 ----
         val week = store.weekOf(today)
         val courses = store.courses()
-        val moments = TimelineEngine.moments(today, week, courses, store.templates())
+        // 一次取出整份作息配置（模板 + 日型策略），后面统一用它 ——
+        // 分开取两次不但多读一遍 SharedPreferences，
+        // 更要紧的是给了「两处不一致」可乘之机
+        val templates = store.templates()
+        val moments = TimelineEngine.moments(today, week, courses, templates)
         if (moments.isEmpty()) return
 
         val cur = TimelineEngine.currentAt(moments, minute) ?: return
         val next = TimelineEngine.nextAfter(moments, minute)
-        val type = TimelineEngine.dayType(today, week, courses)
+        val type = TimelineEngine.dayType(today, week, courses, templates.policy)
 
         val endAtMillis = today.atStartOfDay(zone)
             .plusMinutes(cur.end.toLong())
@@ -144,9 +148,9 @@ object Notifier {
         // 晚上躺床上拉一下通知栏就能知道明天几点起、第一节什么课。
         val tomorrow = today.plusDays(1)
         val tWeek = store.weekOf(tomorrow)
-        val tType = TimelineEngine.dayType(tomorrow, tWeek, courses)
+        val tType = TimelineEngine.dayType(tomorrow, tWeek, courses, templates.policy)
         val tWake = TimelineEngine.wakeMinute(
-            TimelineEngine.template(tType, store.templates())
+            TimelineEngine.template(tType, templates)
         )
 
         val expanded = buildString {

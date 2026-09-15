@@ -38,11 +38,25 @@ object ScheduleFormat {
     /**
      * 当前支持的格式版本。
      *
-     * v1 → v2 只新增了可选的 `templates` 段，**没有改动任何已有字段**。
-     * 所以 v1 的文件在 v2 的 App 里照常能用，只是作息模板保持内置那套。
+     * v1 → v2 新增了可选的 `templates` 段。
+     * v2 → v3 新增了可选的 `dayTypes` 段。
+     *
+     * 两次都是**只增不改**，没有动过任何已有字段，所以老文件照常能用 ——
      * 这就是「只增不改」原则的价值：升级格式不需要任何数据迁移。
+     *
+     * ## 既然只是「新增一段」，为什么还要升版本号
+     *
+     * 因为**老版本 App 会误解新文件，而且不会报错**。
+     *
+     * v2 的 App 不认识 `dayTypes`，它会照旧用六种日型跑 ——
+     * 用户明明写了「只启用 A 和周末」，装回老版本却会看到训练日又冒出来。
+     * 这种「悄悄用错」正是版本号要防的东西。
+     *
+     * 升到 v3 之后，老 App 会明确拒绝：
+     * 「文件是 v3 格式，这个 App 只认到 v2，请更新 App 后再导入」——
+     * **拒绝比误解好**，这一条在任何数据交换的场合都成立。
      */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** 节次上限，和 Slots 保持一致 */
     const val MAX_NODE = 10
@@ -73,6 +87,13 @@ object ScheduleFormat {
         val courses: List<Course>?,
         /** 只有文件里带了 templates 段时才有值；null 表示「不要动现有模板」 */
         val templates: Map<DayType, List<Block>>?,
+        /**
+         * 只有文件里带了 `dayTypes` 段时才有值；**null 表示「不要动现有策略」**。
+         *
+         * 和 courses 一样用「null = 不动」而不是「null = 用默认」——
+         * 否则用户每次导入一份只改课表的文件，作息策略都会被打回默认值。
+         */
+        val dayTypes: DayTypePolicy?,
         val warnings: List<String>
     )
 
@@ -341,6 +362,17 @@ object ScheduleFormat {
             }
         }
 
+        // ---- dayTypes 段（可选，v2 新增）----
+        var dayTypes: DayTypePolicy? = null
+        val dtObj = root.optJSONObject("dayTypes")
+        if (dtObj != null) {
+            dayTypes = try {
+                parseDayTypes(dtObj)
+            } catch (e: FormatException) {
+                return Result.Failed(e.message ?: "dayTypes 段格式有误。")
+            }
+        }
+
         // ---- courses 段 ----
         // 允许缺失或为空，解析结果就是 null，含义是「不要动现有课程」。
         //
@@ -368,17 +400,95 @@ object ScheduleFormat {
         }
 
         // ---- 兜底：这份文件至少得说点什么 ----
-        // 三段全空的文件导入它没有任何意义，而且多半意味着用户选错了文件
+        // 四段全空的文件导入它没有任何意义，而且多半意味着用户选错了文件
         // 或者 AI 输出的东西是坏的 —— 明确报错比「导入成功但什么都没变」好。
-        if (term == null && courses == null && templates == null) {
+        if (term == null && courses == null && templates == null && dayTypes == null) {
             return Result.Failed(
-                "这份文件里 term、courses、templates 三段都没有内容，没有可导入的东西。\n\n" +
+                "这份文件里 term、courses、templates、dayTypes 四段都没有内容，没有可导入的东西。\n\n" +
                         "如果你是想导入课表，检查一下 courses 数组是不是空的；\n" +
                         "如果是想让 AI 生成，把「报错修复」提示词发回给它。"
             )
         }
 
-        return Result.Ok(Parsed(term, courses, templates, warnings))
+        return Result.Ok(Parsed(term, courses, templates, dayTypes, warnings))
+    }
+
+    /**
+     * 解析 dayTypes 段 —— 「这份配置实际启用哪几种日型」。
+     *
+     * 写法：
+     * ```json
+     * "dayTypes": {
+     *   "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
+     *   "fallback": "B_NORMAL"
+     * }
+     * ```
+     *
+     * ## 两个刻意的设计决定
+     *
+     * **① `enabled` 为空数组要报错，而不是当成「什么都不启用」。**
+     * 那样的话每天都会落到 fallback 上，等于把整套日型系统废掉 ——
+     * 几乎不可能是用户的本意，多半是写错了。报错比静默接受好。
+     *
+     * **② `fallback` 允许不在 `enabled` 里。**
+     * 它表达的是「用哪套模板兜底」，跟「启用了哪些日型」不是一回事。
+     * 比如只启用 A 和周末、却希望周中没早八时回落到 B 型，
+     * 就写成 `enabled: [A, SATURDAY, SUNDAY]` + `fallback: B_NORMAL`。
+     * 这是完全正当的用法，所以不拦。
+     *
+     * **③ 名字大小写不敏感。** 用户手写时写成 `"a"` 或 `"B_normal"`
+     * 都不该导入失败 —— 和别处解析 kind / dayOfWeek 的宽容度保持一致。
+     */
+    private fun parseDayTypes(obj: JSONObject): DayTypePolicy {
+        val raw = obj.opt("enabled")
+            ?: throw FormatException(
+                "dayTypes 段缺少 enabled 字段。\n" +
+                        "它要列出启用的日型，比如 \"enabled\": [\"A\", \"B_NORMAL\", \"SATURDAY\", \"SUNDAY\"]"
+            )
+
+        val arr = raw as? JSONArray
+            ?: throw FormatException("dayTypes.enabled 必须是一个数组，现在读到的是 ${raw.javaClass.simpleName}。")
+
+        if (arr.length() == 0) {
+            throw FormatException(
+                "dayTypes.enabled 是空数组 —— 至少要启用一种日型。\n" +
+                        "如果想让「有早八 / 没早八」都能区分，用 [\"A\", \"B_NORMAL\", \"SATURDAY\", \"SUNDAY\"]。"
+            )
+        }
+
+        val enabled = mutableSetOf<DayType>()
+        for (i in 0 until arr.length()) {
+            val v = arr.optString(i, "").trim()
+            val type = dayTypeByName(v)
+                ?: throw FormatException(
+                    "dayTypes.enabled 第 ${i + 1} 项 \"$v\" 不是可识别的日型。\n" +
+                            "可用的值是：${DAY_TYPE_NAMES.keys.joinToString("、")}"
+                )
+            enabled += type
+        }
+
+        // fallback 可以省略；省略时取 enabled 里在标准顺序中最靠前的那种。
+        // 用固定顺序而不是 HashSet 的遍历顺序 —— 后者每次运行可能不一样，
+        // 会导致同一份文件解析出不同结果。
+        val fallbackRaw = obj.optString("fallback", "").trim()
+        val fallback = if (fallbackRaw.isEmpty()) {
+            Templates.ALL_TYPES.first { it in enabled }
+        } else {
+            dayTypeByName(fallbackRaw)
+                ?: throw FormatException(
+                    "dayTypes.fallback \"$fallbackRaw\" 不是可识别的日型。\n" +
+                            "可用的值是：${DAY_TYPE_NAMES.keys.joinToString("、")}"
+                )
+        }
+
+        return DayTypePolicy(enabled, fallback)
+    }
+
+    /** 按名字查日型，大小写不敏感 */
+    private fun dayTypeByName(name: String): DayType? {
+        if (name.isEmpty()) return null
+        val upper = name.uppercase()
+        return Templates.ALL_TYPES.firstOrNull { it.name.uppercase() == upper }
     }
 
     // ============================================================
@@ -667,7 +777,8 @@ object ScheduleFormat {
         startDate: LocalDate,
         totalWeeks: Int,
         courses: List<Course>,
-        templates: Map<DayType, List<Block>> = emptyMap()
+        templates: Map<DayType, List<Block>> = emptyMap(),
+        dayTypes: DayTypePolicy? = null
     ): String {
         val sb = StringBuilder()
         sb.append("{\n")
@@ -680,6 +791,24 @@ object ScheduleFormat {
         sb.append("    \"startDate\": \"").append(startDate).append("\",\n")
         sb.append("    \"totalWeeks\": ").append(totalWeeks).append("\n")
         sb.append("  },\n")
+
+        // dayTypes 段：只有调用方明确给了策略才写。
+        //
+        // 放在 term 之后、courses 之前，是因为它描述的是「整份配置怎么跑」，
+        // 属于全局设置；课表和模板都是它的下游。
+        // 给人改的文件，**顺序本身就是一种说明**。
+        if (dayTypes != null) {
+            sb.append("  \"dayTypes\": {\n")
+            sb.append("    \"enabled\": [")
+            // 按标准顺序输出，保证同一份数据每次导出结果完全一致
+            sb.append(
+                Templates.ALL_TYPES.filter { it in dayTypes.enabled }
+                    .joinToString(", ") { "\"${it.name}\"" }
+            )
+            sb.append("],\n")
+            sb.append("    \"fallback\": \"").append(dayTypes.fallback.name).append("\"\n")
+            sb.append("  },\n")
+        }
 
         sb.append("  \"courses\": [\n")
         courses.forEachIndexed { i, c ->
@@ -791,15 +920,24 @@ object ScheduleFormat {
         return sb.toString()
     }
 
-    /** 一份最小可用的示例，用于 App 内的「格式说明」 */
+    /**
+     * 一份最小可用的示例，用于 App 内的「格式说明」。
+     *
+     * 版本号用 [VERSION] 而不是写死数字 —— 否则格式升级后这里会被忘掉，
+     * 用户照着复制出去的示例反而是一份旧格式的文件。
+     */
     fun exampleJson(): String = """
 {
   "format": "timetable",
-  "version": 1,
+  "version": $VERSION,
   "term": {
     "name": "示例大学 2026 级 · 大一上",
     "startDate": "2026-09-07",
     "totalWeeks": 19
+  },
+  "dayTypes": {
+    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
+    "fallback": "B_NORMAL"
   },
   "courses": [
     {
@@ -860,6 +998,34 @@ object ScheduleFormat {
             val obj = JSONObject(json)
             parseTemplates(obj, mutableListOf())
         }.getOrDefault(emptyMap())
+    }
+
+    /**
+     * 给本地存储用：把日型策略写成一份独立的 JSON。
+     *
+     * 和 [templatesToJson] 一样，这里写出的是**不带外层键名的完整对象**
+     * （`{"enabled":[...],"fallback":"..."}`），因为它要能被 [dayTypesFromJson]
+     * 独立解析回来。这个「存进去的和导出的格式不一致」的坑，
+     * templates 那边已经踩过一次了，详见 appendTemplates 的注释。
+     */
+    fun dayTypesToJson(policy: DayTypePolicy): String {
+        val enabled = Templates.ALL_TYPES.filter { it in policy.enabled }
+            .joinToString(",") { "\"${it.name}\"" }
+        return "{\"enabled\":[$enabled],\"fallback\":\"${policy.fallback.name}\"}"
+    }
+
+    /**
+     * 读回本地存储里的日型策略。
+     *
+     * 解析失败回落到 [DayTypePolicy.DEFAULT]，而不是抛异常 ——
+     * 和 templatesFromJson 同样的理由：**存储损坏不能变成「程序打不开」**，
+     * 否则用户连进去修的入口都没有。
+     */
+    fun dayTypesFromJson(json: String): DayTypePolicy {
+        if (json.isBlank()) return DayTypePolicy.DEFAULT
+        return runCatching {
+            parseDayTypes(JSONObject(json))
+        }.getOrDefault(DayTypePolicy.DEFAULT)
     }
 
     // ------------------------------------------------------------

@@ -92,11 +92,18 @@ data class TemplateImpact(
             today: LocalDate,
             termStart: LocalDate,
             courses: List<Course>,
+            policy: DayTypePolicy,
             horizonDays: Int = HORIZON_DAYS
         ): TemplateImpact {
-            // 和引擎用同一个函数算日型，不另起炉灶
+            // 和引擎用同一个函数算日型，不另起炉灶。
+            //
+            // 这里必须传策略 —— 否则「改了 A 型日、明天生效」这种结论
+            // 是按**未映射**的日型算出来的，而用户实际看到的是映射之后的，
+            // 两者一旦不一致，这个提示就是在骗人。
             fun typeOn(date: LocalDate): DayType =
-                TimelineEngine.dayType(date, TimelineEngine.weekOf(date, termStart), courses)
+                TimelineEngine.dayType(
+                    date, TimelineEngine.weekOf(date, termStart), courses, policy
+                )
 
             val todayType = typeOn(today)
 

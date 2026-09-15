@@ -26,7 +26,19 @@ class TimelineEngineTest {
 
     private fun d(y: Int, m: Int, day: Int) = LocalDate.of(y, m, day)
     private fun weekOf(date: LocalDate) = TimelineEngine.weekOf(date, termStart)
-    private fun moments(date: LocalDate, week: Int) = TimelineEngine.moments(date, week, courses)
+
+    /**
+     * 这个测试类测的是**引擎和内置模板本身**，所以要关掉日型策略的裁剪
+     * —— 用 [DayTypePolicy.ALL] 让映射变成恒等，算出什么就用什么。
+     *
+     * 不这么做的话，「周二晚间是力量 A 训练」这类断言会因为默认策略
+     * 把 B_TRAIN_A 映射成 B_NORMAL 而失败 —— 那是**策略层**的行为，
+     * 不该由这个类来管。策略本身在 DayTypePolicyTest 里单独测。
+     */
+    private val templatesAll = TemplateSet(policy = DayTypePolicy.ALL)
+
+    private fun moments(date: LocalDate, week: Int) =
+        TimelineEngine.moments(date, week, courses, templatesAll)
 
     /** 取某天某个时刻所处的那一格 */
     private fun at(date: LocalDate, week: Int, hhmm: String): Moment {
@@ -92,32 +104,32 @@ class TimelineEngineTest {
     @Test
     fun `有早八的周一按 A 型日`() {
         // 第 3 周周一第 1-2 节有大学英语
-        assertEquals(DayType.A, TimelineEngine.dayType(d(2026, 9, 21), 3, courses))
+        assertEquals(DayType.A, TimelineEngine.naturalDayType(d(2026, 9, 21), 3, courses))
     }
 
     @Test
     fun `还没开课的周一不该按 A 型日`() {
         // 第 1 周大学英语还没开（它是 2-4、6-17 周）→ 没有早八 → B 型
         // 如果这里写死成「周一 = A 型」，开学前一周就会误报 06:55 起床
-        assertEquals(DayType.B_NORMAL, TimelineEngine.dayType(d(2026, 9, 7), 1, courses))
+        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 9, 7), 1, courses))
     }
 
     @Test
     fun `第 8 周周三停课所以退回 B 型`() {
         // 高数周三 1-2 节是「2-7、9-17 周」，第 8 周正好不上
-        assertEquals(DayType.B_NORMAL, TimelineEngine.dayType(d(2026, 10, 28), 8, courses))
+        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 10, 28), 8, courses))
     }
 
     @Test
     fun `周二周四是训练日`() {
-        assertEquals(DayType.B_TRAIN_A, TimelineEngine.dayType(d(2026, 9, 22), 3, courses))
-        assertEquals(DayType.B_TRAIN_B, TimelineEngine.dayType(d(2026, 9, 24), 3, courses))
+        assertEquals(DayType.B_TRAIN_A, TimelineEngine.naturalDayType(d(2026, 9, 22), 3, courses))
+        assertEquals(DayType.B_TRAIN_B, TimelineEngine.naturalDayType(d(2026, 9, 24), 3, courses))
     }
 
     @Test
     fun `周末用周六周日的模板`() {
-        assertEquals(DayType.SATURDAY, TimelineEngine.dayType(d(2026, 9, 26), 3, courses))
-        assertEquals(DayType.SUNDAY, TimelineEngine.dayType(d(2026, 9, 27), 3, courses))
+        assertEquals(DayType.SATURDAY, TimelineEngine.naturalDayType(d(2026, 9, 26), 3, courses))
+        assertEquals(DayType.SUNDAY, TimelineEngine.naturalDayType(d(2026, 9, 27), 3, courses))
     }
 
     // ============================================================
@@ -247,7 +259,7 @@ class TimelineEngineTest {
         val disabled = courses.map { if (it.name == "大学英语") it.copy(enabled = false) else it }
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, disabled)
 
-        assertEquals(DayType.B_NORMAL, TimelineEngine.dayType(d(2026, 9, 21), 3, disabled))
+        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 9, 21), 3, disabled))
         val m = TimelineEngine.currentAt(ms, 9 * 60)!!
         assertTrue("实际得到: ${m.title}", m.title.contains("黄金自习块"))
     }
