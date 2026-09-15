@@ -24,12 +24,14 @@ import com.yxz.timetable.R
 import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
+import com.yxz.timetable.data.TemplateImpact
 import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentSettingsBinding
 import com.yxz.timetable.databinding.ItemCourseCheckBinding
 import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
+import java.time.LocalDate
 
 class SettingsFragment : Fragment() {
 
@@ -588,7 +590,28 @@ class SettingsFragment : Fragment() {
         renderCourses()
         refresh()
         rescheduleNotification()
-        toast(parts.joinToString("，"))
+
+        // 作息模板单独给一个说明框，不跟课表一起塞进 toast。
+        //
+        // 原因是这两件事的「见效时机」完全不同：
+        //   换课表   → 立刻就能在主页和周课表上看到，不需要解释
+        //   换作息   → **可能今天根本看不到**（见 TemplateImpact 的注释）
+        //
+        // 而 toast 一闪而过，装不下「为什么今天没变、哪天才会变」这种话。
+        // 用户报的「显示成功但主页没反应」正是缺了这一句。
+        val tmpl = parsed.templates
+        if (tmpl == null) {
+            toast(parts.joinToString("，"))
+        } else {
+            val today = LocalDate.now()
+            val impact = TemplateImpact.compute(
+                changed = tmpl.keys,
+                today = today,
+                termStart = store.termStart,
+                courses = store.courses()
+            )
+            showAlert("导入完成", parts.joinToString("，") + "\n\n" + impact.summary(today))
+        }
     }
 
     // ==================================================================

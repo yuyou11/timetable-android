@@ -28,10 +28,39 @@ import java.time.ZoneId
  * 我们只告诉系统「到 10:05 为止」，**剩下的倒计时由系统桌面自己去画**，
  * 一秒一次的重绘发生在系统进程里，我们的 App 全程在睡觉。
  *
- * 同一个道理：进度条用 `setProgress` 一次性给个百分比，
- * 而不是自己定时去改它。
- *
  * 结论：这个通知从发出到下一次切换之前，App 一次都不会醒。
+ *
+ * ============================================================
+ *  为什么不画进度条（这里踩过一个坑）
+ * ============================================================
+ *
+ * 曾经这里有过一行 `.setProgress(100, pct, false)`，注释还写着
+ * 「一次性给个百分比，而不是自己定时去改它」—— 想法是「算一次就准了」。
+ *
+ * **这个前提是错的**：百分比描述的是「当前这一格走了多少」，
+ * 它每一分钟都在变，根本不是算一次就能定下来的东西。
+ *
+ * 而通知只在**时段边界**被刷新（闹钟排的就是各格的 start 时刻），
+ * 那一刻 `minute == cur.start`，于是：
+ *
+ *     pct = (minute - cur.start) * 100 / cur.duration  =  0
+ *
+ * 所以进度条不是「卡住不动」，而是**恒为 0、从来就没填过一格**。
+ * 用户看到的是一条永远空着的槽，观感很差。
+ *
+ * 那能不能让它动起来？**真正的实时和这个 App 的省电设计是互斥的**：
+ *   - 每分钟更新 → 一天 1440 次唤醒，等于把省电设计整个推翻
+ *   - 开前台服务渲染 → 通知栏还得多挂一条「App 正在运行」
+ *   - 分档更新（25%/50%/75%）→ 会动，但每天多几十次唤醒，且仍不是实时
+ *
+ * 而**倒计时已经是实时的了，而且是系统免费画的**（上一条）。
+ * 进度条提供的是一条重复信息，代价却是要么不准、要么费电。
+ *
+ * 所以：**删掉。** 与其显示一个永远不动的进度条，
+ * 不如把「还剩多少」交给那个本来就免费又准确的倒计时。
+ *
+ * 通用教训：**一个显示不出来的信息，比没有这个信息更糟** ——
+ * 用户会盯着它找原因。
  */
 object Notifier {
 
@@ -107,9 +136,6 @@ object Notifier {
             .plusMinutes(cur.end.toLong())
             .toInstant().toEpochMilli()
         val remain = (cur.end - minute).coerceAtLeast(0)
-        val pct = if (cur.duration > 0) {
-            ((minute - cur.start) * 100 / cur.duration).coerceIn(0, 100)
-        } else 0
 
         val rangeText = "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}"
         val whereText = if (cur.place.isNotBlank()) " · ${cur.place}" else ""
@@ -146,8 +172,10 @@ object Notifier {
             .setWhen(endAtMillis)
             .setShowWhen(true)
             .setUsesChronometer(true)
-            .setChronometerCountDown(true)     // 倒计时（而不是正计时）
-            .setProgress(100, pct, false)
+            .setChronometerCountDown(true)     // 倒计时（而不是正计时），由系统绘制
+            // 这里曾经有一行 setProgress —— 已删除，原因见文件顶部的注释。
+            // 简单说：它在时段边界刷新时算出来恒为 0，永远不动；而倒计时
+            // 已经是实时的了，进度条是重复信息。
             .setOnlyAlertOnce(true)            // 更新时不重新提醒
             .setSilent(true)
             .setOngoing(true)                  // 常驻，划不掉
