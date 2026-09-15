@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">时间规划表</string>
+
+    <string name="tab_today">今天</string>
+    <string name="tab_week">课表</string>
+    <string name="tab_settings">设置</string>
+
+    <string name="now_label">此刻</string>
+    <string name="next_label">接着</string>
+
+    <string name="resident_title">常驻通知栏</string>
+    <string name="resident_desc">开启后，通知栏会一直显示此刻该做什么，并在每个时段切换时自动更新。不开启时 App 完全静止，不消耗任何电量。</string>
+
+    <string name="perm_title">运行权限自检</string>
+    <string name="perm_notif">通知权限</string>
+    <string name="perm_exact">精确闹钟（准时切换的关键）</string>
+    <string name="perm_battery">电池优化白名单</string>
+    <string name="perm_lockscreen">锁屏显示通知</string>
+    <string name="perm_autostart">自启动 / 后台运行（荣耀手机必做）</string>
+
+    <string name="remind_title">课前提醒</string>
+    <string name="remind_lead">提前多少分钟提醒</string>
+    <string name="remind_desc">每节课开始前，发一条会响铃震动的通知。0 表示关闭。这和常驻通知是两条独立的通知 —— 常驻那条一直安静地显示「此刻该做什么」，这条只在课前响一次。</string>
+    <string name="export_choice_title">导出内容</string>
+
+    <string name="guide_title">用 AI 生成数据</string>
+    <string name="guide_copy_course">① 复制「课表」提示词</string>
+    <string name="guide_copy_template">② 复制「作息模板」提示词</string>
+    <string name="guide_copy_fix">③ 导入失败？复制「报错修复」提示词</string>
+    <string name="guide_s1_title">第一步：复制提示词</string>
+    <string name="guide_s2_title">第二步：照着做</string>
+    <string name="guide_s3_title">提示词内容</string>
+    <string name="guide_s3_desc">下面是「课表」提示词的实际内容。你可以在这里核对、或者手动长按选中复制。</string>
+    <string name="guide_footer">提示词里已经带上了你当前的学期信息（名称 / 起始日 / 总周数），\n所以 AI 不会在这些地方猜错。</string>
+
+    <string name="lockscreen_title">锁屏显示</string>
+    <string name="lockscreen_show">在锁屏上显示通知内容</string>
+    <string name="lockscreen_desc">关闭后，锁屏上不会出现「此刻该做什么」这条通知，但解锁后通知栏照常显示。\n\n注意：这一项只控制本 App 的意愿。荣耀 / 华为手机还有一道系统开关，默认是关的 —— 不开的话，即使这里打开，锁屏上依然什么都看不到。</string>
+    <string name="btn_open_sys_lockscreen">去开启系统锁屏通知</string>
+
+    <string name="term_title">学期</string>
+    <string name="term_name">学期名称</string>
+    <string name="term_start">教学第 1 周的周一</string>
+    <string name="week_override">手动指定周次</string>
+    <string name="week_auto">自动</string>
+
+    <string name="data_title">数据</string>
+    <string name="data_desc">导入 / 导出使用统一的 JSON 格式（timetable v1）。点「格式说明」可以看到完整写法。</string>
+    <string name="btn_import">导入课表</string>
+    <string name="btn_export">导出课表</string>
+    <string name="btn_copy_json">复制 JSON</string>
+    <string name="btn_format_help">格式说明</string>
+    <string name="btn_ai_guide">不会写？用 AI 生成（含提示词）</string>
+
+    <string name="courses_title">课程</string>
+    <string name="courses_desc">取消勾选可以临时停掉某门课（放假、停课时用）。周次和教室来自你的课表，改完立刻生效。</string>
+    <string name="reset_courses">恢复内置课表</string>
+    <string name="clear_courses">清空所有课程</string>
+    <string name="term_total_weeks">总周数</string>
+
+    <string name="first_launch_title">第一次使用</string>
+    <string name="first_launch_blank">从空白开始</string>
+    <string name="first_launch_keep">用内置示例课表</string>
+    <string name="first_launch_msg">这个 App 内置了一份示例课表（西安电子科技大学 2026 级集成电路 · 大一上），包含 19 门课和大学作息模板。\n\n如果你不是那个学校的，请选「从空白开始」—— 然后到「设置 → 数据」里导入或用 AI 生成你自己的课表。\n\n选错了也没关系，设置页随时可以清空或恢复。</string>
+
+    <string name="hint_honor">荣耀 / 华为手机必做：设置 → 应用 → 应用启动管理 → 找到「时间规划表」→ 关闭「自动管理」→ 打开「允许自启动」「允许关联启动」「允许后台活动」。否则系统会在锁屏后杀掉闹钟。</string>
+</resources>

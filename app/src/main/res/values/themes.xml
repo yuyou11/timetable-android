@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      DayNight：跟随系统的深色/浅色模式自动切换。
+      配合上面的 values-night/colors.xml，深色模式是白送的。
+    -->
+    <style name="Theme.Timetable" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/app_bg</item>
+        <item name="colorPrimary">@color/accent</item>
+    </style>
+</resources>

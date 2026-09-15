@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_today"
+        android:icon="@drawable/ic_tab_today"
+        android:title="@string/tab_today" />
+    <item
+        android:id="@+id/nav_week"
+        android:icon="@drawable/ic_tab_week"
+        android:title="@string/tab_week" />
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@drawable/ic_tab_settings"
+        android:title="@string/tab_settings" />
+</menu>

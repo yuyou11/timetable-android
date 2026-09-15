@@ -1,0 +1,231 @@
+package com.yxz.timetable.notify
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.yxz.timetable.MainActivity
+import com.yxz.timetable.R
+import com.yxz.timetable.data.Slots
+import com.yxz.timetable.data.Store
+import com.yxz.timetable.data.TimelineEngine
+import java.time.LocalDateTime
+import java.time.ZoneId
+
+/**
+ * 常驻通知的绘制。
+ *
+ * ## 省电的关键：让系统帮我倒计时
+ *
+ * 「还剩 23 分钟」如果由 App 每秒刷新一次，那就是一天 86400 次唤醒 —— 电老虎。
+ *
+ * 这里用的是 `setUsesChronometer(true)` + `setChronometerCountDown(true)`：
+ * 我们只告诉系统「到 10:05 为止」，**剩下的倒计时由系统桌面自己去画**，
+ * 一秒一次的重绘发生在系统进程里，我们的 App 全程在睡觉。
+ *
+ * 同一个道理：进度条用 `setProgress` 一次性给个百分比，
+ * 而不是自己定时去改它。
+ *
+ * 结论：这个通知从发出到下一次切换之前，App 一次都不会醒。
+ */
+object Notifier {
+
+    const val CHANNEL_ID = "now_doing"
+    const val NOTIF_ID = 1001
+
+    /** 通知渠道。Android 8.0 起必须先建渠道才能发通知 */
+    fun ensureChannel(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+
+        // 如果渠道已存在，直接返回。
+        // 注意：渠道一旦创建，它的重要性（IMPORTANCE）就**不能再由代码修改**了 ——
+        // 用户永远有最终决定权。所以这里不要反复 createNotificationChannel 试图改设置。
+        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
+
+        val ch = NotificationChannel(
+            CHANNEL_ID,
+            "此刻该做什么",
+            // IMPORTANCE_LOW：显示在通知栏，但不响铃、不震动、不弹横幅。
+            // 上课时手机在口袋里震一下是很糟糕的体验，所以这里必须是 LOW。
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "常驻通知栏，显示当前时段与下一项安排"
+            setShowBadge(false)
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        nm.createNotificationChannel(ch)
+    }
+
+    fun isAllowed(ctx: Context): Boolean =
+        NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+
+    /** 重画（或首次发出）常驻通知 */
+    fun update(ctx: Context) {
+        val store = Store(ctx)
+
+        if (!store.enabled) {
+            cancel(ctx)
+            return
+        }
+        ensureChannel(ctx)
+        if (!isAllowed(ctx)) return   // 没给通知权限，静默跳过
+
+        val zone = ZoneId.systemDefault()
+        val now = LocalDateTime.now(zone)
+        val today = now.toLocalDate()
+        val minute = now.hour * 60 + now.minute
+
+        // ---- 暂停状态 ----
+        val snoozeUntil = store.snoozeUntil
+        if (snoozeUntil > System.currentTimeMillis()) {
+            post(ctx, buildSnoozed(ctx, snoozeUntil))
+            return
+        } else if (snoozeUntil != 0L) {
+            store.snoozeUntil = 0L   // 暂停已过期，清掉标记
+        }
+
+        // ---- 正常状态 ----
+        val week = store.weekOf(today)
+        val courses = store.courses()
+        val moments = TimelineEngine.moments(today, week, courses, store.templates())
+        if (moments.isEmpty()) return
+
+        val cur = TimelineEngine.currentAt(moments, minute) ?: return
+        val next = TimelineEngine.nextAfter(moments, minute)
+        val type = TimelineEngine.dayType(today, week, courses)
+
+        val endAtMillis = today.atStartOfDay(zone)
+            .plusMinutes(cur.end.toLong())
+            .toInstant().toEpochMilli()
+        val remain = (cur.end - minute).coerceAtLeast(0)
+        val pct = if (cur.duration > 0) {
+            ((minute - cur.start) * 100 / cur.duration).coerceIn(0, 100)
+        } else 0
+
+        val rangeText = "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}"
+        val whereText = if (cur.place.isNotBlank()) " · ${cur.place}" else ""
+
+        // 明天那一行：日型 + 起床时间。放在展开视图里，
+        // 晚上躺床上拉一下通知栏就能知道明天几点起、第一节什么课。
+        val tomorrow = today.plusDays(1)
+        val tWeek = store.weekOf(tomorrow)
+        val tType = TimelineEngine.dayType(tomorrow, tWeek, courses)
+        val tWake = TimelineEngine.wakeMinute(
+            TimelineEngine.template(tType, store.templates())
+        )
+
+        val expanded = buildString {
+            append("▸ 现在　").append(cur.title)
+            append('\n').append("　　").append(rangeText).append(whereText)
+            if (cur.note.isNotBlank()) append('\n').append("　　").append(cur.note)
+            append("\n\n▸ 接着　")
+            append(if (next != null) "${Slots.fmt(next.start)}　${next.title}" else "今天没有下一项了")
+            append("\n\n▸ 今天　第 ").append(week).append(" 周 · ").append(weekdayLabel(today.dayOfWeek.value))
+            append(" · ").append(type.label)
+            append("\n▸ 明天　").append(weekdayLabel(tomorrow.dayOfWeek.value))
+            append(" · ").append(tType.label)
+            if (tWake != null) append(" · ").append(Slots.fmt(tWake)).append(" 起床")
+        }
+
+        val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setColor(0xFF1565C0.toInt())
+            .setContentTitle("现在：${cur.title}")
+            .setContentText(rangeText + whereText + " · 剩 $remain 分钟")
+            .setSubText("第 $week 周 · ${type.label}")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expanded))
+            .setWhen(endAtMillis)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)     // 倒计时（而不是正计时）
+            .setProgress(100, pct, false)
+            .setOnlyAlertOnce(true)            // 更新时不重新提醒
+            .setSilent(true)
+            .setOngoing(true)                  // 常驻，划不掉
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            // 锁屏可见性由用户在设置里决定：
+            //   PUBLIC → 锁屏上能看到课程名
+            //   SECRET → 通知根本不送到锁屏
+            // 注意这只管到 App 这一层。系统还有一道总开关，见 Store.lockscreenVisible 的注释。
+            .setVisibility(
+                if (store.lockscreenVisible) NotificationCompat.VISIBILITY_PUBLIC
+                else NotificationCompat.VISIBILITY_SECRET
+            )
+            .setContentIntent(openApp(ctx))
+            .addAction(0, "暂停 1 小时", action(ctx, ActionReceiver.ACTION_SNOOZE, 31))
+            .addAction(0, "关闭常驻", action(ctx, ActionReceiver.ACTION_DISABLE, 32))
+
+        post(ctx, builder.build())
+    }
+
+    private fun buildSnoozed(ctx: Context, until: Long): Notification {
+        val t = java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).toLocalTime()
+        val hhmm = "%02d:%02d".format(t.hour, t.minute)
+        return NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setColor(0xFF757575.toInt())
+            .setContentTitle("已暂停")
+            .setContentText("$hhmm 后自动恢复")
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setOngoing(true)
+            .setContentIntent(openApp(ctx))
+            .addAction(0, "立即恢复", action(ctx, ActionReceiver.ACTION_RESUME, 33))
+            .addAction(0, "关闭常驻", action(ctx, ActionReceiver.ACTION_DISABLE, 32))
+            .build()
+    }
+
+    private fun post(ctx: Context, n: Notification) {
+        runCatching {
+            NotificationManagerCompat.from(ctx).notify(NOTIF_ID, n)
+        }
+    }
+
+    fun cancel(ctx: Context) {
+        runCatching { NotificationManagerCompat.from(ctx).cancel(NOTIF_ID) }
+    }
+
+    private fun openApp(ctx: Context): PendingIntent {
+        val i = Intent(ctx, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            ctx, 30, i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /**
+     * 通知按钮的 PendingIntent。
+     *
+     * 两个必须做对的地方：
+     *  1. **requestCode 必须各不相同**，否则后一个按钮会覆盖前一个的行为
+     *     （PendingIntent 是按 (requestCode, Intent) 去重的）。
+     *  2. **FLAG_IMMUTABLE**：Android 12 起强制要求声明可变性，
+     *     我们的 Intent 不需要被外部填充，所以用 IMMUTABLE，顺便也更安全。
+     */
+    private fun action(ctx: Context, act: String, req: Int): PendingIntent {
+        val i = Intent(ctx, ActionReceiver::class.java).apply {
+            action = act
+            setPackage(ctx.packageName)
+        }
+        return PendingIntent.getBroadcast(
+            ctx, req, i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun weekdayLabel(dow: Int) = when (dow) {
+        1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"
+        5 -> "周五"; 6 -> "周六"; else -> "周日"
+    }
+}

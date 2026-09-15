@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自己画的箭头图标，而不是用「◀」这个字符。
+
+  原因：◀ (U+25C0) 是 Unicode 几何符号，很多国产 ROM 的定制字体里
+  **没有这个字形**，会渲染成空白 —— 按钮看得见框、点得动，就是看不见内容。
+  矢量图不依赖任何字体，画出来什么样就是什么样。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M15.41,7.41L14,6l-6,6 6,6 1.41,-1.41L10.83,12z" />
+</vector>

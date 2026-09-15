@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  夜间的颜色覆盖。文件名里的 -night 就是资源限定符，
+  和 CSS 的 @media (prefers-color-scheme: dark) 是同一个思路：
+  **同一套 id，系统按当前环境自动挑一份**，代码里完全不用写 if。
+
+  Android 的限定符比 CSS 丰富得多（-night 夜间、-land 横屏、
+  -sw600dp 宽屏、-zh 中文…），而且可以叠加，比如 values-zh-rCN-night。
+  优先级规则是「越具体的越优先」。
+-->
+<resources>
+    <color name="app_bg">#101215</color>
+    <color name="card_bg">#1B1E24</color>
+    <color name="text_primary">#E8EAED</color>
+    <color name="text_secondary">#9AA1AC</color>
+    <color name="divider">#2A2F38</color>
+    <color name="accent">#6FB3F2</color>
+    <color name="accent_soft">#1B2E44</color>
+</resources>

@@ -1,0 +1,58 @@
+# ============================================================
+#  .gitattributes —— 统一「行尾符」，避免跨平台改动满天飞
+# ============================================================
+#
+# 背景：Windows 上换行是 CRLF（回车+换行，\r\n），Linux/macOS 上是 LF（\n）。
+# 同一个文件在两种系统上"看起来一样"，但字节不同。不管的话会出现两个麻烦：
+#
+#   1. 别人在 Mac 上克隆你的项目，什么都没改，git 却报"所有文件都被修改了"
+#   2. 真正的改动（比如你改了 1 行）淹没在几百个"只有行尾符不同"的文件里，
+#      code review 完全没法看
+#
+# 解决办法是让 git **在仓库里统一存 LF**，检出到本地时再按需要转换。
+# 这条规则写进 .gitattributes 而不是本地配置，是因为它**跟着仓库走** ——
+# 谁克隆下来都自动生效，不需要每个人自己配一遍。
+#
+# 对比一下：core.autocrlf 是**本机配置**，换台电脑就没了。
+# 「跟项目有关的规矩」应该写进 .gitattributes，「跟这台机器有关的」才写本地配置。
+
+# 让 git 自动判断哪些是文本文件，并**在两边都用 LF**
+#
+# 这里必须写 eol=lf，只写 text=auto 是不够的：
+#   text=auto 只保证「仓库里存 LF」，检出到本地时按 core.eol 决定，
+#   而 Windows 上 core.eol 默认是 native（= CRLF）。
+#   结果是：仓库里是 LF、你硬盘上是 CRLF，git 每次 add 都警告
+#   「LF will be replaced by CRLF」，而且**它会把你的文件逐一改掉**。
+#
+# 写成 eol=lf 就是「仓库和硬盘都保持 LF」，什么都不动，警告也消失。
+# Android / Kotlin / XML 对 LF 没有任何要求，这是最省事的选择。
+* text=auto eol=lf
+
+# 明确指定这些是文本，按 LF 存
+*.kt    text eol=lf
+*.kts   text eol=lf
+*.java  text eol=lf
+*.xml   text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.pro   text eol=lf
+
+# Windows 专用的批处理脚本是唯一必须用 CRLF 的，它们按行解析，
+# 用 LF 在某些情况下会执行出错
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# 二进制文件：**绝对不能做行尾符转换**，转一下文件就损坏了
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.jar   binary
+*.keystore binary
+*.jks   binary
