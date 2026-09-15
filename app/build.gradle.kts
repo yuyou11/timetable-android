@@ -27,8 +27,15 @@ android {
         applicationId = "com.yxz.timetable"
         minSdk = 26          // Android 8.0，覆盖 2017 年后的所有手机
         targetSdk = 34       // Android 14
-        versionCode = 9
-        versionName = "1.8"
+        // versionCode 和 versionName 是两回事，别只改一个：
+        //   versionCode  整数，给系统判断「新不新」用。**每次发版都必须 +1**，
+        //                否则系统不认为这是新版本，可能不让覆盖安装。
+        //   versionName  字符串，给人看的，随便怎么起都行（1.8.2 / 1.9-beta…）。
+        //
+        // 只改 versionName 不改 versionCode 是个很常见的坑：
+        // 装上去看着是「新版本」，但系统层面新旧关系没变。
+        versionCode = 10
+        versionName = "1.8.2"
         resourceConfigurations += listOf("zh", "en")
     }
 
