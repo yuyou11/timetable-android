@@ -20,7 +20,7 @@ import java.time.LocalDate
  */
 class AiPromptTest {
 
-    private val termName = "西电 2026 级集成电路 · 大一上"
+    private val termName = "示例大学 2026 级 · 大一上"
     private val start = "2026-09-07"
     private val weeks = 19
 

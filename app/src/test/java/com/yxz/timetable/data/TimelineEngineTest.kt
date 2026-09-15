@@ -127,8 +127,8 @@ class TimelineEngineTest {
     @Test
     fun `周一早八显示成课程而不是「第 1-2 节」`() {
         val m = at(d(2026, 9, 21), 3, "09:00")
-        assertEquals("大学英语(Ⅰ)", m.title)
-        assertEquals("EI-309", m.place)
+        assertEquals("大学英语", m.title)
+        assertEquals("教一-101", m.place)
         assertEquals(Kind.CLASS, m.kind)
         assertTrue(m.isCourse)
     }
@@ -148,25 +148,25 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun `半导体周二 5-6 节只在第 4 周出现`() {
-        assertEquals("半导体材料与工艺基础", at(d(2026, 9, 29), 4, "15:00").title)
+    fun `大学物理实验周二 5-6 节只在第 4 周出现`() {
+        assertEquals("大学物理实验", at(d(2026, 9, 29), 4, "15:00").title)
         // 第 5 周周二同一时段没有这门课
-        assertFalse(at(d(2026, 10, 6), 5, "15:00").title.startsWith("半导体"))
+        assertFalse(at(d(2026, 10, 6), 5, "15:00").title.startsWith("大学物理实验"))
     }
 
     @Test
     fun `周四 7-8 节的单双周切换`() {
-        // 文档特别注明：第 2 周这里是程序设计基础B
-        assertEquals("程序设计基础B", at(d(2026, 9, 17), 2, "16:00").title)
-        // 第 3 周（单周）起是人工智能概论
-        assertEquals("人工智能概论", at(d(2026, 9, 24), 3, "16:00").title)
-        // 第 4 周是双周，人工智能不上 → 回到「无课」
+        // 第 2 周这里是程序设计基础
+        assertEquals("程序设计基础", at(d(2026, 9, 17), 2, "16:00").title)
+        // 第 3 周（单周）起是数据结构
+        assertEquals("数据结构", at(d(2026, 9, 24), 3, "16:00").title)
+        // 第 4 周是双周，数据结构不上 → 回到「无课」
         assertTrue(at(d(2026, 10, 1), 4, "16:00").title.contains("无课"))
     }
 
     @Test
-    fun `周三晚课大模型在第 10 周正常出现`() {
-        assertEquals("大模型原理与实践", at(d(2026, 11, 11), 10, "19:30").title)
+    fun `周三晚课人工智能导论在第 10 周正常出现`() {
+        assertEquals("人工智能导论", at(d(2026, 11, 11), 10, "19:30").title)
     }
 
     @Test
@@ -218,7 +218,7 @@ class TimelineEngineTest {
         assertEquals("课表格子的数量应恒等于模板里的 5 个节次段", 5, classBlocks.size)
 
         val titles = classBlocks.map { it.title }
-        assertTrue(titles.any { it == "大学英语(Ⅰ)" })
+        assertTrue(titles.any { it == "大学英语" })
         assertTrue(titles.any { it.contains("无课") })
     }
 
@@ -244,7 +244,7 @@ class TimelineEngineTest {
         //
         // 这条最能说明「规则要推导、不要写死」：没有任何一行代码在描述
         // 「停课之后要切模板」，它是 dayType() 那条判断自然产生的结果。
-        val disabled = courses.map { if (it.name == "大学英语(Ⅰ)") it.copy(enabled = false) else it }
+        val disabled = courses.map { if (it.name == "大学英语") it.copy(enabled = false) else it }
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, disabled)
 
         assertEquals(DayType.B_NORMAL, TimelineEngine.dayType(d(2026, 9, 21), 3, disabled))
@@ -355,7 +355,7 @@ class TimelineEngineTest {
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, courses, set)   // 周一第 3 周
 
         // 08:30-10:05 本该是「我安排的一整天」，被大学英语顶掉了
-        assertEquals("大学英语(Ⅰ)", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
+        assertEquals("大学英语", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
         // 而空着的时段仍然是自定义内容
         assertEquals("我安排的一整天", TimelineEngine.currentAt(ms, 12 * 60 + 30)!!.title)
         // 时间轴依旧连续
@@ -374,7 +374,7 @@ class TimelineEngineTest {
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, courses, set)
 
         // 周一 1-2 节有大学英语，应该覆盖掉自定义的占位格
-        assertEquals("大学英语(Ⅰ)", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
+        assertEquals("大学英语", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
     }
 
     @Test
@@ -383,7 +383,7 @@ class TimelineEngineTest {
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, disabled)
 
         // 上午的英语照常 —— 因为早八还在，日型仍是 A 型
-        assertEquals("大学英语(Ⅰ)", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
+        assertEquals("大学英语", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
         // 只有第 7-8 节退回「无课」
         assertTrue(TimelineEngine.currentAt(ms, 16 * 60)!!.title.contains("无课"))
     }

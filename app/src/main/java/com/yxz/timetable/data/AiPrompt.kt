@@ -41,11 +41,11 @@ object AiPrompt {
   },
   "courses": [
     {
-      "name": "大学英语(Ⅰ)",
+      "name": "大学英语",
       "dayOfWeek": 1,
       "nodes": [1, 2],
       "weeks": "2-4,6-17",
-      "place": "EI-309"
+      "place": "教一-101"
     }
   ]
 }

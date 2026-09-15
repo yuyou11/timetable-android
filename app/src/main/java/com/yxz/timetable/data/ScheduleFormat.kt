@@ -565,8 +565,8 @@ object ScheduleFormat {
      * 找出「同一时段有两门课，且周次有重叠」的情况。
      *
      * 注意这里必须比较**周次是否重叠**，不能只比时段。
-     * 你的课表里就有一个正当的重叠例子：周四 7-8 节，
-     * 人工智能概论占单周，程序设计基础B 占第 2 周 —— 时段相同但周次不相交，
+     * 内置示例课表里就有一个正当的重叠例子：周四 7-8 节，
+     * 数据结构占单周，程序设计基础占第 2 周 —— 时段相同但周次不相交，
      * 这是合法的，不能报警告。
      */
     private fun detectConflicts(courses: List<Course>): List<String> {
@@ -747,31 +747,31 @@ object ScheduleFormat {
   "format": "timetable",
   "version": 1,
   "term": {
-    "name": "西电 2026 级集成电路 · 大一上",
+    "name": "示例大学 2026 级 · 大一上",
     "startDate": "2026-09-07",
     "totalWeeks": 19
   },
   "courses": [
     {
-      "name": "大学英语(Ⅰ)",
+      "name": "大学英语",
       "dayOfWeek": 1,
       "nodes": [1, 2],
       "weeks": "2-4,6-17",
-      "place": "EI-309"
+      "place": "教一-101"
     },
     {
-      "name": "人工智能概论",
+      "name": "数据结构",
       "dayOfWeek": 4,
       "nodes": [7, 8],
       "weeks": "3-17/2",
-      "place": "A-414"
+      "place": "实验楼-201"
     },
     {
-      "name": "程序设计基础B",
+      "name": "程序设计基础",
       "dayOfWeek": 4,
       "nodes": [7, 8],
       "weeks": "2",
-      "place": "A-414"
+      "place": "实验楼-201"
     }
   ]
 }

@@ -291,6 +291,6 @@ class Store(context: Context) {
 
     companion object {
         val DEFAULT_TERM_START: LocalDate = LocalDate.of(2026, 9, 7)
-        const val DEFAULT_TERM_NAME = "西电 2026 级集成电路 · 大一上"
+        const val DEFAULT_TERM_NAME = "示例大学 2026 级 · 大一上"
     }
 }

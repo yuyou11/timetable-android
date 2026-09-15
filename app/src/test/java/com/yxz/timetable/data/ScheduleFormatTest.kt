@@ -133,7 +133,7 @@ class ScheduleFormatTest {
                 """"courses":[$courses]}"""
 
     private val oneCourse =
-        """{"name":"大学英语(Ⅰ)","dayOfWeek":1,"nodes":[1,2],"weeks":"2-4","place":"EI-309"}"""
+        """{"name":"大学英语","dayOfWeek":1,"nodes":[1,2],"weeks":"2-4","place":"教一-101"}"""
 
     private fun ok(json: String, total: Int = 19): ScheduleFormat.Parsed =
         when (val r = ScheduleFormat.parse(json, total)) {
@@ -163,12 +163,12 @@ class ScheduleFormatTest {
         val p = ok(doc(oneCourse))
         assertEquals(1, p.courses!!.size)
         val c = p.courses!![0]
-        assertEquals("大学英语(Ⅰ)", c.name)
+        assertEquals("大学英语", c.name)
         assertEquals(1, c.dayOfWeek)
         assertEquals(1, c.startNode)
         assertEquals(2, c.endNode)
         assertEquals(setOf(2, 3, 4), c.weeks)
-        assertEquals("EI-309", c.place)
+        assertEquals("教一-101", c.place)
         assertTrue(c.enabled)
         assertNull(p.term)
     }
@@ -332,13 +332,13 @@ class ScheduleFormatTest {
 
     @Test
     fun `同一时段但周次不重叠不算冲突`() {
-        // 这正是内置课表里的真实情况：周四 7-8 节，
-        // 人工智能概论占单周，程序设计基础B 占第 2 周。
+        // 这正是内置示例课表里的情况：周四 7-8 节，
+        // 数据结构占单周，程序设计基础占第 2 周。
         // 如果只比时段不比周次，这里会误报 —— 那就成了「狼来了」，用户很快就不看警告了。
         val p = ok(
             doc(
-                """{"name":"人工智能概论","dayOfWeek":4,"nodes":[7,8],"weeks":"3-17/2"},""" +
-                        """{"name":"程序设计基础B","dayOfWeek":4,"nodes":[7,8],"weeks":"2"}"""
+                """{"name":"数据结构","dayOfWeek":4,"nodes":[7,8],"weeks":"3-17/2"},""" +
+                        """{"name":"程序设计基础","dayOfWeek":4,"nodes":[7,8],"weeks":"2"}"""
             )
         )
         assertTrue("不该有警告，实际：${p.warnings}", p.warnings.isEmpty())

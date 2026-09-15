@@ -62,7 +62,7 @@
     <string name="first_launch_title">第一次使用</string>
     <string name="first_launch_blank">从空白开始</string>
     <string name="first_launch_keep">用内置示例课表</string>
-    <string name="first_launch_msg">这个 App 内置了一份示例课表（西安电子科技大学 2026 级集成电路 · 大一上），包含 19 门课和大学作息模板。\n\n如果你不是那个学校的，请选「从空白开始」—— 然后到「设置 → 数据」里导入或用 AI 生成你自己的课表。\n\n选错了也没关系，设置页随时可以清空或恢复。</string>
+    <string name="first_launch_msg">这个 App 内置了一份示例课表（示例大学 2026 级 · 大一上），包含 19 门课和大学作息模板。\n\n如果你想用自己的课表，请选「从空白开始」—— 然后到「设置 → 数据」里导入或用 AI 生成你自己的课表。\n\n选错了也没关系，设置页随时可以清空或恢复。</string>
 
     <string name="hint_honor">荣耀 / 华为手机必做：设置 → 应用 → 应用启动管理 → 找到「时间规划表」→ 关闭「自动管理」→ 打开「允许自启动」「允许关联启动」「允许后台活动」。否则系统会在锁屏后杀掉闹钟。</string>
 </resources>
