@@ -240,24 +240,44 @@ class Store(context: Context) {
     /**
      * 导出。
      *
-     * [includeTemplates] = true 时会输出**展开后的完整六套模板**，
-     * 而不是只输出用户改过的那几种。这样导出的文件是一份能直接编辑的
+     * [includeScheduleConfig] = true 时输出**完整的作息配置**：
+     * 展开后的六套模板 + 日型策略。这样导出的文件是一份能直接编辑的
      * 完整底稿 —— 想改起床时间，在那 100 多行里找到对应那一行改掉就行，
      * 不用从零写一套模板。
      *
-     * 同一档还会带上 `dayTypes` 段：导出的是「完整作息配置」，
-     * 只带模板不带策略的话，别人导入后拿到的日型和你的不一样 ——
-     * **半份配置比没有配置更容易让人困惑。**
+     * ⚠️ **两个东西必须一起导出。** 只带模板不带 `dayTypes` 的话，
+     * 别人导入后拿到的日型和你的不一样（同一份模板，你只启用四种，
+     * 他却六种全开）——**半份配置比没有配置更容易让人困惑。**
+     *
+     * 参数名从 `includeTemplates` 改成了 `includeScheduleConfig`：
+     * 它现在同时管模板和日型，还叫原名就是**名字在说谎**。
+     * 一个名字和实际行为不符的参数，早晚会有人按名字去理解它。
      */
-    fun exportJson(includeTemplates: Boolean = false): String =
+    fun exportJson(includeScheduleConfig: Boolean = false): String =
         ScheduleFormat.serialize(
             termName,
             termStart,
             totalWeeks,
             courses(),
-            if (includeTemplates) templates().expanded() else emptyMap(),
-            if (includeTemplates) dayTypePolicy() else null
+            if (includeScheduleConfig) templates().expanded() else emptyMap(),
+            if (includeScheduleConfig) dayTypePolicy() else null
         )
+
+    /**
+     * 「复制 JSON」按钮该不该带上作息配置。
+     *
+     * 判据是**模板或日型任意一个被改过**。
+     *
+     * ⚠️ 以前这里只判断 `hasCustomTemplates`，于是有一类配置会丢：
+     * 用户导入了一份**只改 dayTypes、没改模板**的文件，此时
+     * `hasCustomTemplates` 是 false，复制出来的 JSON 不含 dayTypes ——
+     * 粘到别处或留作备份时，他那份日型设置就**静默消失了**。
+     *
+     * 这类漏判特别隐蔽：功能没报错，只是一个字段没被带上。
+     * **判断「要不要带上某个东西」时，要把所有相关的来源都数一遍。**
+     */
+    val hasCustomScheduleConfig: Boolean
+        get() = hasCustomTemplates || hasCustomDayTypes
 
     /** 导入时一并套用学期设置 */
     fun applyTerm(term: ScheduleFormat.Term) {

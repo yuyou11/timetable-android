@@ -46,7 +46,7 @@
     <string name="week_auto">自动</string>
 
     <string name="data_title">数据</string>
-    <string name="data_desc">导入 / 导出使用统一的 JSON 格式（timetable v1）。点「格式说明」可以看到完整写法。</string>
+    <string name="data_desc">导入 / 导出使用统一的 JSON 格式（timetable v%1$s）。点「格式说明」可以看到完整写法。</string>
     <string name="btn_import">导入课表</string>
     <string name="btn_export">导出课表</string>
     <string name="btn_copy_json">复制 JSON</string>

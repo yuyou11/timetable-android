@@ -251,6 +251,10 @@ class SettingsFragment : Fragment() {
 
         // ---- 数据 ----
         binding.tvDataSummary.text = "当前：共 ${store.totalWeeks} 周 · ${store.courses().size} 门课"
+        // 版本号从 ScheduleFormat.VERSION 取，不写死在 strings.xml 里 ——
+        // 写死的话格式升级时这行必然被忘掉（实际上它就一直停在 v1）
+        binding.tvDataDesc.text =
+            getString(R.string.data_desc, ScheduleFormat.VERSION.toString())
         binding.tvFooter.text = "${store.termName}\n数据格式 timetable v${ScheduleFormat.VERSION}"
 
         val custom = store.templates().custom
@@ -928,11 +932,11 @@ class SettingsFragment : Fragment() {
     // ==================================================================
 
     /**
-     * 导出前问一句：只导课表，还是连作息模板一起导。
+     * 导出前问一句：只导课表，还是连作息配置一起导。
      *
      * 为什么要问？因为两者用途不一样：
      *   · **只导课表** —— 文件几十行，拿来手改课程、发给同学最合适
-     *   · **带模板**   —— 文件一百多行，是完整备份；也是你**想改作息时唯一
+     *   · **带作息**   —— 文件一百多行，是完整备份；也是你**想改作息时唯一
      *                    能拿到的底稿**（不用从零手写六套模板）
      * 默认总是输出某一种都不合适，所以让用户自己选。
      */
@@ -942,7 +946,10 @@ class SettingsFragment : Fragment() {
             .setItems(
                 arrayOf(
                     "仅课表（文件短，适合手改和分享）",
-                    "课表 + 作息模板（完整备份，可改起床时间）"
+                    // 措辞里带上「日型」：从 v3 起这一档导出的不只是模板，
+                    // 还有「启用哪几种日型」。只说模板的话，
+                    // 用户会以为日型设置没被备份进去
+                    "课表 + 作息（模板与启用的日型，完整备份）"
                 )
             ) { _, which ->
                 pendingExportIncludeTemplates = (which == 1)
@@ -955,8 +962,8 @@ class SettingsFragment : Fragment() {
     }
 
     private fun onFileChosen(uri: Uri) {
-        val includeTemplates = pendingExportIncludeTemplates
-        val json = store.exportJson(includeTemplates)
+        val includeConfig = pendingExportIncludeTemplates
+        val json = store.exportJson(includeConfig)
 
         val ok = runCatching {
             requireContext().contentResolver.openOutputStream(uri)?.use {
@@ -966,7 +973,7 @@ class SettingsFragment : Fragment() {
 
         toast(
             if (ok) {
-                "已导出 ${store.courses().size} 门课" + if (includeTemplates) " + 作息模板" else ""
+                "已导出 ${store.courses().size} 门课" + if (includeConfig) " + 作息配置" else ""
             } else "导出失败"
         )
     }
@@ -974,8 +981,12 @@ class SettingsFragment : Fragment() {
     private fun copyJsonToClipboard() {
         val cm = requireContext()
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        // 自定义过模板就一起带上，否则只复课表 —— 和导出按钮的默认判断保持一致
-        val json = store.exportJson(store.hasCustomTemplates)
+        // 模板**或**日型被改过就一起带上，否则只复课表。
+        //
+        // 这里原先只判断 hasCustomTemplates，会漏掉一类配置：
+        // 用户导入了一份只改 dayTypes 的文件 → hasCustomTemplates 是 false
+        // → 复制出来的 JSON 不含 dayTypes → 他的日型设置静默丢失。
+        val json = store.exportJson(store.hasCustomScheduleConfig)
         cm.setPrimaryClip(ClipData.newPlainText("课表 JSON", json))
         toast("已复制 ${store.courses().size} 门课的 JSON")
     }
@@ -1018,60 +1029,17 @@ class SettingsFragment : Fragment() {
     }
 
     private companion object {
-        val FORMAT_HELP = """
-            【顶层】
-            format    固定为 "timetable"
-            version   格式版本，当前是 3
-            term      学期设置（可选）
-            dayTypes  启用哪些日型（可选）
-            courses   课程数组（可选）
-            templates 作息模板（可选）
-
-            上面几段都是「没写 = 不要动」，不是「清空」。
-
-            【term 段】
-            name        学期名称，随便写
-            startDate   教学第 1 周的周一，YYYY-MM-DD
-            totalWeeks  总周数，默认 19
-
-            【dayTypes 段】
-            决定哪几种日型真的会被用到。不写就用默认那套。
-
-            enabled   启用的日型，至少一个，如
-                      ["A", "B_NORMAL", "SATURDAY", "SUNDAY"]
-            fallback  算出来的日型没启用时，改用哪一套
-
-            六种日型：A（有早八）、B_TRAIN_A（周二力量A）、
-            B_TRAIN_B（周四力量B）、B_NORMAL（没早八）、
-            SATURDAY、SUNDAY
-
-            【每门课】
-            name       课程名
-            dayOfWeek  1–7（周一=1，周日=7）
-                       也接受 "周一" 这种写法
-            nodes      [起始节次, 结束节次]，节次 1–10
-            weeks      周次，写法见下
-            place      教室（可选）
-            enabled    false 表示先停掉这门课（可选）
-
-            【weeks 周次写法】
-            "3"          第 3 周
-            "2-4"        第 2 到 4 周
-            "3-17/2"     单周：3、5、7…17
-            "2-16/2"     双周：2、4、6…16
-            "2-4,6-17"   分段
-            "*"          全学期
-
-            中文逗号「，」和波浪号「～」也会被识别。
-            weeks 也可以写成数组，如 [2,3,4,6,7]。
-
-            【设计约定】
-            · 周次不能超过 totalWeeks
-            · startDate 必须是周一
-            · 未知字段会被忽略，所以将来标准加字段
-              不会让老版本 App 出错
-            · 同一时段可以有多门课，只要周次不重叠
-              （比如单周一门、双周另一门）
-        """.trimIndent()
+        /**
+         * 格式说明挪到了 `ScheduleFormat`。
+         *
+         * 原因是**它得能被测试**。放在 Fragment 的伴生对象里，
+         * JVM 单元测试加载不了（Fragment 依赖 Android 框架），
+         * 于是这份「用户看到的格式说明书」就成了唯一没人管的地方 ——
+         * 而它恰恰最容易和真实格式脱节（实际发生过：它一直停在 v1）。
+         *
+         * 现在它在 `ScheduleFormat` 里，紧挨着解析和生成代码，
+         * 并且有测试断言里面的版本号和 dayTypes 说明和代码一致。
+         */
+        val FORMAT_HELP: String get() = ScheduleFormat.formatHelp()
     }
 }

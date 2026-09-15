@@ -500,11 +500,13 @@
                 android:textSize="13sp"
                 android:textColor="@color/text_primary" />
 
+            <!-- 文案里有版本号，由代码填 —— 写死在 XML 里的话
+                 格式升级时这行会被忘掉，用户看到的版本号就永远停在旧版本 -->
             <TextView
+                android:id="@+id/tvDataDesc"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="@string/data_desc"
                 android:textSize="11sp"
                 android:textColor="@color/text_secondary" />
 

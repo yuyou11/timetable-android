@@ -228,6 +228,9 @@ $errorMessage
 4. 检查 dayOfWeek 是否在 1-7 之间（周一=1）
 5. 检查 nodes 是否是两个整数且起始 ≤ 结束，值在 1-10 之间
 6. 检查 startDate 是不是周一，格式 YYYY-MM-DD
+7. 检查 dayTypes.enabled 里的日型名是不是这六个之一：
+   A、B_TRAIN_A、B_TRAIN_B、B_NORMAL、SATURDAY、SUNDAY，且至少有一个
+8. 检查每套模板里格子之间的时间有没有重叠，end 必须晚于 start
 
 你上次生成的 JSON（供参考）：
 
