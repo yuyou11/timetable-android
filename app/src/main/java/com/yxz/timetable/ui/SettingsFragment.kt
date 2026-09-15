@@ -24,6 +24,7 @@ import com.yxz.timetable.R
 import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
+import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentSettingsBinding
 import com.yxz.timetable.databinding.ItemCourseCheckBinding
@@ -435,28 +436,51 @@ class SettingsFragment : Fragment() {
     // ==================================================================
 
     private fun onFilePicked(uri: Uri) {
-        val text = runCatching {
-            requireContext().contentResolver.openInputStream(uri)
-                ?.use { it.readBytes().toString(Charsets.UTF_8) }
-        }.getOrNull()
-
-        if (text.isNullOrBlank()) {
-            toast("读取失败，或者文件是空的")
-            return
+        // 读字节 -> 解码，全交给 TextDecode。
+        //
+        // ⚠️ 这里**不能**再写成 `runCatching { ... }.getOrNull()`。那样写有两个问题：
+        //
+        //   1. 失败的**真实原因被丢掉**了 —— 不管是没权限、网盘文件没下完，
+        //      还是 provider 出错，用户看到的都是同一句「读取失败，或者文件是空的」，
+        //      完全没法排查。
+        //   2. 解码规则（BOM / GBK / 二进制）散在 UI 层就没法单测，
+        //      而这次的 bug 恰恰就藏在这条规则里。
+        //
+        // 所以：**异常还是要捕获，但要把原因带出来；判断逻辑挪进纯函数。**
+        val decoded = try {
+            val stream = requireContext().contentResolver.openInputStream(uri)
+            if (stream == null) {
+                TextDecode.Decoded.Failed("系统没能打开这个文件（openInputStream 返回了 null）。")
+            } else {
+                stream.use { TextDecode.readStream(it) }
+            }
+        } catch (e: Exception) {
+            TextDecode.Decoded.Failed(
+                "读取文件时出错：${e.message ?: e.javaClass.simpleName}\n\n" +
+                        "如果这个文件在网盘、微信或 SD 卡里，先把它复制到手机本机再试一次。"
+            )
         }
-        applyImport(text)
+
+        when (decoded) {
+            is TextDecode.Decoded.Failed -> showAlert("无法读取这个文件", decoded.message)
+            is TextDecode.Decoded.Ok -> applyImport(decoded.text)
+        }
+    }
+
+    /** 错误弹窗统一从这里出，免得每处各写一遍 AlertDialog.Builder */
+    private fun showAlert(title: String, message: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("知道了", null)
+            .show()
     }
 
     private fun applyImport(text: String) {
         when (val result = ScheduleFormat.parse(text, store.totalWeeks)) {
-            // 解析失败时把原文的错误信息直接摊给用户，不做二次包装 ——
+            // 解析失败时把错误信息直接摊给用户，不做二次包装 ——
             // 错误信息里已经写清楚了「哪一门、哪个字段、应该改成什么」
-            is ScheduleFormat.Result.Failed ->
-                AlertDialog.Builder(requireContext())
-                    .setTitle("导入失败")
-                    .setMessage(result.message)
-                    .setPositiveButton("知道了", null)
-                    .show()
+            is ScheduleFormat.Result.Failed -> showAlert("导入失败", result.message)
 
             is ScheduleFormat.Result.Ok -> confirmImport(result.parsed)
         }
@@ -489,6 +513,20 @@ class SettingsFragment : Fragment() {
                 append("课程：文件里没写，**保持不变**\n")
             } else {
                 append("课程：").append(courses.size).append(" 门\n")
+
+                // 列出前几门的**课名**，而不是只报个数字。
+                //
+                // 这不是锦上添花，是给「编码读错」上的第二道保险：
+                // 只显示「24 门」的话，用户点确认时完全看不出课名已经变成了
+                //「˼������뷨��」—— 数量是对的，一切看起来都正常。
+                //
+                // **预览要给「能暴露问题」的信息，而不是给「让人安心」的信息。**
+                if (courses.isNotEmpty()) {
+                    append("　")
+                    append(courses.take(3).joinToString("、") { it.name })
+                    if (courses.size > 3) append(" 等")
+                    append('\n')
+                }
             }
 
             val tmpl = parsed.templates

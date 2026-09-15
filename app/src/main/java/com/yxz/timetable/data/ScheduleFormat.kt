@@ -220,11 +220,61 @@ object ScheduleFormat {
     //  二、解析
     // ============================================================
 
+    /**
+     * 把 JSON 解析异常翻译成一句**人话**。
+     *
+     * ## 为什么不能直接拼 `${e.message}`
+     *
+     * org.json 抛异常时，会把**出错位置前后的原始文本**夹带在消息里。
+     * 正常 JSON 出错时这很有用（能看到是哪个字段写错了），
+     * 但如果喂进来的是二进制文件，这段「原始文本」就是几百上千字节的乱码 ——
+     *
+     * 用户看到的是一个撑满整屏、全是问号和方块的对话框，
+     * 连「你可以试试别的文件」这句话都挤没了。
+     * 用户报障时发的截图就是这样：**信息全被噪声吃掉了**。
+     *
+     * 所以这里做两件事：
+     *   ① 消息长度超过 [MAX_ECHO] 就整段砍掉，只保留「哪一行哪一列」
+     *   ② 内容里控制字符太多（说明根本不是文本）时也砍掉
+     *
+     * **给用户看的错误信息，宁可短，也不要把原始数据摊上去。**
+     */
+    private fun jsonErrorMessage(json: String, e: JSONException): String {
+        val raw = e.message.orEmpty()
+
+        // org.json 的消息形如 "... at 1 [character 2 line 1]"，这段是定位信息，要保住
+        val location = Regex("""at \d+ \[character \d+ line \d+]""").find(raw)?.value
+
+        val noisy = raw.length > MAX_ECHO || controlRatio(json.take(MAX_ECHO)) > 0.02
+        if (!noisy) {
+            return "不是合法的 JSON：$raw\n\n" +
+                    "常见原因：多了一个逗号、少了一个引号，或者括号没配对。"
+        }
+
+        return buildString {
+            append("这个文件不是合法的 JSON。")
+            if (location != null) append("\n出错位置：$location")
+            append("\n\n")
+            append("而且它的内容看起来不像是文本 —— 说明选中的很可能不是课表文件。\n")
+            append("请选择从 App 里导出的 .json 文件。")
+        }
+    }
+
+    /** 一段文本里控制字符（不含制表/换行/回车）的占比 */
+    private fun controlRatio(s: String): Double {
+        if (s.isEmpty()) return 0.0
+        val n = s.count { it.code < 0x20 && it != '\t' && it != '\n' && it != '\r' }
+        return n.toDouble() / s.length
+    }
+
+    /** 错误消息里最多回显多少字符的原始内容 */
+    private const val MAX_ECHO = 200
+
     fun parse(json: String, fallbackTotalWeeks: Int = DEFAULT_TOTAL_WEEKS): Result {
         val root = try {
             JSONObject(json)
         } catch (e: JSONException) {
-            return Result.Failed("不是合法的 JSON：${e.message}")
+            return Result.Failed(jsonErrorMessage(json, e))
         }
 
         val format = root.optString("format", "")
