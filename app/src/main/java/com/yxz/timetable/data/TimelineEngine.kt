@@ -117,6 +117,35 @@ object TimelineEngine {
     ): DayType = policy.resolve(naturalDayType(date, week, courses))
 
     /**
+     * 界面上显示的日型描述 —— 会区分「用哪套模板」和「今天有没有早八」。
+     *
+     * ## 为什么需要单独一个函数
+     *
+     * [DayType.label] 只说明「这套模板叫什么」。但用户看到今天标着「A 型日」时，
+     * 自然会想知道今天要不要早起 —— 而这**不能从 label 推出来**：
+     *
+     *   默认配置下   A 型日 ⟺ 当天第 1-2 节有课（有早八）
+     *   自定义配置下 用户可以让工作日全部回落到 A 型模板，
+     *               于是「A 型日」不再意味着「有早八」
+     *
+     * 实测过一次：把工作日全落到 A 之后，周二（当天没课）的界面
+     * 依然显示「A 型日 · 有早八」—— **那是一句假话**。
+     *
+     * 所以「有没有早八」去问**日历**（[naturalDayType]），
+     * 「用哪套模板」去问**策略**（[dayType]），两者拼起来才是完整的描述。
+     */
+    fun dayTypeDisplay(
+        date: LocalDate,
+        week: Int,
+        courses: List<Course>,
+        policy: DayTypePolicy
+    ): String {
+        val natural = naturalDayType(date, week, courses)
+        val used = policy.resolve(natural)
+        return if (natural == DayType.A) "${used.label} · 有早八" else used.label
+    }
+
+    /**
      * 取某一天的模板。
      *
      * [templates] 默认是内置模板，所以老的调用点（比如单元测试）不用改 ——

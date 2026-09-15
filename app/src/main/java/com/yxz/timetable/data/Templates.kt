@@ -8,8 +8,22 @@ package com.yxz.timetable.data
  * 这样第 8 周停课、国庆调课、临时加课，程序会自己从 A 型切回 B 型，
  * 不需要你手动去改设置。详见 TimelineEngine.dayType()。
  */
+/**
+ * `label` 描述的是**这套模板叫什么**，不是「今天有没有早八」。
+ *
+ * ⚠️ A 的 label 原本是 `"A 型日 · 有早八"`，加了 [DayTypePolicy] 之后
+ * 这句话会变成假话：用户可以把工作日全都回落到 A 型模板，
+ * 于是周二（当天没早八）也会被标成「A 型日 · 有早八」。
+ *
+ * 根子在于它把两件独立的事焊在了一起：
+ *   · **用哪套模板** —— 由策略决定（[DayTypePolicy.resolve]）
+ *   · **今天有没有早八** —— 由日历决定（[TimelineEngine.naturalDayType]）
+ *
+ * 拆开之后，需要连起来显示的地方调 [TimelineEngine.dayTypeDisplay]。
+ * **凡是「一个字段同时表达两件事」的地方，等其中一件事能独立变化时就会出问题。**
+ */
 enum class DayType(val label: String) {
-    A("A 型日 · 有早八"),
+    A("A 型日"),
     B_TRAIN_A("B 型日 · 训练日 力量A"),
     B_TRAIN_B("B 型日 · 训练日 力量B"),
     B_NORMAL("B 型日"),

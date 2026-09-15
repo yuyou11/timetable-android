@@ -160,9 +160,13 @@ object Notifier {
             append("\n\n▸ 接着　")
             append(if (next != null) "${Slots.fmt(next.start)}　${next.title}" else "今天没有下一项了")
             append("\n\n▸ 今天　第 ").append(week).append(" 周 · ").append(weekdayLabel(today.dayOfWeek.value))
-            append(" · ").append(type.label)
+            append(" · ").append(
+                TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
+            )
             append("\n▸ 明天　").append(weekdayLabel(tomorrow.dayOfWeek.value))
-            append(" · ").append(tType.label)
+            append(" · ").append(
+                TimelineEngine.dayTypeDisplay(tomorrow, tWeek, courses, templates.policy)
+            )
             if (tWake != null) append(" · ").append(Slots.fmt(tWake)).append(" 起床")
         }
 
@@ -171,7 +175,10 @@ object Notifier {
             .setColor(0xFF1565C0.toInt())
             .setContentTitle("现在：${cur.title}")
             .setContentText(rangeText + whereText + " · 剩 $remain 分钟")
-            .setSubText("第 $week 周 · ${type.label}")
+            .setSubText(
+                "第 $week 周 · " +
+                        TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
+            )
             .setStyle(NotificationCompat.BigTextStyle().bigText(expanded))
             .setWhen(endAtMillis)
             .setShowWhen(true)

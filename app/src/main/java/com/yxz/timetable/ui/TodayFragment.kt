@@ -123,8 +123,10 @@ class TodayFragment : Fragment() {
         binding.tvHeaderDate.text =
             "${today.year} 年 ${today.monthValue} 月 ${today.dayOfMonth} 日 · " +
                     "${weekdayCn(today.dayOfWeek.value)} · 第 $week 教学周"
+        // 用 dayTypeDisplay 而不是 .label：后者只说模板名，
+        // 加上「有早八」得看日历，见该函数的注释
         binding.tvHeaderDayType.text =
-            TimelineEngine.dayType(today, week, courses, templates.policy).label
+            TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
 
         // ---- 此刻 ----
         val cur = TimelineEngine.currentAt(moments, minute)
@@ -179,7 +181,8 @@ class TodayFragment : Fragment() {
         val moments = TimelineEngine.moments(tomorrow, week, courses, templates)
 
         binding.tvTomorrowHeader.text =
-            "${weekdayCn(tomorrow.dayOfWeek.value)} · 第 $week 周 · ${type.label}"
+            "${weekdayCn(tomorrow.dayOfWeek.value)} · 第 $week 周 · " +
+                    TimelineEngine.dayTypeDisplay(tomorrow, week, courses, templates.policy)
 
         // ---- 起床时间 ----
         tomorrowWake = TimelineEngine.wakeMinute(template)

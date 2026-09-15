@@ -150,12 +150,26 @@ class WeekFragment : Fragment() {
         day: Int, monday: LocalDate, week: Int, courses: List<Course>
     ): String {
         val date = monday.plusDays((day - 1).toLong())
-        val type = TimelineEngine.dayType(date, week, courses, store.dayTypePolicy())
-        return "${weekdayCn(day).removePrefix("周")}·${shortType(type)}"
+        val policy = store.dayTypePolicy()
+        val natural = TimelineEngine.naturalDayType(date, week, courses)
+        val used = policy.resolve(natural)
+        return "${weekdayCn(day).removePrefix("周")}·${shortType(natural, used)}"
     }
 
-    private fun shortType(t: DayType): String = when (t) {
-        DayType.A -> "早八"
+    /**
+     * 一两字的短标签。
+     *
+     * ⚠️ **不能只看 [used]**。这里原来写的是 `A -> "早八"`，
+     * 那在默认配置下没问题（A 型日 ⟺ 当天有早八），
+     * 但用户可以把工作日全回落到 A 型模板 —— 那时周二会被标成「早八」，
+     * 而那天根本没有早课。
+     *
+     * 所以「早八」这个说法只在**日历确实算出 A** 时才用；
+     * 光是用 A 的模板、当天却没早课时，说「A型」——
+     * 同样简洁，而且是真的。
+     */
+    private fun shortType(natural: DayType, used: DayType): String = when (used) {
+        DayType.A -> if (natural == DayType.A) "早八" else "A型"
         DayType.B_TRAIN_A -> "训A"
         DayType.B_TRAIN_B -> "训B"
         DayType.B_NORMAL -> "无早八"
