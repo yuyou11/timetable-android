@@ -2,5 +2,5 @@
 <!-- 圆形底衬，让「上一周 / 下一周」明确看起来是个可以点的按钮 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="@color/accent_soft" />
+    <solid android:color="?attr/accentSoftColor" />
 </shape>

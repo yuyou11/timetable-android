@@ -1,12 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  日间配色。
+
+  「强调色」有两套（蓝 / 绿），用哪套由当前主题决定 —— 见 values/attrs.xml。
+  这里只负责**定义具体是什么颜色**，不负责「什么时候用哪套」。
+
+  注意命名：accent_blue / accent_green 而不是笼统的 accent ——
+  加了主题之后，「accent」这个词本身已经说不清是哪个颜色了。
+  **名字里能写清楚的东西，别留给读者去猜。**
+-->
 <resources>
     <color name="app_bg">#F4F5F7</color>
     <color name="card_bg">#FFFFFF</color>
     <color name="text_primary">#16181C</color>
     <color name="text_secondary">#6B7280</color>
     <color name="divider">#E5E7EB</color>
-    <color name="accent">#1565C0</color>
-    <color name="accent_soft">#E3F0FC</color>
 
+    <!-- ========== 主题一：蓝（原来的配色） ========== -->
+    <color name="accent_blue">#1565C0</color>
+    <color name="accent_soft_blue">#E3F0FC</color>
+
+    <!-- ========== 主题二：绿 ==========
+         选色时避开了「荧光绿」那种刺眼的感觉。荧光绿的共性是
+         饱和度接近 100%、明度又高（比如 #00FF00），盯久了眼睛累。
+
+         这里用的是偏暗的森林绿：#2E7D32 的 HSL 是 (123°, 46%, 34%)，
+         饱和度不到一半、明度只有三分之一 —— 沉稳，适合大面积用在
+         标题、边框、课程名上。浅底色 #E8F5E9 也压得很淡，
+         作为单元格背景不会抢内容的注意力。
+    -->
+    <color name="accent_green">#2E7D32</color>
+    <color name="accent_soft_green">#E8F5E9</color>
+
+    <!--
+      App 图标的背景色，**不跟主题变**。
+      图标是品牌标识 —— 系统桌面上的样子不该因为用户在 App 里
+      换了配色就跟着改。而且改图标要重新生成 mipmap，是另一回事。
+    -->
     <color name="ic_launcher_bg">#1565C0</color>
 </resources>

@@ -218,7 +218,7 @@
                     android:gravity="center"
                     android:textSize="15sp"
                     android:textStyle="bold"
-                    android:textColor="@color/accent" />
+                    android:textColor="?attr/accentColor" />
 
                 <Button
                     android:id="@+id/btnRemindPlus"
@@ -243,6 +243,67 @@
             android:text="@string/hint_honor"
             android:textSize="12sp"
             android:textColor="@color/text_secondary" />
+
+        <!-- ============ 外观 ============ -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="6dp"
+            android:text="@string/appearance_title"
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary" />
+
+        <LinearLayout
+            android:id="@+id/rowTheme"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_title"
+                    android:textSize="15sp"
+                    android:textColor="@color/text_primary" />
+
+                <TextView
+                    android:id="@+id/tvThemeStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+
+            <!--
+              当前主题色的预览色块。它引用的是 ?attr/accentColor，
+              所以「这个圆点是什么颜色」和「界面其他强调色」永远一致 ——
+              不需要在代码里另外维护一份「当前主题是什么色」的副本。
+            -->
+            <View
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_theme_swatch" />
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron_right" />
+        </LinearLayout>
 
         <!-- ============ 学期 ============ -->
         <TextView
@@ -283,7 +344,7 @@
                     android:maxLines="1"
                     android:ellipsize="end"
                     android:textSize="14sp"
-                    android:textColor="@color/accent" />
+                    android:textColor="?attr/accentColor" />
 
                 <Button
                     android:id="@+id/btnTermName"
@@ -321,7 +382,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:textSize="13sp"
-                        android:textColor="@color/accent" />
+                        android:textColor="?attr/accentColor" />
                 </LinearLayout>
 
                 <Button
@@ -374,7 +435,7 @@
                     android:gravity="center"
                     android:textSize="15sp"
                     android:textStyle="bold"
-                    android:textColor="@color/accent" />
+                    android:textColor="?attr/accentColor" />
 
                 <Button
                     android:id="@+id/btnTotalWeeksPlus"
@@ -410,7 +471,7 @@
                     android:minWidth="56dp"
                     android:gravity="center"
                     android:textSize="14sp"
-                    android:textColor="@color/accent" />
+                    android:textColor="?attr/accentColor" />
 
                 <Button
                     android:id="@+id/btnWeekPlus"
@@ -571,7 +632,7 @@
                 android:layout_height="wrap_content"
                 android:paddingVertical="10dp"
                 android:textSize="12sp"
-                android:textColor="@color/accent" />
+                android:textColor="?attr/accentColor" />
         </LinearLayout>
 
         <TextView

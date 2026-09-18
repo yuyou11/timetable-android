@@ -3,9 +3,47 @@
     <!--
       DayNight：跟随系统的深色/浅色模式自动切换。
       配合上面的 values-night/colors.xml，深色模式是白送的。
+
+      ============================================================
+      两套主题：Theme.Timetable（蓝）和 Theme.Timetable.Green
+      ============================================================
+
+      用户可在设置页切换，实现方式是 Activity 在 onCreate 之前
+      `setTheme(...)` 选一套，再 `recreate()` 让界面重建。
+
+      ## 为什么 Green 那套「不写 parent」
+
+      Android 的主题命名有个约定：**名字里的点号表示继承关系**。
+      `Theme.Timetable.Green` 会自动继承 `Theme.Timetable`，
+      不需要显式写 parent。
+
+      好处是公共部分只写一遍 —— 以后加一个「背景更暗」之类的
+      公共项，两套主题一起生效，不会漏掉其中一套。
+
+      ⚠️ 但有个坑：**一旦显式写了 parent，隐式继承就失效了**。
+      所以这里两个 style 都不写 parent，或者都写清楚。
+      混着来（一个写一个不写）最容易出问题。
     -->
     <style name="Theme.Timetable" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/app_bg</item>
-        <item name="colorPrimary">@color/accent</item>
+
+        <!-- 强调色。这两行是本主题的核心 ——
+             布局里那些 `?attr/accentColor` 就是从这里取值的。 -->
+        <item name="accentColor">@color/accent_blue</item>
+        <item name="accentSoftColor">@color/accent_soft_blue</item>
+
+        <!--
+          colorPrimary 是 Material 组件（开关、按钮、输入框）认的槽位。
+          不跟着设的话，换了主题会出现「开关还是蓝的、旁边文字已经绿了」
+          这种半拉子状态。**系统组件的颜色也得一起走。**
+        -->
+        <item name="colorPrimary">@color/accent_blue</item>
+    </style>
+
+    <!-- 绿色主题：只覆盖三个颜色槽位，其余全部继承上面那套 -->
+    <style name="Theme.Timetable.Green">
+        <item name="accentColor">@color/accent_green</item>
+        <item name="accentSoftColor">@color/accent_soft_green</item>
+        <item name="colorPrimary">@color/accent_green</item>
     </style>
 </resources>

@@ -235,6 +235,25 @@ class Store(context: Context) {
         get() = sp.getBoolean("lockscreen_visible", true)
         set(v) = sp.edit().putBoolean("lockscreen_visible", v).apply()
 
+    // ---------------- 主题配色 ----------------
+
+    /**
+     * 强调色主题的 key（"blue" / "green"）。
+     *
+     * ⚠️ 这里**只存字符串，不认识 AppTheme 枚举**。
+     *
+     * 原因是 Store 在 data 层，而 AppTheme 要引用 `R.style` 才能拿到主题资源 ——
+     * 那是 UI 层的东西。让 data 层去认识 style 资源，等于把两层绑死：
+     * 以后想把这个 Store 复用到别的界面框架（比如电脑版那种 WebView 界面）就带不动了。
+     *
+     * **默认值也不在这里写** —— 空串表示「没设置过」，由 AppTheme.from() 决定
+     * 默认是哪套。两处各写一个默认值的话，改了其中一处就会出现
+     * 「存的时候按蓝色、读的时候按绿色」这种对不上的情况。
+     */
+    var themeKey: String
+        get() = sp.getString("theme", "").orEmpty()
+        set(v) = sp.edit().putString("theme", v).apply()
+
     // ---------------- 导入 / 导出 ----------------
 
     /**

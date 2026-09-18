@@ -7,6 +7,19 @@
   Android 的限定符比 CSS 丰富得多（-night 夜间、-land 横屏、
   -sw600dp 宽屏、-zh 中文…），而且可以叠加，比如 values-zh-rCN-night。
   优先级规则是「越具体的越优先」。
+
+  ============================================================
+  加了主题之后，这里变成了「两个维度」的组合
+  ============================================================
+
+    主题（蓝/绿）  ×  环境（日间/夜间）  =  四种情况
+
+  巧的是这两个维度**天然正交**，所以不需要写四套：
+  主题选哪套由 attrs.xml 的属性决定，日/夜由限定符决定，
+  系统自动把它们组合起来。
+
+  这就是为什么强调色要定义成「属性 + 具体色值」两层 ——
+  属性负责「要哪一类」，色值负责「在这个环境下具体是什么」。
 -->
 <resources>
     <color name="app_bg">#101215</color>
@@ -14,6 +27,21 @@
     <color name="text_primary">#E8EAED</color>
     <color name="text_secondary">#9AA1AC</color>
     <color name="divider">#2A2F38</color>
-    <color name="accent">#6FB3F2</color>
-    <color name="accent_soft">#1B2E44</color>
+
+    <!-- ========== 蓝（夜间） ==========
+         夜间不能直接用日间那个 #1565C0 —— 深蓝压在深灰底上几乎看不见。
+         所以要**调亮、略微降饱和**，让它从背景里浮出来又不刺眼。
+    -->
+    <color name="accent_blue">#6FB3F2</color>
+    <color name="accent_soft_blue">#1B2E44</color>
+
+    <!-- ========== 绿（夜间） ==========
+         同理，日间的深绿 #2E7D32 在夜间等于看不见，换成 #81C784。
+
+         这个值刻意压着饱和度（HSL 只有 39%）—— 夜间屏幕周围是黑的，
+         高饱和的亮色会显得刺眼，而「不要荧光绿」在夜间的意义
+         比白天更大。浅底座标绿也压得很暗，只比卡片背景亮一点点。
+    -->
+    <color name="accent_green">#81C784</color>
+    <color name="accent_soft_green">#1B3220</color>
 </resources>

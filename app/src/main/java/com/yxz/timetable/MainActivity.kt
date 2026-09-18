@@ -13,6 +13,7 @@ import com.yxz.timetable.data.Store
 import com.yxz.timetable.databinding.ActivityMainBinding
 import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
+import com.yxz.timetable.ui.AppTheme
 import com.yxz.timetable.ui.SettingsFragment
 import com.yxz.timetable.ui.TodayFragment
 import com.yxz.timetable.ui.WeekFragment
@@ -37,6 +38,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // ⚠️ setTheme 必须在 super.onCreate **之前**。
+        //
+        // Activity 的界面（布局解析、主题属性解析）是在 super.onCreate 里
+        // 开始构建的。在那之后再 setTheme，这一次创建已经用不上新主题了 ——
+        // 得等下一次 recreate 才生效，表现就是「切了主题但界面没变」。
+        //
+        // 换成绿色主题时走的是同一条路：设置页改完 store 再 recreate()，
+        // 这里重新读一遍，整个界面就换色了。
+        setTheme(AppTheme.from(Store(this).themeKey).resId)
+
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)

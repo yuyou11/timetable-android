@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  主题预览色块：一个小圆点，颜色就是当前的强调色。
+
+  关键在这个 `?attr/accentColor` —— 它让色块自动跟随主题，
+  代码里不需要另外写「把圆点染成当前主题色」这段逻辑。
+
+  这又是一个「别在两处维护同一件事」的例子：
+  如果这里写死 @color/accent_blue，那么加了绿色主题之后
+  就得记得在切换时去改它 —— 迟早会忘。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="?attr/accentColor" />
+</shape>

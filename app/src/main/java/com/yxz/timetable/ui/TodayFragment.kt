@@ -311,7 +311,7 @@ class TodayFragment : Fragment() {
             val isNow = current != null && m.start == current.start && m.end == current.end
             if (isNow) {
                 row.root.setBackgroundResource(R.drawable.bg_row_current)
-                row.tvTitle.setTextColor(ContextCompat.getColor(requireContext(), R.color.accent))
+                row.tvTitle.setTextColor(requireContext().accentColor())
                 currentRow = row.root
             }
 

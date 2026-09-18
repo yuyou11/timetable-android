@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yxz.timetable.MainActivity
@@ -14,6 +15,8 @@ import com.yxz.timetable.R
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TimelineEngine
+import com.yxz.timetable.ui.AppTheme
+import com.yxz.timetable.ui.accentColor
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -101,6 +104,17 @@ object Notifier {
     fun update(ctx: Context) {
         val store = Store(ctx)
 
+        // 通知里那个小图标要跟着主题染色，但传进来的 ctx 主题是**不对**的：
+        // 广播接收器给的是 Application context，它身上挂的是 manifest 里
+        // 声明的主题，不是用户选的那套。所以要包一层 ContextThemeWrapper
+        // 才能解析 ?attr/accentColor。
+        //
+        // 这是 Android 里一个反复出现的模式：**主题跟着 Context 走**。
+        // 「拿不到颜色」十有八九是 Context 的主题不对，而不是颜色没定义。
+        val themeCtx: Context = ContextThemeWrapper(
+            ctx, AppTheme.from(store.themeKey).resId
+        )
+
         if (!store.enabled) {
             cancel(ctx)
             return
@@ -171,7 +185,7 @@ object Notifier {
 
         val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
-            .setColor(0xFF1565C0.toInt())
+            .setColor(themeCtx.accentColor())
             .setContentTitle("现在：${cur.title}")
             // 折叠状态下只写「时间段 + 地点」。
             //

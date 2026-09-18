@@ -194,7 +194,7 @@ class GenerateGuideActivity : AppCompatActivity() {
                 text = "${i + 1}"
                 textSize = 12f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+                setTextColor(ctx.accentColor())
                 setBackgroundResource(R.drawable.bg_step_number)
                 includeFontPadding = false
             })

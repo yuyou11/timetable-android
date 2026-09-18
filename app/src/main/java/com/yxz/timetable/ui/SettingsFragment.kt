@@ -132,6 +132,7 @@ class SettingsFragment : Fragment() {
         binding.btnFormatHelp.setOnClickListener { showFormatHelp() }
 
         binding.btnLockscreen.setOnClickListener { openLockScreenHelp() }
+        binding.rowTheme.setOnClickListener { pickTheme() }
         binding.btnAiGuide.setOnClickListener {
             startActivity(Intent(requireContext(), GenerateGuideActivity::class.java))
         }
@@ -258,6 +259,9 @@ class SettingsFragment : Fragment() {
             getString(R.string.data_desc, ScheduleFormat.VERSION.toString())
         binding.tvFooter.text = "${store.termName}\n数据格式 timetable v${ScheduleFormat.VERSION}"
 
+        // ---- 外观 ----
+        binding.tvThemeStatus.text = "当前：${AppTheme.from(store.themeKey).label}　点此切换"
+
         val custom = store.templates().custom
         val policy = store.dayTypePolicy()
 
@@ -303,7 +307,8 @@ class SettingsFragment : Fragment() {
     ) {
         status.text = if (ok) "✅ $okText" else "⚠️ $badText"
         status.setTextColor(
-            ContextCompat.getColor(requireContext(), if (ok) R.color.text_secondary else R.color.accent)
+            if (ok) ContextCompat.getColor(requireContext(), R.color.text_secondary)
+            else requireContext().accentColor()
         )
         button.visibility = if (ok) View.GONE else View.VISIBLE
     }
@@ -946,6 +951,47 @@ class SettingsFragment : Fragment() {
             .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
             .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
         launch(intent) { openNotificationSettings() }
+    }
+
+    // ==================================================================
+    //  外观 / 主题
+    // ==================================================================
+
+    /**
+     * 切换主题配色。
+     *
+     * ## 为什么要 recreate()
+     *
+     * 布局里的颜色是 `?attr/accentColor` —— 它取的是**当前主题**的值。
+     * 而主题是在 Activity 启动时定下来的（`setTheme`），运行时改不了。
+     *
+     * 所以换主题只有一条路：**把 Activity 重建一遍**，让它重新 setTheme、
+     * 重新解析所有 `?attr`。`recreate()` 就是干这个的。
+     *
+     * 代价是界面会闪一下 —— 这是 Android 上换主题的标准行为，各家的
+     * App 都这样。想避免闪烁就得手动给每个控件重新设色，那要维护
+     * 一份「哪些控件用了强调色」的清单，**加一个新控件就得记得往清单里补**，
+     * 迟早会漏。用 recreate 换来的是「布局里写了 ?attr 就自动跟着变」。
+     *
+     * recreate 之后会**留在设置页**：MainActivity 里 `savedInstanceState != null`
+     * 时不重设底部标签，FragmentManager 会自动恢复原来的 Fragment。
+     * （那条逻辑本来是为「屏幕旋转」写的，这里正好也用上了。）
+     */
+    private fun pickTheme() {
+        val themes = AppTheme.entries
+        val current = AppTheme.from(store.themeKey)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.theme_title))
+            .setItems(themes.map { it.label }.toTypedArray()) { _, which ->
+                val picked = themes[which]
+                // 选了已经在用的那套 —— 不做无谓的重建（界面闪一下也是成本）
+                if (picked == current) return@setItems
+                store.themeKey = picked.key
+                requireActivity().recreate()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     // ==================================================================

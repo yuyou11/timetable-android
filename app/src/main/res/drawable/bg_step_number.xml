@@ -3,5 +3,5 @@
      那些字符在国产 ROM 的定制字体里不一定有字形，会渲染成空白。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="@color/accent_soft" />
+    <solid android:color="?attr/accentSoftColor" />
 </shape>

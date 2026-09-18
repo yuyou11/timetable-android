@@ -34,6 +34,9 @@
     <string name="guide_s3_desc">下面是「课表」提示词的实际内容。你可以在这里核对、或者手动长按选中复制。</string>
     <string name="guide_footer">提示词里已经带上了你当前的学期信息（名称 / 起始日 / 总周数），\n所以 AI 不会在这些地方猜错。</string>
 
+    <string name="appearance_title">外观</string>
+    <string name="theme_title">主题颜色</string>
+
     <string name="lockscreen_title">锁屏显示</string>
     <string name="lockscreen_show">在锁屏上显示通知内容</string>
     <string name="lockscreen_desc">关闭后，锁屏上不会出现「此刻该做什么」这条通知，但解锁后通知栏照常显示。\n\n注意：这一项只控制本 App 的意愿。国产 ROM 还有一道系统开关，默认是关的 —— 不开的话，即使这里打开，锁屏上依然什么都看不到。\n\n而且那个开关不在应用页面上，要点进「此刻该做什么」这个通知渠道才看得到。</string>

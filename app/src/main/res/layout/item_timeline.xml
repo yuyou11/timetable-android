@@ -100,7 +100,7 @@
         android:layout_marginStart="8dp"
         android:layout_gravity="center_vertical"
         android:textSize="12sp"
-        android:textColor="@color/accent"
+        android:textColor="?attr/accentColor"
         android:visibility="gone" />
 
 </LinearLayout>

@@ -317,7 +317,7 @@ class WeekFragment : Fragment() {
             return TextView(ctx).apply { layoutParams = cellParams(1f) }
         }
 
-        val accent = ContextCompat.getColor(ctx, R.color.accent)
+        val accent = ctx.accentColor()
 
         return LinearLayout(ctx).apply {
             layoutParams = cellParams(1f)
