@@ -139,7 +139,6 @@ object Notifier {
         val endAtMillis = today.atStartOfDay(zone)
             .plusMinutes(cur.end.toLong())
             .toInstant().toEpochMilli()
-        val remain = (cur.end - minute).coerceAtLeast(0)
 
         val rangeText = "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}"
         val whereText = if (cur.place.isNotBlank()) " · ${cur.place}" else ""
@@ -174,7 +173,20 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_notify)
             .setColor(0xFF1565C0.toInt())
             .setContentTitle("现在：${cur.title}")
-            .setContentText(rangeText + whereText + " · 剩 $remain 分钟")
+            // 折叠状态下只写「时间段 + 地点」。
+            //
+            // ⚠️ 这里本来还有一句「· 剩 N 分钟」，已经删掉了。
+            // 原因是它**不会走**：通知只在时段切换时刷新一次，
+            // 那句话是刷新那一刻算死的文本 —— 08:00 发出时写着「剩 125 分钟」，
+            // 到 09:59 还是 125。
+            //
+            // 而右上角那个由系统绘制的倒计时是真的每秒在走
+            // （setUsesChronometer + setChronometerCountDown）。
+            // 两个时间同时摆在一条通知上、其中一个还是死的，只会让人困惑。
+            //
+            // 想让它真的走，就得每分钟唤醒一次 App（一天 1440 次），
+            // 等于把整个省电设计推翻 —— 详见文件顶部那段说明。
+            .setContentText(rangeText + whereText)
             .setSubText(
                 "第 $week 周 · " +
                         TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
