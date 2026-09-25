@@ -28,7 +28,21 @@ enum class DayType(val label: String) {
     B_TRAIN_B("B 型日 · 训练日 力量B"),
     B_NORMAL("B 型日"),
     SATURDAY("周六"),
-    SUNDAY("周日")
+    SUNDAY("周日"),
+
+    /**
+     * 无课休息日（假期 / 停课 / 课表没排到的工作日）—— 引擎**推导**出来的状态，
+     * 不是用户可选的日型。见 [TimelineEngine.naturalDayType] 的规则 1。
+     *
+     * ⚠️ REST **故意不进** [Templates.ALL_TYPES]。它不是用户可选的日型，
+     * 而是「那天没课」这一客观事实的体现。不进 ALL_TYPES 的连锁效果全部是故意的：
+     *   · 文件里写不了它（DAY_TYPE_NAMES 按 ALL_TYPES 构建，写进文件会被拒收，
+     *     和导入错误提示「可用的值是：A、B_TRAIN_A…」一致）
+     *   · 导出 / 本地存储永远不会带它（序列化按 ALL_TYPES 过滤）
+     *   · 设置页预览、周次标签等列出日型的地方都不会出现它
+     * 它的模板内容只来自内置的 [Templates.REST]，用户数据不需要、也不能定义它。
+     */
+    REST("无课 · 休息日")
 }
 
 /**
@@ -167,6 +181,28 @@ object Templates {
         b("23:10", "24:00", "睡觉", "保证周一 06:55 起得来", Kind.SLEEP)
     )
 
+    /**
+     * 「无课休息日」模板 —— 引擎把「全天没课的工作日」判为 REST
+     * （假期、停课、课表没排到的日子），那天按这一套过：
+     * 没有课程格子、没有晚自习，全是自由块。
+     *
+     * REST 不在 [ALL_TYPES] 里（不能出现在 JSON 文件中，理由见枚举上的注释），
+     * 所以这套模板用户定义不了，只能内置 —— TemplateSet.of(REST) 永远走到这里。
+     */
+    val REST: List<Block> = listOf(
+        b("00:00", "09:00", "睡觉", "", Kind.SLEEP),
+        b("09:00", "09:30", "起床、洗漱"),
+        b("09:30", "10:15", "早餐", "", Kind.MEAL),
+        b("10:15", "12:00", "★ 自由块", "没课的日子，做点自己想做的事", Kind.FREE),
+        b("12:00", "12:40", "午餐", "", Kind.MEAL),
+        b("12:40", "13:40", "午休", "闭眼躺一会儿，不用睡着", Kind.SLEEP),
+        b("13:40", "17:30", "★ 自由块", "整块时间，别切成碎片", Kind.FREE),
+        b("17:30", "18:30", "晚餐 + 散步", "", Kind.MEAL),
+        b("18:30", "22:30", "★ 自由块", "晚上没有晚自习，放松、收尾都行", Kind.FREE),
+        b("22:30", "23:30", "洗漱、聊天、睡前刷手机"),
+        b("23:30", "24:00", "睡觉", "没有闹钟的一天也别熬太晚", Kind.SLEEP)
+    )
+
     // ------------------------------------------------------------------
     //  按日型取用
     // ------------------------------------------------------------------
@@ -176,7 +212,12 @@ object Templates {
     val B_TRAIN_A: List<Block> get() = trainPair.first
     val B_TRAIN_B: List<Block> get() = trainPair.second
 
-    /** 六种日型，按一周的自然顺序排列。UI 和导出都依赖这个顺序保持稳定 */
+    /**
+     * 六种日型，按一周的自然顺序排列。UI 和导出都依赖这个顺序保持稳定。
+     *
+     * ⚠️ 这也是「文件里合法的日型」全集：[com.yxz.timetable.data.ScheduleFormat]
+     * 解析 `dayTypes` / `templates` 键名都按它来，REST 不在其中（见枚举注释）。
+     */
     val ALL_TYPES: List<DayType> = listOf(
         DayType.A, DayType.B_TRAIN_A, DayType.B_TRAIN_B,
         DayType.B_NORMAL, DayType.SATURDAY, DayType.SUNDAY
@@ -190,6 +231,7 @@ object Templates {
         DayType.B_NORMAL -> B_NORMAL
         DayType.SATURDAY -> SATURDAY
         DayType.SUNDAY -> SUNDAY
+        DayType.REST -> REST
     }
 }
 

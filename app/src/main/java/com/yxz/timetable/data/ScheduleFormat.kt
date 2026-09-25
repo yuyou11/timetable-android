@@ -961,6 +961,9 @@ object ScheduleFormat {
                   ["A", "B_NORMAL", "SATURDAY", "SUNDAY"]
         fallback  算出来的日型没启用时，改用哪一套
 
+        全天没课的工作日按休息日过（无课、无晚自习），
+        不参与 enabled / fallback 的映射，文件里也写不了它。
+
         六种日型：A（有早八）、B_TRAIN_A（周二力量A）、
         B_TRAIN_B（周四力量B）、B_NORMAL（没早八）、
         SATURDAY、SUNDAY

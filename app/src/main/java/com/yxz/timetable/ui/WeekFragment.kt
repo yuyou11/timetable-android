@@ -145,6 +145,11 @@ class WeekFragment : Fragment() {
      * 用的是 [TimelineEngine.dayType] 而不是 naturalDayType ——
      * 显示的必须是**实际会生效**的日型。如果这里显示 B 型、
      * 实际却按 A 型的模板走，用户看到的就是一条假信息。
+     *
+     * ⚠️ 也**不能**自己拿 `policy.resolve(natural)` 映射 ——
+     * 无课休息日（REST）要在进入策略之前被引擎拦下（「那天没课」是客观事实，
+     * 不是偏好），直接 resolve 会把它错误地落成 fallback，
+     * 假期那格就会标着「无早八」，实际上全天按休息日过。
      */
     private fun dayTypeLabel(
         day: Int, monday: LocalDate, week: Int, courses: List<Course>
@@ -152,7 +157,7 @@ class WeekFragment : Fragment() {
         val date = monday.plusDays((day - 1).toLong())
         val policy = store.dayTypePolicy()
         val natural = TimelineEngine.naturalDayType(date, week, courses)
-        val used = policy.resolve(natural)
+        val used = TimelineEngine.dayType(date, week, courses, policy)
         return "${weekdayCn(day).removePrefix("周")}·${shortType(natural, used)}"
     }
 
@@ -175,6 +180,7 @@ class WeekFragment : Fragment() {
         DayType.B_NORMAL -> "无早八"
         DayType.SATURDAY -> "周六"
         DayType.SUNDAY -> "周日"
+        DayType.REST -> "无课"
     }
 
     // ==================================================================

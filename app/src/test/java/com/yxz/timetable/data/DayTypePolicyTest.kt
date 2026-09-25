@@ -29,7 +29,7 @@ class DayTypePolicyTest {
     private val termStart = LocalDate.of(2026, 9, 7)   // 教学第 1 周的周一
 
     private fun d(day: Int) = LocalDate.of(2026, 9, day)
-    private fun week3(date: LocalDate) = TimelineEngine.weekOf(date, termStart)
+    private fun weekOf(date: LocalDate) = TimelineEngine.weekOf(date, termStart)
 
     // 第 3 周：周一 9/21、周二 9/22、周四 9/24、周五 9/25、周六 9/26、周日 9/27
     private val mon = d(21)
@@ -39,8 +39,16 @@ class DayTypePolicyTest {
     private val sat = d(26)
     private val sun = d(27)
 
+    /**
+     * 第 5 周周五（10/9）：高数/思德/体育/音乐都从这一周起才上，但都从第 3 节开始
+     * —— **有课但没早八**，是原始规则里 B_NORMAL 的夹具。
+     * （第 3 周周五全天无课，是休息日，见 `工作日全天没课算休息日`；
+     * 别用第 5 周周一 —— 周一的课是「2-4、6-17 周」，第 5 周也停，那天也是休息日。）
+     */
+    private val friWeek5 = LocalDate.of(2026, 10, 9)
+
     private fun typeOf(date: LocalDate, policy: DayTypePolicy) =
-        TimelineEngine.dayType(date, week3(date), courses, policy)
+        TimelineEngine.dayType(date, weekOf(date), courses, policy)
 
     private fun wakeOf(date: LocalDate, policy: DayTypePolicy): Int? {
         val set = TemplateSet(policy = policy)
@@ -60,9 +68,20 @@ class DayTypePolicyTest {
         assertEquals(DayType.A, TimelineEngine.naturalDayType(mon, 3, courses))
         assertEquals(DayType.B_TRAIN_A, TimelineEngine.naturalDayType(tue, 3, courses))
         assertEquals(DayType.B_TRAIN_B, TimelineEngine.naturalDayType(thu, 3, courses))
-        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(fri, 3, courses))
+        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(friWeek5, 5, courses))
         assertEquals(DayType.SATURDAY, TimelineEngine.naturalDayType(sat, 3, courses))
         assertEquals(DayType.SUNDAY, TimelineEngine.naturalDayType(sun, 3, courses))
+    }
+
+    @Test
+    fun `工作日全天没课算休息日`() {
+        // 第 3 周周五：高数/思德/体育/音乐都从第 5 周才开始 → 全天无课
+        assertEquals(DayType.REST, TimelineEngine.naturalDayType(fri, 3, courses))
+        // 第 1 周还没开课的周一也是
+        assertEquals(
+            DayType.REST,
+            TimelineEngine.naturalDayType(LocalDate.of(2026, 9, 7), 1, courses)
+        )
     }
 
     @Test
@@ -70,7 +89,7 @@ class DayTypePolicyTest {
         for (date in listOf(mon, tue, thu, fri, sat, sun)) {
             assertEquals(
                 "ALL 策略不该改变任何日型",
-                TimelineEngine.naturalDayType(date, week3(date), courses),
+                TimelineEngine.naturalDayType(date, weekOf(date), courses),
                 typeOf(date, DayTypePolicy.ALL)
             )
         }
@@ -107,9 +126,11 @@ class DayTypePolicyTest {
         // 没早八的日子也会 06:55 把人叫起来。
         assertEquals(7 * 60 + 25, wakeOf(tue, DayTypePolicy.DEFAULT))
         assertEquals(7 * 60 + 25, wakeOf(thu, DayTypePolicy.DEFAULT))
-        assertEquals(7 * 60 + 25, wakeOf(fri, DayTypePolicy.DEFAULT))
+        assertEquals(7 * 60 + 25, wakeOf(friWeek5, DayTypePolicy.DEFAULT))
         // 有早八的日子照旧 06:55
         assertEquals(6 * 60 + 55, wakeOf(mon, DayTypePolicy.DEFAULT))
+        // 休息日不参与映射，走休息日模板睡到 09:00
+        assertEquals(9 * 60, wakeOf(fri, DayTypePolicy.DEFAULT))
     }
 
     @Test
@@ -160,9 +181,12 @@ class DayTypePolicyTest {
         )
         assertEquals(DayType.A, typeOf(tue, p))
         assertEquals(DayType.A, typeOf(thu, p))
-        assertEquals(DayType.A, typeOf(fri, p))
+        assertEquals(DayType.A, typeOf(friWeek5, p))
         assertEquals(DayType.SATURDAY, typeOf(sat, p))
         assertEquals(6 * 60 + 55, wakeOf(tue, p))
+        // 但休息日**不落 fallback** —— 就算 fallback 是 A，假期也不按 A 型过
+        assertEquals(DayType.REST, typeOf(fri, p))
+        assertEquals(9 * 60, wakeOf(fri, p))
     }
 
     @Test
@@ -174,8 +198,8 @@ class DayTypePolicyTest {
             fallback = DayType.B_NORMAL
         )
         assertFalse(DayType.B_NORMAL in p.enabled)
-        assertEquals(DayType.B_NORMAL, typeOf(fri, p))
-        assertEquals(7 * 60 + 25, wakeOf(fri, p))
+        assertEquals(DayType.B_NORMAL, typeOf(friWeek5, p))
+        assertEquals(7 * 60 + 25, wakeOf(friWeek5, p))
     }
 
     @Test

@@ -56,9 +56,12 @@ object TimelineEngine {
     // ============================================================
 
     /**
-     * **原始日历规则** —— 不算策略，只看日历。
+     * **原始日历规则** —— 不算策略，只看日历。判断依据按顺序两条：
      *
-     * 判断依据只有一条：**今天第 1-2 节有没有课**。
+     * 1. **工作日全天没课 → [DayType.REST]**（无课休息日）。程序不认识国庆中秋，
+     *    但「课表里这天一门课都没有」是数据里写得明明白白的客观事实 ——
+     *    假期、停课、课表没排到的周次都会落到这里，按休息日过（无课、无晚自习）。
+     * 2. 有课的工作日，再看**今天第 1-2 节有没有课**区分 A / B 型。
      *
      * 这是整个设计里我最想让你注意的一处：
      * 文档里写死了「周一、周三 = A 型」，但如果照抄成 `if (dow == 1 || dow == 3)`，
@@ -85,10 +88,12 @@ object TimelineEngine {
         if (dow == 6) return DayType.SATURDAY
         if (dow == 7) return DayType.SUNDAY
 
-        val hasEarlyClass = courses.any {
-            it.enabled && it.dayOfWeek == dow && it.startNode <= 2 && week in it.weeks
+        val today = courses.filter {
+            it.enabled && it.dayOfWeek == dow && week in it.weeks
         }
-        if (hasEarlyClass) return DayType.A
+        if (today.isEmpty()) return DayType.REST // 全天没课 → 按休息日过
+
+        if (today.any { it.startNode <= 2 }) return DayType.A
 
         return when (dow) {
             2 -> DayType.B_TRAIN_A       // 周二 · 力量 A
@@ -100,7 +105,14 @@ object TimelineEngine {
     /**
      * **实际要用的日型** —— 原始规则再经过 [DayTypePolicy] 映射。
      *
-     * ⚠️ **这个参数故意不给默认值。**
+     * ## REST 不参与映射
+     *
+     * 无课休息日在进入策略**之前**就拦下来了：「那天没课」是课表决定的
+     * 客观事实，不是用户可以配置的偏好。而且它不在任何 [DayTypePolicy.enabled] 里
+     * （它不是可选日型）—— 不拦的话，[DayTypePolicy.resolve] 会把它映射成
+     * fallback，假期里又变回上学日，晚自习就回来了。
+     *
+     * ⚠️ **[policy] 这个参数故意不给默认值。**
      *
      * 如果给它一个默认值，那么调用方「忘了传策略」时不会有任何提示，
      * 程序会静悄悄地按默认策略跑 —— 而界面按 A 型显示、通知却按 B 型排，
@@ -114,7 +126,11 @@ object TimelineEngine {
         week: Int,
         courses: List<Course>,
         policy: DayTypePolicy
-    ): DayType = policy.resolve(naturalDayType(date, week, courses))
+    ): DayType {
+        val natural = naturalDayType(date, week, courses)
+        if (natural == DayType.REST) return DayType.REST
+        return policy.resolve(natural)
+    }
 
     /**
      * 界面上显示的日型描述 —— 会区分「用哪套模板」和「今天有没有早八」。
@@ -141,7 +157,10 @@ object TimelineEngine {
         policy: DayTypePolicy
     ): String {
         val natural = naturalDayType(date, week, courses)
-        val used = policy.resolve(natural)
+        // REST 的短路和 dayType() 里的是**同一条规则**，写两遍是因为这个函数
+        // 需要 natural（判有早八）和 used（出标签）两个答案，凑不到一次调用里。
+        // 改策略映射规则时，两处要一起动。
+        val used = if (natural == DayType.REST) natural else policy.resolve(natural)
         return if (natural == DayType.A) "${used.label} · 有早八" else used.label
     }
 

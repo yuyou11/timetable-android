@@ -108,16 +108,18 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun `还没开课的周一不该按 A 型日`() {
-        // 第 1 周大学英语还没开（它是 2-4、6-17 周）→ 没有早八 → B 型
-        // 如果这里写死成「周一 = A 型」，开学前一周就会误报 06:55 起床
-        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 9, 7), 1, courses))
+    fun `还没开课的周一全天无课按休息日过`() {
+        // 第 1 周大学英语还没开（它是 2-4、6-17 周），周一其余的课也都没开 →
+        // 全天无课 → 休息日。开学前一周不该出现 06:55 的 A 型作息
+        assertEquals(DayType.REST, TimelineEngine.naturalDayType(d(2026, 9, 7), 1, courses))
     }
 
     @Test
-    fun `第 8 周周三停课所以退回 B 型`() {
-        // 高数周三 1-2 节是「2-7、9-17 周」，第 8 周正好不上
-        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 10, 28), 8, courses))
+    fun `第 8 周周三全天停课按休息日过`() {
+        // 高数周三 1-2 节是「2-7、9-17 周」，第 8 周正好不上；
+        // 周三其余的课（形势/近现代史/人工智能）也都不在第 8 周 →
+        // 全天无课 → 休息日，按休息模板过（无课、无晚自习）
+        assertEquals(DayType.REST, TimelineEngine.naturalDayType(d(2026, 10, 28), 8, courses))
     }
 
     @Test
@@ -130,6 +132,61 @@ class TimelineEngineTest {
     fun `周末用周六周日的模板`() {
         assertEquals(DayType.SATURDAY, TimelineEngine.naturalDayType(d(2026, 9, 26), 3, courses))
         assertEquals(DayType.SUNDAY, TimelineEngine.naturalDayType(d(2026, 9, 27), 3, courses))
+    }
+
+    // ============================================================
+    //  二·五、无课休息日（REST）
+    //
+    //  这是判「假期」的唯一手段：程序不认识国庆中秋，但「课表里这天
+    //  一门课都没有」是数据里的客观事实。内置课表第 3 周的周五正好
+    //  一门课都没有（高数/思德/体育/音乐都是第 5 周起），就拿它当夹具。
+    // ============================================================
+
+    /** 第 3 周周五：内置课表全天无课 */
+    private val restFri = d(2026, 9, 25)
+
+    @Test
+    fun `工作日全天没课算休息日`() {
+        assertEquals(DayType.REST, TimelineEngine.naturalDayType(restFri, 3, courses))
+    }
+
+    @Test
+    fun `休息日在任何策略下都不被映射`() {
+        // ★ REST 必须在进入策略之前被拦下。它不在任何 policy.enabled 里
+        // （不是可选日型）—— 不拦的话 resolve() 会把它映射成 fallback，
+        // 假期又变回上学日，晚自习就跟着回来了。
+        for (policy in listOf(DayTypePolicy.DEFAULT, DayTypePolicy.ALL)) {
+            assertEquals(
+                "${policy} 策略把无课日映射走了",
+                DayType.REST, TimelineEngine.dayType(restFri, 3, courses, policy)
+            )
+        }
+        // fallback 就算是 A 也不行
+        val aOnly = DayTypePolicy(
+            setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY), DayType.A
+        )
+        assertEquals(DayType.REST, TimelineEngine.dayType(restFri, 3, courses, aOnly))
+    }
+
+    @Test
+    fun `休息日的时间轴睡到九点且没有晚自习`() {
+        val ms = TimelineEngine.moments(restFri, 3, courses, templatesAll)
+
+        assertEquals("无课日睡到 09:00 自然醒", 9 * 60, ms.first().end)
+        val titles = ms.map { it.title }
+        assertTrue(
+            "无课日不该出现晚自习，实际时间轴：$titles",
+            titles.none { it.contains("晚自习") || it.contains("晚自修") }
+        )
+        assertTrue("无课日不该有课程格子", ms.none { it.isCourse })
+    }
+
+    @Test
+    fun `休息日的界面标签是无课休息日`() {
+        assertEquals(
+            "无课 · 休息日",
+            TimelineEngine.dayTypeDisplay(restFri, 3, courses, DayTypePolicy.DEFAULT)
+        )
     }
 
     // ============================================================
@@ -154,8 +211,9 @@ class TimelineEngineTest {
 
     @Test
     fun `没有课的格子显示「无课」而不是留空`() {
-        // 第 1 周周一还没开课，第 7-8 节是空的课表格子
-        val m = at(d(2026, 9, 7), 1, "16:00")
+        // ⚠️ 别用第 1 周周一：那天全天无课，整个走 REST 休息日，没有占位格。
+        // 第 2 周周一 5-6 节是空的课表格子（近现代史要第 15 周才上）
+        val m = at(d(2026, 9, 14), 2, "15:00")
         assertTrue("实际得到: ${m.title}", m.title.contains("无课"))
     }
 
@@ -172,8 +230,10 @@ class TimelineEngineTest {
         assertEquals("程序设计基础", at(d(2026, 9, 17), 2, "16:00").title)
         // 第 3 周（单周）起是数据结构
         assertEquals("数据结构", at(d(2026, 9, 24), 3, "16:00").title)
-        // 第 4 周是双周，数据结构不上 → 回到「无课」
-        assertTrue(at(d(2026, 10, 1), 4, "16:00").title.contains("无课"))
+        // ⚠️ 别用第 4 周：大物是「2-3、5-17 周」，第 4 周周四全天无课，
+        // 会整个走 REST 休息日，没有占位格。第 6 周是双周，数据结构不上
+        // （大物有课，所以这天不是 REST，只是 7-8 节空着）
+        assertTrue(at(d(2026, 10, 15), 6, "16:00").title.contains("无课"))
     }
 
     @Test
@@ -290,10 +350,16 @@ class TimelineEngineTest {
     }
 
     @Test
-    fun `六种内置模板都能推出起床时间`() {
+    fun `休息日睡到自然醒的 09 时`() {
+        assertEquals(9 * 60, TimelineEngine.wakeMinute(Templates.REST))
+    }
+
+    @Test
+    fun `所有内置模板（含休息日）都能推出起床时间`() {
         // 这条是防回归的：将来有人改了模板里某个 kind，导致找不到上午的睡眠段，
         // 次日预告上那一行会凭空消失。这个测试会立刻发现。
-        for (type in Templates.ALL_TYPES) {
+        // 遍历 DayType.entries 而不是 ALL_TYPES —— REST 不在后者里，但它有模板
+        for (type in DayType.entries) {
             val wake = TimelineEngine.wakeMinute(Templates.builtin(type))
             assertTrue("$type 推不出起床时间", wake != null)
             assertTrue("$type 的起床时间 $wake 不像早晨", wake!! in 5 * 60..11 * 60)

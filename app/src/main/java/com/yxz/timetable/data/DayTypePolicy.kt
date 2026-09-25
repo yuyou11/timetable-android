@@ -66,6 +66,13 @@ data class DayTypePolicy(
      *
      * 注意 [fallback] **不必**在 [enabled] 里 —— 它表示的是
      * 「用这套模板来兜底」，是一个独立的指定，不是「启用了一种日型」。
+     *
+     * ⚠️ **[DayType.REST] 不该走到这里。**
+     * 「那天没课」是课表决定的客观事实，不是偏好 —— [TimelineEngine.dayType]
+     * 会在进入策略**之前**把它拦下。这里也不给它留特判：一旦出现
+     * 「直接拿 resolve 映射 REST」的调用点，`REST !in enabled` 会让它
+     * 落到 fallback 上，假期就变回上学日了。周次标签那类需要自己
+     * 映射的场合，要么改调 [TimelineEngine.dayType]，要么学它先拦 REST。
      */
     fun resolve(computed: DayType): DayType =
         if (computed in enabled) computed else fallback
@@ -77,9 +84,13 @@ data class DayTypePolicy(
          *
          * 测试「原始日历规则」时用这个：它让 [resolve] 变成恒等映射，
          * 于是测的就是 [TimelineEngine.naturalDayType] 那条规则本身。
+         *
+         * ⚠️ 用 [Templates.ALL_TYPES] 而不是 `DayType.entries` ——
+         * 后者会把 [DayType.REST] 也算进「启用」，而它是引擎推导出来的状态，
+         * 根本不是可选日型（理由见枚举上的注释）。
          */
         val ALL: DayTypePolicy = DayTypePolicy(
-            enabled = DayType.entries.toSet(),
+            enabled = Templates.ALL_TYPES.toSet(),
             fallback = DayType.B_NORMAL
         )
 

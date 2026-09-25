@@ -49,7 +49,8 @@ class TemplatePlaceholderTest {
 
     @Test
     fun `内置模板的占位格全部对齐 Slots 表`() {
-        for (type in Templates.ALL_TYPES) {
+        // 遍历 DayType.entries：REST 不在 ALL_TYPES 里，但它也是内置模板
+        for (type in DayType.entries) {
             val bad = misaligned(Templates.builtin(type))
             assertTrue(
                 "内置模板 ${type.name} 的占位格时刻和 Slots 对不上：\n  " +
@@ -95,12 +96,14 @@ class TemplatePlaceholderTest {
         DayType.B_TRAIN_B to setOf(3, 5, 7),
         DayType.B_NORMAL to setOf(3, 5, 7, 9),
         DayType.SATURDAY to emptySet(),
-        DayType.SUNDAY to emptySet()
+        DayType.SUNDAY to emptySet(),
+        // 休息日的定义就是全天没课，一个占位格都不该有
+        DayType.REST to emptySet()
     )
 
     @Test
     fun `每种日型的占位格和设计一致`() {
-        for (type in Templates.ALL_TYPES) {
+        for (type in DayType.entries) {
             val actual = Templates.builtin(type).mapNotNull { it.nodes?.first }.toSet()
             val expected = expectedPlaceholderPairs.getValue(type)
             assertEquals(
@@ -110,6 +113,21 @@ class TemplatePlaceholderTest {
                 expected, actual
             )
         }
+    }
+
+    @Test
+    fun `休息日模板没有占位格且首尾相接铺满一整天`() {
+        // REST 模板不走「可能上课所以放占位格」的判据 —— 它的定义就是全天没课。
+        // 但首尾相接的规矩不能破：引擎拿它铺底，断一截就冒「空档 · 机动」。
+        val blocks = Templates.builtin(DayType.REST).sortedBy { it.start }
+        assertTrue("休息日模板不该有占位格", blocks.none { it.nodes != null })
+
+        var cursor = 0
+        for (b in blocks) {
+            assertEquals("${Slots.fmt(cursor)} 起没接上", cursor, b.start)
+            cursor = b.end
+        }
+        assertEquals("没有铺满 00:00–24:00", 1440, cursor)
     }
 
     @Test

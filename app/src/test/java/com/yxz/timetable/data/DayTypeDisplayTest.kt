@@ -68,12 +68,20 @@ class DayTypeDisplayTest {
 
     @Test
     fun `默认配置下没早八的日子不显示有早八`() {
-        // 默认策略里 B_NORMAL 是启用的，所以周二/周四/周五各用各的模板
-        for (date in listOf(tue, fri)) {
-            val s = show(date, DayTypePolicy.DEFAULT)
-            assertFalse("$date 显示成「$s」，不该声称有早八", s.contains("有早八"))
-        }
+        // 默认策略里 B_NORMAL 是启用的，周二走 B 型模板
+        // （周五全天无课，是休息日，单独测，见下面那条）
+        val s = show(tue, DayTypePolicy.DEFAULT)
+        assertFalse("显示成「$s」，不该声称有早八", s.contains("有早八"))
         assertTrue(show(sat, DayTypePolicy.DEFAULT).startsWith("周六"))
+    }
+
+    @Test
+    fun `无课的工作日显示休息日`() {
+        // 第 3 周周五全天没课 → 无课 · 休息日。
+        // 就算策略的 fallback 是 A，也不能把假期说成「A 型日」——
+        // 那天确实按休息模板过，不走任何回落。
+        assertEquals("无课 · 休息日", show(fri, DayTypePolicy.DEFAULT))
+        assertEquals("无课 · 休息日", show(fri, weekdaysAsA))
     }
 
     // ============================================================
@@ -89,15 +97,13 @@ class DayTypeDisplayTest {
     @Test
     fun `回落到 A 型模板的日子 不能声称有早八`() {
         // ★ 这条就是这个文件存在的理由。
-        // 修复之前，下面三行全都会显示「A 型日 · 有早八」—— 那是假话。
-        for (date in listOf(tue, fri)) {
-            val s = show(date, weekdaysAsA)
-            assertFalse(
-                "$date 当天没有早课，却显示成「$s」",
-                s.contains("有早八")
-            )
-            assertTrue("还是要说清用的是哪套模板", s.contains("A 型日"))
-        }
+        // 修复之前，下面这些全都会显示「A 型日 · 有早八」—— 那是假话。
+        val s = show(tue, weekdaysAsA)
+        assertFalse(
+            "$tue 当天没有早课，却显示成「$s」",
+            s.contains("有早八")
+        )
+        assertTrue("还是要说清用的是哪套模板", s.contains("A 型日"))
     }
 
     @Test
@@ -159,7 +165,8 @@ class DayTypeDisplayTest {
     fun `DayType 的 label 只描述模板 不描述当天情况`() {
         // 结构性约束：label 一旦又写上「有早八」，
         // 上面那些断言就会被绕过（因为拼接时会重复）
-        for (t in Templates.ALL_TYPES) {
+        // 遍历 DayType.entries：REST 不在 ALL_TYPES 里，但它也有 label
+        for (t in DayType.entries) {
             assertFalse(
                 "DayType.${t.name} 的 label「${t.label}」夹带了当天信息 —— " +
                         "label 只该说明这套模板叫什么",
