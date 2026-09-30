@@ -10,6 +10,13 @@ package com.yxz.timetable.data
  * ⚠️ 注意连堂：第 1-2 节中间只有 5 分钟换场，
  *    所以实际占用的是一个完整的 08:30–10:05 时间块，
  *    而不是「08:30–09:15 + 09:20–10:05」两个独立的块。
+ *
+ * ## 节次上限：不写死 10，由「一天」决定
+ *
+ * 内置时间表只到第 10 节（20:35 下课），但节数信息允许学校声明更多的节。
+ * 第 11 节起按**晚课节奏**外推：每节 45 分钟、中间歇 5 分钟，从 20:40 开始。
+ * 外推到第 14 节（23:10–23:55）就到头了 —— 一天只有 24 小时，这是物理上限，
+ * 不是谁拍脑袋定的数字。
  */
 object Slots {
 
@@ -41,10 +48,35 @@ object Slots {
         20 * 60 + 35   // 10  20:35
     )
 
-    const val MAX_NODE = 10
+    /**
+     * 节次的一天上限。第 11 节起外推（每节 45 分钟、间歇 5 分钟、20:40 起始），
+     * 到第 14 节 23:55 下课为止 —— 再多就跨进第二天了。
+     */
+    const val MAX_NODE = 14
 
-    fun start(node: Int): Int = START[node]
-    fun end(node: Int): Int = END[node]
+    /** 某节的 (开始, 结束) 分钟数：内置表 1-10，之外按晚课节奏外推 */
+    private fun slot(node: Int): Pair<Int, Int> {
+        if (node <= 10) return START[node] to END[node]
+        val k = node - 10
+        val start = END[10] + 5 * k + 45 * (k - 1)
+        return start to start + 45
+    }
+
+    private fun check(node: Int) {
+        if (node !in 1..MAX_NODE) {
+            throw IllegalArgumentException("节次必须在 1-$MAX_NODE 之间，现在是 $node")
+        }
+    }
+
+    fun start(node: Int): Int {
+        check(node)
+        return slot(node).first
+    }
+
+    fun end(node: Int): Int {
+        check(node)
+        return slot(node).second
+    }
 
     /** 把「距 00:00 的分钟数」格式化回 HH:mm，比如 510 -> "08:30" */
     fun fmt(minute: Int): String = "%02d:%02d".format(minute / 60, minute % 60)

@@ -16,8 +16,10 @@ import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
 import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.DayType
+import com.yxz.timetable.data.Periods
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
+import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentWeekBinding
 import java.time.LocalDate
@@ -25,8 +27,9 @@ import java.time.LocalDate
 /**
  * 课表页。
  *
- * 网格是用代码现搭的，而不是写死在 XML 里。原因是课表的结构是「5 个节次段 × 7 天」，
- * 用代码两层循环几行就搭完了；写成 XML 得手写 40 多个格子，还改不动。
+ * 网格是用代码现搭的，而不是写死在 XML 里。原因是课表的结构是
+ * 「节数信息切出来的行 × 7 天」，行数随导入的 periods 变（默认 "442" 是 10 行），
+ * 用代码两层循环几行就搭完了；写成 XML 得手写几十个格子，还改不动。
  *
  * **判断标准：结构固定、数量少 → 写 XML；结构重复、随数据变 → 用代码生成。**
  * 这条在网页开发里完全一样（手写 5 个 div 还是 v-for 循环）。
@@ -133,9 +136,6 @@ class WeekFragment : Fragment() {
                     "\n" +
                     WEEKEND_DAYS.joinToString("　") { dayTypeLabel(it, monday, week, courses) }
 
-        binding.tvWeekFooter.text =
-            "点蓝色格子看完整周次与教室。空白表示这一周不上这门课。"
-
         buildGrid(week, courses)
     }
 
@@ -185,9 +185,19 @@ class WeekFragment : Fragment() {
 
     // ==================================================================
     //  网格搭建
+    //
+    //  行结构来自「节数信息」（store.periods，默认 "442"）：一天的小节数 =
+    //  各位之和，不再写死 10 —— "442" 是 10 行，"445" 是 13 行（第 11-13 节
+    //  的时间按晚课节奏外推，见 Slots）。**每一节单独成行** —— 有的学校
+    //  课不成对，按大课分行会整行漏课；行标签就是节次号（每节 = 一个
+    //  45 分钟小节，学校数法和内部编号一一对应）。
+    //
+    //  布局从「一行一个 LinearLayout」改成了**列式**：一列节次 + 七列日子，
+    //  每列内部从上往下摆格子。原因是行结构变细之后，一门课会横跨多行，
+    //  相邻的同课格子必须合并成一整块（行式布局里格子出不了自己那一行）；
+    //  列式布局里合并格的高度 = 跨过的行高之和，各列按同一套行高累加，
+    //  行天然对齐。
     // ==================================================================
-
-    private val nodePairs = listOf(1 to 2, 3 to 4, 5 to 6, 7 to 8, 9 to 10)
 
     private fun buildGrid(week: Int, courses: List<Course>) {
         val ctx = requireContext()
@@ -210,21 +220,136 @@ class WeekFragment : Fragment() {
             setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider))
         })
 
-        // ---- 5 个节次段 ----
-        for ((startNode, endNode) in nodePairs) {
-            val row = makeRow(ctx, ROW_HEIGHT_DP)
-            row.addView(makeTimeCell(startNode, endNode))
+        val rows = Periods.rows(store.periods)
+        val templateSet = store.templates()
 
-            for (day in WEEK_DAYS) {
-                val hit = courses.firstOrNull {
-                    it.enabled && it.dayOfWeek == day &&
-                            it.startNode == startNode && week in it.weeks
-                }
-                row.addView(makeCourseCell(day, startNode, endNode, hit))
+        // ---- 内容：一列节次 + 七列日子 ----
+        val body = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        body.addView(timeColumn(ctx, rows, templateSet))
+        for (day in WEEK_DAYS) {
+            body.addView(dayColumn(ctx, rows, day, week, courses))
+        }
+        container.addView(body)
+    }
+
+    /** 节次列：每行一格。行标签就是节次号（每节 = 一个 45 分钟小节） */
+    /**
+     * 节次列的一格。
+     *
+     * ⚠️ 时刻取自 `templates.slotStart/slotEnd`（**模板的占位格**），
+     * 不是写死的 `Slots` —— 和今日页从同一个来源推导，不可能各说各话。
+     * 模板没写到的节次回落到 Slots（第 11-14 节是外推的晚课时刻）。
+     *
+     * 起止时间放**同一行**（"8:30-9:15"）而不是上下两行：默认 10 行的表，
+     * 每行省一行文字整表高度才压得下来（电脑版同款做法）。
+     * 小时的前导零也去掉了 —— 这列在 360dp 屏上分到约 45dp，
+     * "10:25-11:10" 的全写正好放不下，差的就是那一个 0 的宽度。
+     */
+    private fun timeColumn(ctx: Context, rows: List<Periods.Row>, set: TemplateSet): View =
+        LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, TIME_WEIGHT
+            )
+            for (r in rows) {
+                addView(LinearLayout(ctx).apply {
+                    layoutParams = fixedParams(ROW_HEIGHT_DP)
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+
+                    addView(TextView(ctx).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        gravity = Gravity.CENTER
+                        text = "${r.node} 节"
+                        textSize = 8.5f
+                        setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                        includeFontPadding = false
+                        maxLines = 1
+                    })
+
+                    addView(TextView(ctx).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        gravity = Gravity.CENTER
+                        text = shortTime(set.slotStart(r.node)) + "-" +
+                                shortTime(set.slotEnd(r.node))
+                        textSize = 8f
+                        setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                        includeFontPadding = false
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                })
             }
-            container.addView(row)
+        }
+
+    /** 510 -> "8:30"。小时不带前导零：节次列放不下 "08:30-09:15" 的宽度 */
+    private fun shortTime(minute: Int): String =
+        (minute / 60).toString() + ":%02d".format(minute % 60)
+
+    /**
+     * 一天的课列。
+     *
+     * ⚠️ 命中必须按「节点区间有重叠」判断，不能要求 startNode 恰好等于行首 ——
+     * 行是按节数信息切的，别的学校单节的课、跨在两节之间的课，
+     * 一行都对不上行首，整门课会**在网格里消失**。
+     *
+     * 相邻两行的命中如果是同一门课（名称、教室、周次完全一致），合并成一格 ——
+     * 有的学校课不成对，一门课在数据里是按小节拆开的两条记录，显示时拼回一整块。
+     */
+    private fun dayColumn(
+        ctx: Context, rows: List<Periods.Row>, day: Int, week: Int, courses: List<Course>
+    ): View {
+        val hits = rows.map { r ->
+            courses.firstOrNull { c ->
+                c.enabled && c.dayOfWeek == day && week in c.weeks &&
+                        c.startNode <= r.node && c.endNode >= r.node
+            }
+        }
+
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+            var i = 0
+            while (i < rows.size) {
+                val hit = hits[i]
+                var span = 1
+                if (hit != null) {
+                    while (i + span < rows.size) {
+                        val nxt = hits[i + span]
+                        if (nxt == null || !sameCourseVisual(nxt, hit)) break
+                        span++
+                    }
+                }
+                val spanText = hit?.let {
+                    if (it.endNode > it.startNode) {
+                        "第 ${it.startNode}-${it.endNode} 节"
+                    } else {
+                        "第 ${it.startNode} 节"
+                    }
+                }
+                addView(makeCourseCell(ctx, day, hit, span, spanText))
+                i += span
+            }
         }
     }
+
+    /** 显示上算「同一门课」：同一条记录，或名称 / 教室 / 周次完全一致的相邻记录 */
+    private fun sameCourseVisual(a: Course, b: Course): Boolean =
+        a === b || (a.name == b.name && a.place == b.place && a.weeks == b.weeks)
 
     /**
      * 一行。**高度写死**是这个网格能对齐的关键 ——
@@ -241,8 +366,8 @@ class WeekFragment : Fragment() {
     /**
      * 格子的尺寸参数。
      *
-     * 高度用 MATCH_PARENT 而不是具体数值 —— 格子会自动撑满所在行，
-     * 所以同一行里所有格子高度严格相等。宽度 0 + weight 用来按比例分配横向空间。
+     * 高度给 MATCH_PARENT 时格子自动撑满所在行（表头用）；
+     * 给具体行数时就是列式布局里的固定高度 —— 同一行的格子高度一致，行才能对齐。
      *
      * 那 2dp 的外边距是坑 2 的解药，不是装饰。
      */
@@ -253,83 +378,62 @@ class WeekFragment : Fragment() {
         ).apply { setMargins(gap, gap, gap, gap) }
     }
 
-    private fun makeLabelCell(label: String, weight: Float, size: Float): TextView =
-        TextView(requireContext()).apply {
-            layoutParams = cellParams(weight)
-            gravity = Gravity.CENTER
-            text = label
-            textSize = size
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
-            includeFontPadding = false
-        }
+    /**
+     * 列内格子的尺寸：宽度撑满所在列（横向的权重在**列**身上，不在这格身上 ——
+     * 竖向 LinearLayout 里给宽度设 0 + weight 会把宽度本身归零），
+     * 高度固定 —— 同一行的格子高度一致，各列才按同一套行高对齐。
+     *
+     * 那 2dp 的外边距是坑 2 的解药，不是装饰。
+     */
+    private fun fixedParams(heightDp: Int): LinearLayout.LayoutParams {
+        val gap = requireContext().dp(2)
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, requireContext().dp(heightDp)
+        ).apply { setMargins(gap, gap, gap, gap) }
+    }
 
     /**
-     * 节次列的一格。
-     *
-     * 正文写「1-2 节」而不是「第 1-2 节」：表头那一列已经写着「节次」了，
-     * 加个「第」字是重复的；而 7 列版里这一行能不能放下，
-     * 差的正好就是这一个字（约 8.5dp，占这格可用宽度的四分之一）。
-     * **窄容器里的文案，优先砍掉语境已经提供的信息。**
+     * 合并格的高度：跨过的每行行高，加上行与行之间被省掉的间隙。
+     * 单行（span=1）时正好等于普通格 —— 合并格和上下邻居的缝隙依然是 2dp。
      */
-    /**
-     * 节次列的一格。
-     *
-     * ⚠️ 时刻取自 `templates.slotStart/slotEnd`（**模板的占位格**），
-     * 不是写死的 `Slots`。这一处曾经是 bug：用户在模板里改了上课时间，
-     * 今日页跟着变了，课表页却永远是老时间。
-     *
-     * 现在两个页面从同一个来源推导，不可能再各说各话。
-     */
-    private fun makeTimeCell(startNode: Int, endNode: Int): TextView =
-        TextView(requireContext()).apply {
-            val set = store.templates()
-            layoutParams = cellParams(TIME_WEIGHT)
-            gravity = Gravity.CENTER
-            text = "$startNode-$endNode 节\n" +
-                    "${Slots.fmt(set.slotStart(startNode))}\n" +
-                    "${Slots.fmt(set.slotEnd(endNode))}"
-            textSize = 8.5f
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
-            includeFontPadding = false
-            maxLines = 3
-            ellipsize = TextUtils.TruncateAt.END
-        }
+    private fun spanHeightDp(span: Int): Int =
+        span * ROW_HEIGHT_DP + (span - 1) * 2 * GAP_DP
 
     /**
      * 一个课表格子。
      *
      * 有课时返回一个**纵向容器**，里面放两个各自限制行数的 TextView：
-     *   课程名  最多 3 行
+     *   课程名  合并格最多 3 行；单行格放不下，限 1 行
      *   教室    最多 1 行
      *
      * 为什么不用一个 TextView 加 "\n" 拼起来？因为那样没法分别限行 ——
-     * 名字长的时候会挤掉教室，或者整体撑破格子。拆开之后**内容最多 4 行**，
-     * 在 84dp 的行高里仍有接近两倍余量，怎么都不会溢出。
+     * 名字长的时候会挤掉教室，或者整体撑破格子。
      *
-     * 课程名为什么是 3 行而不是 2 行？7 列版里一列只能排 3 个汉字，
+     * 课程名为什么是 3 行？7 列版里一列只能排 3 个汉字，
      * 2 行 = 6 个字，「中国近现代史纲要」这 8 个字就要被截断；
-     * 3 行给到 9 个字，常见课名都能完整显示。
+     * 3 行给到 9 个字，常见课名都能完整显示 —— 这只对合并格成立
+     * （连堂课占的行多，空间是合并回来的）；单行格只能保课名和教室各一行，
+     * 放不下的部分交给省略号，点开弹的 Toast 里有全名。
      * **限制行数的时候，要按「一行能放几个字」算，而不是随手定个 2。**
      */
     private fun makeCourseCell(
-        day: Int, startNode: Int, endNode: Int, hit: Course?
+        ctx: Context, day: Int, hit: Course?, span: Int, spanText: String?
     ): View {
-        val ctx = requireContext()
-
         if (hit == null) {
             // 空格子真正留白，不打「—」占位：
-            // 35 个格子里大多数是空的，全打上横杠会非常吵，反而看不清哪里有课
-            return TextView(ctx).apply { layoutParams = cellParams(1f) }
+            // 大多数格子是空的，全打上横杠会非常吵，反而看不清哪里有课
+            return TextView(ctx).apply { layoutParams = fixedParams(ROW_HEIGHT_DP) }
         }
 
         val accent = ctx.accentColor()
+        val nameLines = if (span == 1) 1 else 3
+        val vPad = if (span == 1) 1 else 2
 
         return LinearLayout(ctx).apply {
-            layoutParams = cellParams(1f)
+            layoutParams = fixedParams(spanHeightDp(span))
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(ctx.dp(3), ctx.dp(2), ctx.dp(3), ctx.dp(2))
+            setPadding(ctx.dp(3), ctx.dp(vPad), ctx.dp(3), ctx.dp(vPad))
             setBackgroundResource(R.drawable.bg_cell_course)
 
             addView(TextView(ctx).apply {
@@ -342,7 +446,7 @@ class WeekFragment : Fragment() {
                 setTextColor(accent)
                 gravity = Gravity.CENTER
                 includeFontPadding = false
-                maxLines = 3
+                maxLines = nameLines
                 ellipsize = TextUtils.TruncateAt.END
             })
 
@@ -366,7 +470,7 @@ class WeekFragment : Fragment() {
             setOnClickListener {
                 Toast.makeText(
                     ctx,
-                    "${hit.name}\n${weekdayCn(day)} 第 $startNode-$endNode 节\n" +
+                    "${hit.name}\n${weekdayCn(day)} $spanText\n" +
                             "教室：${hit.place.ifBlank { "未注明" }}\n" +
                             "周次：${formatWeeks(hit.weeks)}",
                     Toast.LENGTH_LONG
@@ -374,6 +478,17 @@ class WeekFragment : Fragment() {
             }
         }
     }
+
+    private fun makeLabelCell(label: String, weight: Float, size: Float): TextView =
+        TextView(requireContext()).apply {
+            layoutParams = cellParams(weight)
+            gravity = Gravity.CENTER
+            text = label
+            textSize = size
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            includeFontPadding = false
+        }
 
     /**
      * 把 {2,3,4,6,7,...,17} 压成「2-4, 6-17 周」。
@@ -426,14 +541,20 @@ class WeekFragment : Fragment() {
          */
         const val TIME_WEIGHT = 1.25f
 
-        /** 表头行高 */
-        const val HEADER_HEIGHT_DP = 30
+    /** 表头行高 */
+    const val HEADER_HEIGHT_DP = 30
 
-        /**
-         * 每个节次段的行高。
-         * 内容最多 4 行（课程名 3 行 + 教室 1 行），约 48dp，
-         * 这里给到 84dp —— 仍是接近两倍余量，用户把系统字号调大也不会溢出。
-         */
-        const val ROW_HEIGHT_DP = 84
-    }
+    /**
+     * 每一节（网格一行）的行高。
+     *
+     * 行结构按节数信息切，默认 "442" 是 10 行 —— 行高必须压住，整表
+     * （10 × 36dp + 表头 ≈ 400dp）才放得进一屏，课表不用滚动就能全部看到。
+     * 32dp 的单行格放「课名 1 行 + 教室 1 行」刚好；连堂的课会合并成跨行格
+     * （见 [spanHeightDp]），空间是合并回来的，合并格里课名放宽到 3 行。
+     */
+    const val ROW_HEIGHT_DP = 32
+
+    /** 格子之间的间隙（cellParams 的外边距），合并格的高度公式也靠它 */
+    const val GAP_DP = 2
+}
 }

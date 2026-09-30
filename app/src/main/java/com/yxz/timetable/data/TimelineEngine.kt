@@ -241,7 +241,12 @@ object TimelineEngine {
                     out += courseBlocks[idx]
                     claimed += idx
                 } else {
-                    out += blk.copy(title = "第 ${nodes.first}-${nodes.last} 节 · 无课")
+                    // 单节的占位格（nodes = [2, 2]）显示成「第 2 节」，
+                    // 别写成「第 2-2 节」—— 那是没人写得出的课表写法
+                    out += blk.copy(
+                        title = if (nodes.first == nodes.last) "第 ${nodes.first} 节 · 无课"
+                        else "第 ${nodes.first}-${nodes.last} 节 · 无课"
+                    )
                 }
             } else {
                 // 固定日程：被课「压」到多少就保留多少

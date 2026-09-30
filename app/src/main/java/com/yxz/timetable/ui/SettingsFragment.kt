@@ -600,6 +600,12 @@ class SettingsFragment : Fragment() {
                 }
             }
 
+            // 节数信息决定了课表页怎么分行，带着它导入等于换一套网格结构 ——
+            // 预览里不说，用户只会在课表页莫名看到行数变了。
+            parsed.periods?.let {
+                append("\n节次结构：").append(it).append("（课表按它分行）\n")
+            }
+
             if (parsed.warnings.isNotEmpty()) {
                 append("\n⚠️ ").append(parsed.warnings.size).append(" 条提醒：\n")
                 parsed.warnings.take(5).forEach { append("· ").append(it).append('\n') }
@@ -643,11 +649,12 @@ class SettingsFragment : Fragment() {
     }
 
     private fun doImport(parsed: ScheduleFormat.Parsed, replace: Boolean) {
-        // 三段各自独立：**「没写」永远表示「不要动」，而不是「清空」**。
+        // 四段各自独立：**「没写」永远表示「不要动」，而不是「清空」**。
         // 这条规则贯穿整个导入流程，是防止一次误操作毁掉用户数据的关键。
         parsed.term?.let { store.applyTerm(it) }
         parsed.templates?.let { store.saveTemplates(it) }
         parsed.dayTypes?.let { store.saveDayTypePolicy(it) }
+        parsed.periods?.let { store.periods = it }
 
         val parts = mutableListOf<String>()
 
@@ -663,6 +670,12 @@ class SettingsFragment : Fragment() {
         }
 
         parsed.templates?.let { parts += "作息模板 ${it.size} 种" }
+
+        // 节次结构只在与默认不同时说 —— 默认结构说「已改为 442」是噪音
+        val periods = parsed.periods
+        if (periods != null && periods != ScheduleFormat.DEFAULT_PERIODS) {
+            parts += "节次结构已改为 $periods"
+        }
 
         renderCourses()
         refresh()

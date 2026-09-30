@@ -800,4 +800,164 @@ class ScheduleFormatTest {
         assertNull(p.courses)
         assertNull(p.templates)
     }
+
+    // ============================================================
+    //  八、节数信息（periods，v3 字段级追加）
+    //
+    //  对齐电脑版 tests/test_core.py 的 Periods 一组 —— 两边解析、
+    //  导出的行为必须一致，同一份文件才能在两个平台导入导出。
+    // ============================================================
+
+    @Test
+    fun `periods 合法写法能通过校验`() {
+        val cases = mapOf(
+            "441" to "441",
+            "442" to "442",
+            " 445 " to "445",    // 带空白；和 13 也合法（第 11-13 节外推时间槽）
+            "44" to "44",        // 两个时段（没有晚上）
+            "22222" to "22222",
+            "1111111111" to "1111111111",
+            "11111111111" to "11111111111",  // 11 节独立小节
+            "4441" to "4441",    // 4+4+4+1 = 13
+            "443" to "443"       // 11 节的学校
+        )
+        for ((raw, want) in cases) {
+            assertEquals("periods \"$raw\"", want, ScheduleFormat.normalizePeriods(raw))
+        }
+    }
+
+    @Test
+    fun `periods 非法写法要拒绝`() {
+        val bad = listOf(
+            "",               // 空串
+            "021",            // 有 0：一位至少 1 节
+            "44a",            // 不是数字
+            "四四一",          // 中文字
+            "456",            // 4+5+6 = 15 > 14，一天排不下
+            "9999999999",     // 和 45
+            "111111111111111" // 15 位，超过一天能容纳的段数
+        )
+        for (b in bad) {
+            assertNull("periods \"$b\" 应该不合法", ScheduleFormat.normalizePeriods(b))
+        }
+        // 非字符串也不合法
+        assertNull(ScheduleFormat.normalizePeriods(442))
+        assertNull(ScheduleFormat.normalizePeriods(null))
+    }
+
+    @Test
+    fun `一天的小节数等于各位之和`() {
+        assertEquals(10, ScheduleFormat.nodeCount("442"))
+        assertEquals(13, ScheduleFormat.nodeCount("445"))
+        assertEquals(9, ScheduleFormat.nodeCount("441"))
+    }
+
+    @Test
+    fun `解析可以接受可选的 periods 字段`() {
+        val json = """{"format":"timetable","version":3,"periods":"441","courses":[$oneCourse]}"""
+        val p = ok(json)
+        assertEquals("441", p.periods)
+        assertTrue("合法结构不应有提醒", p.warnings.isEmpty())
+    }
+
+    @Test
+    fun `periods 是字段级追加 不挑版本号`() {
+        // 电脑版的测试里用的就是 v2 文件带 periods —— 字段合法性与版本无关
+        val json = """{"format":"timetable","version":2,"periods":"442","courses":[$oneCourse]}"""
+        assertEquals("442", ok(json).periods)
+    }
+
+    @Test
+    fun `不带 periods 时解析结果是 null 表示不动现有结构`() {
+        assertNull(ok(doc(oneCourse)).periods)
+    }
+
+    @Test
+    fun `periods 非法要明确报错并给出正确写法`() {
+        val msg = fail("""{"format":"timetable","version":3,"periods":"440","courses":[]}""")
+        assertTrue("报错要提到字段名：\n$msg", msg.contains("periods"))
+        assertTrue("报错要说明每位 1-9：\n$msg", msg.contains("每位 1-9"))
+    }
+
+    @Test
+    fun `节数之和超过 14 要拒绝 一天排不下`() {
+        // 第 11 节起外推到 23:55 为止，15 节以上跨进第二天，物理上排不下
+        val msg = fail("""{"format":"timetable","version":3,"periods":"456","courses":[$oneCourse]}""")
+        assertTrue("报错要提到字段名：\n$msg", msg.contains("periods"))
+        assertTrue("报错要写清楚上限 14：\n$msg", msg.contains("14"))
+    }
+
+    @Test
+    fun `课程节次不能超出文件声明的节数`() {
+        // 441（9 节）下第 10 节的课不存在 —— 必须报错而不是静默消失
+        val msg = fail(
+            """{"format":"timetable","version":3,"periods":"441","courses":["""
+                + """{"name":"晚课","dayOfWeek":1,"nodes":[10,10],"weeks":"2-4"}]}"""
+        )
+        assertTrue("报错要给出合法范围 1–9：\n$msg", msg.contains("1–9"))
+    }
+
+    @Test
+    fun `超过 10 节的课在更大的结构下合法`() {
+        // 第 12-13 节的课在 "445"（13 节）下完全合法 —— 以前一律拒绝
+        val p = ok(
+            """{"format":"timetable","version":3,"periods":"445","courses":["""
+                + """{"name":"晚加课","dayOfWeek":1,"nodes":[12,13],"weeks":"2-4"}]}"""
+        )
+        val c = p.courses!![0]
+        assertEquals(12, c.startNode)
+        assertEquals(13, c.endNode)
+    }
+
+    @Test
+    fun `模板占位格同样按声明的节数校验`() {
+        // 用户实际撞到的报错：443（11 节）下给第 11 节配的占位格应当通过
+        val json = """{"format":"timetable","version":3,"periods":"443","courses":[$oneCourse],""" +
+                """"templates":{"A":[{"start":"20:40","end":"21:25","title":"第 11 节","kind":"CLASS","nodes":[11,11]}]}}"""
+        val p = ok(json)
+        assertEquals(11, p.templates!![DayType.A]!![0].nodes!!.first)
+    }
+
+    @Test
+    fun `只带 periods 的文件要拒绝`() {
+        // periods 只改显示结构，不算「可导入的内容」——和电脑版行为一致
+        assertTrue(
+            fail("""{"format":"timetable","version":3,"periods":"441"}""")
+                .contains("没有可导入的东西")
+        )
+    }
+
+    @Test
+    fun `导出默认结构时不写 periods 字段`() {
+        val json = ScheduleFormat.serialize("x", LocalDate.of(2026, 9, 7), 19, BuiltinCourses.LIST)
+        assertFalse("默认结构不该写出 periods", json.contains("periods"))
+        assertNull(ok(json).periods)
+    }
+
+    @Test
+    fun `导出非默认结构时写出 periods 并且能读回来`() {
+        // 课程用空表："441"（9 节）装不下内置课表里第 9-10 节的课，
+        // 节次超出声明的结构会被拒绝 —— 这正是结构约束在起作用
+        val json = ScheduleFormat.serialize(
+            "x", LocalDate.of(2026, 9, 7), 19, emptyList(),
+            periods = "441"
+        )
+        assertTrue(json.contains("\"periods\": \"441\""))
+        assertEquals("441", ok(json).periods)
+    }
+
+    @Test
+    fun `periods 的位置在 version 之后 term 之前`() {
+        // 与电脑版的导出顺序保持一致 —— 「输出是确定性的」要求两边逐字节相同
+        val json = ScheduleFormat.serialize(
+            "x", LocalDate.of(2026, 9, 7), 19, BuiltinCourses.LIST,
+            periods = "441"
+        )
+        val lines = json.lines()
+        val iVersion = lines.indexOfFirst { it.contains("\"version\"") }
+        val iPeriods = lines.indexOfFirst { it.contains("\"periods\"") }
+        val iTerm = lines.indexOfFirst { it.contains("\"term\"") }
+        assertTrue("version 应在 periods 之前", iVersion in 0 until iPeriods)
+        assertTrue("periods 应在 term 之前", iPeriods in 0 until iTerm)
+    }
 }

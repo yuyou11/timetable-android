@@ -54,7 +54,8 @@ class GenerateGuideActivity : AppCompatActivity() {
         coursePrompt = AiPrompt.forCourses(
             termName = store.termName,
             startDate = store.termStartIso,
-            totalWeeks = store.totalWeeks
+            totalWeeks = store.totalWeeks,
+            periods = store.periods
         )
 
         binding.btnBack.setOnClickListener { finish() }
@@ -72,7 +73,7 @@ class GenerateGuideActivity : AppCompatActivity() {
             copy("课表提示词", coursePrompt)
         }
         binding.btnCopyTemplatePrompt.setOnClickListener {
-            copy("作息模板提示词", AiPrompt.forTemplates(store.termName))
+            copy("作息模板提示词", AiPrompt.forTemplates(store.termName, store.periods))
         }
         binding.btnCopyFixPrompt.setOnClickListener {
             copy(

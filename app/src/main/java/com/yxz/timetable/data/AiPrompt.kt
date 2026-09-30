@@ -23,8 +23,16 @@ object AiPrompt {
      * @param termName   学期名称
      * @param startDate  教学第 1 周的周一
      * @param totalWeeks 总周数
+     * @param periods    当前的节数信息，AI 要据此决定输出文件里的 periods
      */
-    fun forCourses(termName: String, startDate: String, totalWeeks: Int): String = """
+    fun forCourses(
+        termName: String,
+        startDate: String,
+        totalWeeks: Int,
+        periods: String = ScheduleFormat.DEFAULT_PERIODS
+    ): String {
+        val nodeLimit = ScheduleFormat.nodeCount(periods)
+        return """
 你是数据格式转换助手。请把我提供的课程信息转换成下面这个 JSON 格式。
 
 # 输出格式
@@ -34,6 +42,7 @@ object AiPrompt {
 {
   "format": "timetable",
   "version": 3,
+  "periods": "$periods",
   "term": {
     "name": "$termName",
     "startDate": "$startDate",
@@ -50,6 +59,16 @@ object AiPrompt {
   ]
 }
 
+# periods 节数信息（重要，先看材料再定）
+
+- 一串数字（1-14 位，每位 1-9），从左到右是当天从早到晚各时段的节数
+  （通常是上午、下午、晚上）。**各位之和 = 这所学校一天有多少节**
+- 例如 "442" = 上午 4 节、下午 4 节、晚上 2 节（共 10 节）；
+  "445" = 上午 4 节、下午 4 节、晚上 5 节（共 13 节）
+- 当前值是 "$periods"（共 $nodeLimit 节）。**如果材料里的节次结构和它不一样，必须修改它**
+- 各位之和不能超过 14（一天排不下更多 45 分钟的节）
+- 课程 nodes 里的节次从 1 开始按顺序对应
+
 # term 段（已经帮你填好，原样保留即可）
 
 - name：学期名称
@@ -60,7 +79,7 @@ object AiPrompt {
 
 - name        课程名，字符串
 - dayOfWeek   星期几，1 到 7 的整数（**周一=1**，周日=7）
-- nodes       数组 [起始节次, 结束节次]，两个整数，范围 1-10 且起始 ≤ 结束
+- nodes       数组 [起始节次, 结束节次]，两个整数，范围 1-$nodeLimit 且起始 ≤ 结束
               连堂课写成 [1, 2]，**不要**拆成两条记录
 - weeks       上课周次，字符串，写法见下
 - place       教室，字符串；没有就整个省略这个字段
@@ -86,6 +105,12 @@ object AiPrompt {
 第 7 节 15:55-16:40     第 8 节 16:45-17:30
 第 9 节 19:00-19:45     第 10 节 19:50-20:35
 
+第 11 节起按晚课节奏外推（每节 45 分钟、间歇 5 分钟、20:40 起始），
+最多到第 14 节：
+
+第 11 节 20:40-21:25    第 12 节 21:30-22:15
+第 13 节 22:20-23:05    第 14 节 23:10-23:55
+
 「1-2 节」表示第 1 节和第 2 节连堂，nodes 写 [1, 2]。
 
 # 输出要求（重要）
@@ -101,6 +126,7 @@ object AiPrompt {
 
 （在这里粘贴课表内容，或者直接把课表文件、课表截图拖进来）
 """.trimStart()
+    }
 
     /**
      * 作息模板提示词。
@@ -109,7 +135,12 @@ object AiPrompt {
      * 这段提示词比课表那段长很多，因为模板的结构更自由 ——
      * 需要把六种日型、八种时段性质、课表占位格都说清楚。
      */
-    fun forTemplates(termName: String): String = """
+    fun forTemplates(
+        termName: String,
+        periods: String = ScheduleFormat.DEFAULT_PERIODS
+    ): String {
+        val nodeLimit = ScheduleFormat.nodeCount(periods)
+        return """
 你是数据格式转换助手。请把我描述的日常作息转换成下面这个 JSON 格式。
 
 # 输出格式
@@ -186,7 +217,7 @@ object AiPrompt {
 例如上午第 1-2 节、3-4 节、5-6 节、7-8 节、9-10 节这五段，
 通常都该是 nodes 占位格，因为它们本来就可能有课。
 
-节次范围是 1-10。「1-2 节」→ nodes: [1, 2]
+节次范围是 1-$nodeLimit。「1-2 节」→ nodes: [1, 2]
 
 # 两条硬性规则
 
@@ -211,6 +242,7 @@ object AiPrompt {
 8:30 到 10:05 是第 1-2 节课，10:05 到 10:25 是大课间……」
 有现成的作息表文件也可以直接上传）
 """.trimStart()
+    }
 
     /**
      * 给 AI 的「检查清单」—— 当 AI 输出的东西导入失败时，
@@ -229,11 +261,13 @@ $errorMessage
 2. 严格合法：字符串用双引号，不能有注释，不能有尾随逗号
 3. 检查 weeks 里的周次有没有超出 totalWeeks（当前是 19）
 4. 检查 dayOfWeek 是否在 1-7 之间（周一=1）
-5. 检查 nodes 是否是两个整数且起始 ≤ 结束，值在 1-10 之间
+5. 检查 nodes 是否是两个整数且起始 ≤ 结束，值在 periods 声明的节数范围内
+   （默认 "442" 即 1-10）
 6. 检查 startDate 是不是周一，格式 YYYY-MM-DD
 7. 检查 dayTypes.enabled 里的日型名是不是这六个之一：
    A、B_TRAIN_A、B_TRAIN_B、B_NORMAL、SATURDAY、SUNDAY，且至少有一个
 8. 检查每套模板里格子之间的时间有没有重叠，end 必须晚于 start
+9. 检查 periods（如果写了）是不是 1-14 位数字、每位 1-9、各位之和不超过 14
 
 你上次生成的 JSON（供参考）：
 

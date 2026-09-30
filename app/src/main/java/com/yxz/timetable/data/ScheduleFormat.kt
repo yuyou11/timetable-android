@@ -40,8 +40,11 @@ object ScheduleFormat {
      *
      * v1 → v2 新增了可选的 `templates` 段。
      * v2 → v3 新增了可选的 `dayTypes` 段。
+     * v3 又以**字段级追加**的方式新增了可选的顶层 `periods` 字段（节数信息）——
+     * 版本号不动，因为它与 dayTypes 一样「只增不改、缺省回默认」，
+     * 老程序读到 v3 文件本来就拒绝，新程序读老文件照常按 "442" 处理。
      *
-     * 两次都是**只增不改**，没有动过任何已有字段，所以老文件照常能用 ——
+     * 每一次都是**只增不改**，没有动过任何已有字段，所以老文件照常能用 ——
      * 这就是「只增不改」原则的价值：升级格式不需要任何数据迁移。
      *
      * ## 既然只是「新增一段」，为什么还要升版本号
@@ -58,13 +61,31 @@ object ScheduleFormat {
      */
     const val VERSION = 3
 
-    /** 节次上限，和 Slots 保持一致 */
-    const val MAX_NODE = 10
+    /**
+     * 节次上限 = 一天能排下的小节数（14），与 [Slots] 的外推时刻表一致。
+     * 课程 nodes、模板占位格的实际合法范围还要进一步受文件声明的
+     * 节数信息约束（见 [parse] 里的 nodeLimit）。
+     */
+    const val MAX_NODE = Slots.MAX_NODE
 
     /** 周次上限。比 19 宽一些，给不同学制的学校留余量 */
     const val MAX_WEEK_LIMIT = 30
 
     const val DEFAULT_TOTAL_WEEKS = 19
+
+    /**
+     * 节数信息（periods）的默认值："442" = 上午 4 节、下午 4 节、晚上 2 节。
+     *
+     * 恰好和内置的一天 10 个小节一一对应。一串数字从左到右对应一天里从早到晚
+     * 的各个时段，每位数字 = 该时段的节数；各数字之和允许小于 10，
+     * 不足的部分由**最后一段连堂补满**（比如 "441" 的晚上 1 节 =
+     * 19:00–20:35 连堂长课，占第 9-10 两小节）。和也可以超过 10 ——
+     * 多出来的节没有时间槽，会被忽略（导入时提醒，见 [normalizePeriods]）。
+     *
+     * 这是 v3 的**字段级追加**：老文件没有这个字段，按默认值处理 ——
+     * 向下兼容，不需要任何数据迁移。网格行结构的展开见 [Periods]。
+     */
+    const val DEFAULT_PERIODS = "442"
 
     // ============================================================
     //  结果类型
@@ -94,6 +115,13 @@ object ScheduleFormat {
          * 否则用户每次导入一份只改课表的文件，作息策略都会被打回默认值。
          */
         val dayTypes: DayTypePolicy?,
+        /**
+         * 只有文件里带了 `periods` 字段时才有值；null 表示「不要动现有节次结构」。
+         *
+         * 节数信息决定课表网格怎么分行。不跟着「没写 = 不动」这条规则走的话，
+         * 每导入一份不带 periods 的课表，自己学校的节次结构都会被打回 "442"。
+         */
+        val periods: String?,
         val warnings: List<String>
     )
 
@@ -238,6 +266,41 @@ object ScheduleFormat {
     }
 
     // ============================================================
+    //  一·五、节数信息（periods）
+    //
+    //  学校的节次结构因校而异，导入文件里可以带上自己学校的写法。
+    //  它只描述「怎么显示」，不改变课程数据的含义 —— nodes 永远指向
+    //  内置的 1–10 小节，时间对应关系写死在 Slots。
+    // ============================================================
+
+    /**
+     * 学校一天的小节数 = 节数信息各位之和（"442" → 10，"445" → 13）。
+     *
+     * 节次（课程 nodes、网格行）的合法范围都由它决定，不再有写死的 10。
+     */
+    fun nodeCount(periods: String): Int = periods.sumOf { it - '0' }
+
+    /**
+     * 校验节数信息，合法返回规整后的字符串，不合法返回 null。
+     *
+     * 合法 = 1-14 位数字、每位 1-9、各位之和不超过 MAX_NODE（14）。
+     * 位数和总和的上限都来自「一天」：第 11 节起按晚课节奏外推
+     * （45 分钟一节、间歇 5 分钟、20:40 起始），到第 14 节 23:55 下课，
+     * 再多的节跨进第二天，物理上排不下。
+     *
+     * "441"（和 9）= 一天 9 节、没有第 10 节；"442"（和 10）= 内置结构；
+     * "445"（和 13）= 第 11-13 节是外推时间槽。
+     */
+    fun normalizePeriods(raw: Any?): String? {
+        if (raw !is String) return null
+        val text = raw.trim()
+        if (text.length !in 1..MAX_NODE) return null
+        if (text.any { it !in '1'..'9' }) return null
+        if (nodeCount(text) > MAX_NODE) return null
+        return text
+    }
+
+    // ============================================================
     //  二、解析
     // ============================================================
 
@@ -349,6 +412,27 @@ object ScheduleFormat {
             term = Term(name, start, totalWeeks)
         }
 
+        // ---- periods 段（可选，v3 字段级追加）----
+        //
+        // ⚠️ 必须在 templates / courses 之前解析：这两段的节次合法性都由
+        // 「学校一天有多少小节」（= periods 各位之和）决定。
+        // 写了但非法要**明确报错**：它决定一节课显示在哪一行、
+        // 第几节存在，猜一个结构等于把用户的课摆到错误的位置还假装成功。
+        var periods: String? = null
+        if (!root.isNull("periods")) {
+            periods = normalizePeriods(root.opt("periods"))
+            if (periods == null) {
+                return Result.Failed(
+                    "periods（节数信息）写的是 \"${root.opt("periods")}\"，不对。\n" +
+                            "它是一串数字（1-14 位，每位 1-9），从左到右是当天从早到晚" +
+                            "各时段的节数，例如 \"442\" = 上午 4 节、下午 4 节、晚上 2 节；" +
+                            "各位数字之和不能超过 14（一天能排下的节数，" +
+                            "45 分钟一节从 08:30 排到 23:55）。"
+                )
+            }
+        }
+        val nodeLimit = nodeCount(periods ?: DEFAULT_PERIODS)
+
         // ---- templates 段（可选，v2 新增）----
         val warnings = mutableListOf<String>()
         var templates: Map<DayType, List<Block>>? = null
@@ -356,7 +440,7 @@ object ScheduleFormat {
         val tmplObj = root.optJSONObject("templates")
         if (tmplObj != null) {
             templates = try {
-                parseTemplates(tmplObj, warnings)
+                parseTemplates(tmplObj, warnings, nodeLimit)
             } catch (e: FormatException) {
                 return Result.Failed(e.message ?: "templates 段格式有误。")
             }
@@ -390,7 +474,7 @@ object ScheduleFormat {
                 val obj = arr.optJSONObject(i)
                     ?: return Result.Failed("courses 第 ${i + 1} 项不是对象。")
                 list += try {
-                    parseCourse(obj, i, totalWeeks)
+                    parseCourse(obj, i, totalWeeks, nodeLimit)
                 } catch (e: FormatException) {
                     return Result.Failed(e.message ?: "courses 第 ${i + 1} 项格式有误。")
                 }
@@ -402,6 +486,9 @@ object ScheduleFormat {
         // ---- 兜底：这份文件至少得说点什么 ----
         // 四段全空的文件导入它没有任何意义，而且多半意味着用户选错了文件
         // 或者 AI 输出的东西是坏的 —— 明确报错比「导入成功但什么都没变」好。
+        //
+        // ⚠️ periods 不算内容：它只改显示结构，一份只带 periods 的文件
+        // 没有可导入的东西，照样拒绝（和电脑版行为一致）。
         if (term == null && courses == null && templates == null && dayTypes == null) {
             return Result.Failed(
                 "这份文件里 term、courses、templates、dayTypes 四段都没有内容，没有可导入的东西。\n\n" +
@@ -410,7 +497,7 @@ object ScheduleFormat {
             )
         }
 
-        return Result.Ok(Parsed(term, courses, templates, dayTypes, warnings))
+        return Result.Ok(Parsed(term, courses, templates, dayTypes, periods, warnings))
     }
 
     /**
@@ -506,7 +593,8 @@ object ScheduleFormat {
      */
     private fun parseTemplates(
         obj: JSONObject,
-        warnings: MutableList<String>
+        warnings: MutableList<String>,
+        nodeLimit: Int
     ): Map<DayType, List<Block>> {
         val out = mutableMapOf<DayType, List<Block>>()
 
@@ -528,7 +616,7 @@ object ScheduleFormat {
                 val b = arr.optJSONObject(i)
                     ?: throw FormatException("templates.$key 第 ${i + 1} 项不是对象。")
                 blocks += try {
-                    parseBlock(b)
+                    parseBlock(b, nodeLimit)
                 } catch (e: FormatException) {
                     throw FormatException("templates.$key 第 ${i + 1} 项：${e.message}")
                 }
@@ -544,7 +632,7 @@ object ScheduleFormat {
         return out
     }
 
-    private fun parseBlock(o: JSONObject): Block {
+    private fun parseBlock(o: JSONObject, nodeLimit: Int): Block {
         val startRaw = o.optString("start", "").trim()
         val endRaw = o.optString("end", "").trim()
         if (startRaw.isEmpty()) throw FormatException("缺少 start（如 \"06:55\"）")
@@ -572,8 +660,8 @@ object ScheduleFormat {
             if (a.length() != 2) throw FormatException("nodes 必须是两个数字，例如 [1, 2]")
             val s = a.optInt(0, -1)
             val e = a.optInt(1, -1)
-            if (s !in 1..MAX_NODE || e !in 1..MAX_NODE) {
-                throw FormatException("nodes 的节次必须在 1–$MAX_NODE 之间，现在是 [$s, $e]")
+            if (s !in 1..nodeLimit || e !in 1..nodeLimit) {
+                throw FormatException("nodes 的节次必须在 1–$nodeLimit 之间，现在是 [$s, $e]")
             }
             if (s > e) throw FormatException("nodes 的起始节次比结束节次大：[$s, $e]")
             s..e
@@ -639,7 +727,7 @@ object ScheduleFormat {
         return h * 60 + m
     }
 
-    private fun parseCourse(obj: JSONObject, index: Int, totalWeeks: Int): Course {
+    private fun parseCourse(obj: JSONObject, index: Int, totalWeeks: Int, nodeLimit: Int): Course {
         // 报错时带上课程名，否则用户面对 19 条数据不知道是哪一条错了
         val rawName = obj.optString("name", "").trim()
         fun err(msg: String): Nothing {
@@ -656,8 +744,11 @@ object ScheduleFormat {
         if (nodesArr.length() != 2) err("nodes 必须是两个数字，例如 [1, 2]")
         val startNode = nodesArr.optInt(0, -1)
         val endNode = nodesArr.optInt(1, -1)
-        if (startNode !in 1..MAX_NODE || endNode !in 1..MAX_NODE) {
-            err("nodes 的节次必须在 1–$MAX_NODE 之间，现在是 [$startNode, $endNode]")
+        if (startNode !in 1..nodeLimit || endNode !in 1..nodeLimit) {
+            err(
+                "nodes 的节次必须在 1–$nodeLimit 之间" +
+                        "（这份文件声明一天 $nodeLimit 节），现在是 [$startNode, $endNode]"
+            )
         }
         if (startNode > endNode) err("nodes 的起始节次比结束节次大：[$startNode, $endNode]")
 
@@ -778,13 +869,24 @@ object ScheduleFormat {
         totalWeeks: Int,
         courses: List<Course>,
         templates: Map<DayType, List<Block>> = emptyMap(),
-        dayTypes: DayTypePolicy? = null
+        dayTypes: DayTypePolicy? = null,
+        periods: String = DEFAULT_PERIODS
     ): String {
         val sb = StringBuilder()
         sb.append("{\n")
 
         sb.append("  \"format\": \"").append(FORMAT_ID).append("\",\n")
         sb.append("  \"version\": ").append(VERSION).append(",\n")
+
+        // 节数信息：只有和默认结构不同才写出来。
+        //
+        // ⚠️ 不能无条件写 —— 老文件里没有这个字段，默认结构再写一遍
+        // 只会让每一次导出都多出一行、和旧备份 diff 满天飞。
+        // 读取方对缺省字段按 [DEFAULT_PERIODS] 处理，语义完全等价；
+        // 电脑版导出遵循同一条规则，两边才能产出相同的文件。
+        if (periods != DEFAULT_PERIODS) {
+            sb.append("  \"periods\": \"").append(periods).append("\",\n")
+        }
 
         sb.append("  \"term\": {\n")
         sb.append("    \"name\": \"").append(escape(termName)).append("\",\n")
@@ -943,11 +1045,26 @@ object ScheduleFormat {
         format    固定为 "$FORMAT_ID"
         version   格式版本，当前是 $VERSION
         term      学期设置（可选）
+        periods   节数信息（可选，如 "442"）
         dayTypes  启用哪些日型（可选）
         courses   课程数组（可选）
         templates 作息模板（可选）
 
         上面几段都是「没写 = 不要动」，不是「清空」。
+
+        【periods 节数信息】
+        一串数字（1-14 位，每位 1-9），从左到
+        右是当天从早到晚各时段的节数；各位
+        之和 = 一天有多少节：
+          "442"  共 10 节（默认，内置结构）
+          "441"  共 9 节，没有第 10 节
+          "445"  共 13 节，第 11-13 节的时间
+                 按晚课节奏外推
+        之和不能超过 14：第 11 节起 45 分钟
+        一节、间歇 5 分钟、20:40 起始，到
+        第 14 节 23:55 下课，一天排不下更多。
+        课表网格按它分行；导出时只有非默认
+        结构才会写出这个字段。
 
         【term 段】
         name        学期名称，随便写
@@ -972,7 +1089,10 @@ object ScheduleFormat {
         name       课程名
         dayOfWeek  1–7（周一=1，周日=7）
                    也接受 "周一" 这种写法
-        nodes      [起始节次, 结束节次]，节次 1–10
+        nodes      [起始节次, 结束节次]，节次
+                   1–14（实际范围由 periods 声明
+                   的节数决定，默认 442 即 1–10；
+                   第 11-14 节按晚课节奏外推）
         weeks      周次，写法见下
         place      教室（可选）
         enabled    false 表示先停掉这门课（可选）
@@ -1068,12 +1188,18 @@ object ScheduleFormat {
      *
      * 解析失败返回空表，而不是抛异常 —— **存储损坏不能变成「程序打不开」**，
      * 否则用户连进去修的入口都没有。大不了重新改一遍模板，比起不了应用好得多。
+     *
+     * [nodeLimit] 是当前节数信息声明的一天节数 —— 存储里的占位格节次
+     * 按它校验（节数信息改小之后，超出结构的占位格会被当作存储损坏丢弃）。
      */
-    fun templatesFromJson(json: String): Map<DayType, List<Block>> {
+    fun templatesFromJson(
+        json: String,
+        nodeLimit: Int = nodeCount(DEFAULT_PERIODS)
+    ): Map<DayType, List<Block>> {
         if (json.isBlank()) return emptyMap()
         return runCatching {
             val obj = JSONObject(json)
-            parseTemplates(obj, mutableListOf())
+            parseTemplates(obj, mutableListOf(), nodeLimit)
         }.getOrDefault(emptyMap())
     }
 

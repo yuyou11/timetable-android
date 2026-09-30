@@ -465,4 +465,80 @@ class TimelineEngineTest {
         // 只有第 7-8 节退回「无课」
         assertTrue(TimelineEngine.currentAt(ms, 16 * 60)!!.title.contains("无课"))
     }
+
+    // ============================================================
+    //  七、13 节制学校的真实场景（用户报障回归）
+    //
+    //  用户的学校上午有 5 节（第 5 节 11:15 在午饭前），下午从第 6 节开始，
+    //  模板把「节点 N」对到「学校第 N 节」。转换课表时节次 1-10 必须
+    //  原样直写 —— 任何「语义平移」（比如把 6-7 节挪到节点 [5,6]）
+    //  在这样的模板下都会把下午的课整体错位一格，体育课横跨午休。
+    // ============================================================
+
+    /** 13 节制学校的 B 型日模板：节点 N = 学校第 N 节，占位格都是单节 */
+    private val school13: List<Block> = listOf(
+        Block(0, 8 * 60, "睡觉", "", Kind.SLEEP),
+        Block(8 * 60, 8 * 60 + 40, "第 1 节", "", Kind.CLASS, 1..1),
+        Block(8 * 60 + 40, 8 * 60 + 45, "课间", "", Kind.FREE),
+        Block(8 * 60 + 45, 9 * 60 + 25, "第 2 节", "", Kind.CLASS, 2..2),
+        Block(9 * 60 + 25, 9 * 60 + 45, "大课间", "", Kind.FREE),
+        Block(9 * 60 + 45, 10 * 60 + 25, "第 3 节", "", Kind.CLASS, 3..3),
+        Block(10 * 60 + 25, 10 * 60 + 30, "课间", "", Kind.FREE),
+        Block(10 * 60 + 30, 11 * 60 + 10, "第 4 节", "", Kind.CLASS, 4..4),
+        Block(11 * 60 + 10, 11 * 60 + 15, "课间", "", Kind.FREE),
+        Block(11 * 60 + 15, 11 * 60 + 55, "第 5 节", "", Kind.CLASS, 5..5),
+        Block(11 * 60 + 55, 13 * 60 + 30, "午餐 · 午休", "", Kind.MEAL),
+        Block(13 * 60 + 30, 14 * 60 + 10, "第 6 节", "", Kind.CLASS, 6..6),
+        Block(14 * 60 + 10, 14 * 60 + 15, "课间", "", Kind.FREE),
+        Block(14 * 60 + 15, 14 * 60 + 55, "第 7 节", "", Kind.CLASS, 7..7),
+        Block(14 * 60 + 55, 15 * 60 + 5, "课间", "", Kind.FREE),
+        Block(15 * 60 + 5, 15 * 60 + 45, "第 8 节", "", Kind.CLASS, 8..8),
+        Block(15 * 60 + 45, 16 * 60 + 35, "第 9-10 节", "", Kind.CLASS, 9..10),
+        Block(16 * 60 + 35, 17 * 60 + 15, "课后活动", "", Kind.FREE),
+        Block(17 * 60 + 15, 24 * 60, "晚上", "", Kind.FREE)
+    )
+
+    /** 身份映射的课程：周二第 5 周，节次按学校原编号直写 */
+    private val courses13 = listOf(
+        Course("g1", "C语言与人工智能基础", 2, 3, 4, setOf(5), "子良楼107"),
+        Course("g2", "足球1", 2, 6, 7, setOf(5), "东区田径场"),
+        Course("g3", "高等数学B1", 2, 8, 10, setOf(5), "兴礼楼(14号楼)423")
+    )
+
+    @Test
+    fun `单节占位格显示成第 N 节而不是第 N-N 节`() {
+        val set = TemplateSet(mapOf(DayType.B_NORMAL to school13))
+        val ms = TimelineEngine.moments(d(2026, 9, 29), 5, courses13, set)
+
+        // 08:45-09:25 的第 2 节占位格当天没课
+        assertEquals("第 2 节 · 无课", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
+    }
+
+    @Test
+    fun `身份映射的课程按学校节次时间渲染且不跨午休`() {
+        // 节次时刻表按 ALL_TYPES 顺序从模板占位格收集，A 型排最前 ——
+        // 所以要把 A 型也一起覆盖，自定义的节次时间才收集得到
+        val set = TemplateSet(mapOf(DayType.A to school13, DayType.B_NORMAL to school13))
+        val ms = TimelineEngine.moments(d(2026, 9, 29), 5, courses13, set)
+
+        // 足球是 6-7 节 → 13:30-14:55，绝不该横跨午休
+        val football = ms.first { it.isCourse && it.title == "足球1" }
+        assertEquals(13 * 60 + 30, football.start)
+        assertEquals(14 * 60 + 55, football.end)
+
+        // 高数 8-10 节连堂 → 从第 8 节占位格的 15:05 到第 10 节结束的 16:35
+        val math = ms.first { it.isCourse && it.title == "高等数学B1" }
+        assertEquals(15 * 60 + 5, math.start)
+        assertEquals(16 * 60 + 35, math.end)
+
+        // 课程名必须完整出现在时间轴上
+        val c = ms.first { it.isCourse && it.title.startsWith("C语言") }
+        assertEquals(9 * 60 + 45, c.start)
+        assertEquals(11 * 60 + 10, c.end)
+
+        // 时间轴依旧首尾相接
+        assertEquals(0, ms.first().start)
+        assertEquals(1440, ms.last().end)
+        for (i in 1 until ms.size) assertEquals(ms[i - 1].end, ms[i].start)
+    }
 }

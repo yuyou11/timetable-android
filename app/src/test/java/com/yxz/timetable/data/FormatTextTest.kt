@@ -259,6 +259,35 @@ class FormatTextTest {
         assertTrue("格式说明没写「没写 = 不要动」这条语义", help.contains("不要动"))
     }
 
+    // ============================================================
+    //  五、periods（v3 字段级追加）也要在每一处讲到
+    // ============================================================
+
+    @Test
+    fun `格式说明讲了 periods 节数信息`() {
+        val help = ScheduleFormat.formatHelp()
+        assertTrue("格式说明里没提 periods", help.contains("periods"))
+        assertTrue("格式说明里没解释默认结构 442", help.contains("442"))
+    }
+
+    @Test
+    fun `课表提示词讲了 periods 且示例里带上了当前值`() {
+        val p = AiPrompt.forCourses("测试学期", "2026-09-07", 19, periods = "441")
+        assertTrue("课表提示词里没解释节数信息", p.contains("节数信息"))
+        assertTrue(
+            "课表提示词的示例里没有带上当前 periods（AI 是照着示例抄的）",
+            p.contains("\"periods\": \"441\"")
+        )
+    }
+
+    @Test
+    fun `报错修复提示词把 periods 列进了检查项`() {
+        // 和 dayTypes 同理：检查清单里没有 periods，
+        // 一个写坏的 periods 会让 AI 反复改不出来
+        val p = AiPrompt.forFix("（报错）", "（JSON）")
+        assertTrue("修复提示词里没提 periods", p.contains("periods"))
+    }
+
     @Test
     fun `课表提示词给出的示例能被真正解析`() {
         // 光看字符串不够：提示词里嵌的那个 JSON 示例必须**真的合法**。

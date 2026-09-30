@@ -154,7 +154,9 @@ class Store(context: Context) {
         val custom = if (raw.isBlank()) {
             emptyMap()
         } else {
-            ScheduleFormat.templatesFromJson(raw)
+            // 占位格的节次按当前节数信息校验 —— 结构改小之后，
+            // 超出结构的存储内容会被当作坏数据丢弃（回落到内置模板）
+            ScheduleFormat.templatesFromJson(raw, nodeCount)
         }
         return TemplateSet(custom, dayTypePolicy())
     }
@@ -194,6 +196,38 @@ class Store(context: Context) {
     /** 用户是否显式设置过日型策略（没设过就是默认那套） */
     val hasCustomDayTypes: Boolean
         get() = !sp.getString(KEY_DAY_TYPES, "").isNullOrBlank()
+
+    // ---------------- 节数信息 ----------------
+
+    /**
+     * 节数信息：学校每天「上午、下午、晚上」各有几节，如 "442"。
+     *
+     * 课表网格按它分行（见 [Periods.rows]），导入文件里可以带上自己学校的
+     * 结构。App 里没有编辑入口，只能随导入改变 —— 和日型策略一个待遇：
+     * 它是「学校的事实」，不该被手滑改掉。
+     *
+     * 存储里的值万一坏了（存储是能手改的），一律退回默认 "442" ——
+     * 它只是显示结构，不能因为一个写错的字段让程序起不来。
+     */
+    var periods: String
+        get() {
+            val raw = sp.getString(KEY_PERIODS, null) ?: return ScheduleFormat.DEFAULT_PERIODS
+            return ScheduleFormat.normalizePeriods(raw) ?: ScheduleFormat.DEFAULT_PERIODS
+        }
+        set(v) {
+            val checked = ScheduleFormat.normalizePeriods(v)
+                ?: throw IllegalArgumentException(
+                    "节数信息不对：$v（应为 1-14 位数字，如 442）"
+                )
+            sp.edit().putString(KEY_PERIODS, checked).apply()
+        }
+
+    /**
+     * 一天的小节数 = 节数信息各位之和（"442" → 10，"445" → 13）。
+     * 课程、模板占位格的节次合法范围都由它决定。
+     */
+    val nodeCount: Int
+        get() = ScheduleFormat.nodeCount(periods)
 
     // ---------------- 提醒 ----------------
 
@@ -279,7 +313,8 @@ class Store(context: Context) {
             totalWeeks,
             courses(),
             if (includeScheduleConfig) templates().expanded() else emptyMap(),
-            if (includeScheduleConfig) dayTypePolicy() else null
+            if (includeScheduleConfig) dayTypePolicy() else null,
+            periods
         )
 
     /**
@@ -375,5 +410,8 @@ class Store(context: Context) {
 
         /** 日型策略在 SharedPreferences 里的键 */
         private const val KEY_DAY_TYPES = "day_types"
+
+        /** 节数信息在 SharedPreferences 里的键 */
+        private const val KEY_PERIODS = "periods"
     }
 }

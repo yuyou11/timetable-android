@@ -72,3 +72,6 @@ Thumbs.db
 captures/
 .externalNativeBuild/
 .cxx/
+
+# ZCode 会话工作目录（AI 助手的计划/任务文件，机器生成，不入库）
+.zcode/
