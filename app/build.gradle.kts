@@ -52,9 +52,19 @@ android {
 
     buildTypes {
         release {
-            // 关闭代码压缩：这个 App 很小，关掉能避免 R8 误删反射用到的类，
-            // 也让第一次编译少踩坑。等以后熟悉了可以打开。
-            isMinifyEnabled = false
+            // 开启 R8 代码压缩 + 资源收缩。
+            //
+            // 以前关着（怕 R8 误删反射用到的类），现在敢开了，判据很明确：
+            //   · 全项目没有一处反射（没有 Class.forName / newInstance）
+            //   · 没有序列化框架，JSON 走 Android 系统自带的 org.json（平台提供，不受影响）
+            //   · ViewBinding 是编译期生成的直接引用，不需要 keep 规则
+            //   · 四大组件由 AAPT/AGP 自动生成 keep 规则
+            // 收益：APK 明显变小、无需校验的代码变少（启动略微变快）。
+            //
+            // 每次改完发版前 assembleRelease 一次，装机冒烟（导入导出 / 通知 / 闹钟）
+            // 仍然不可省 —— R8 的风险从来不是「编译不过」，而是「运行时才崩」。
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
