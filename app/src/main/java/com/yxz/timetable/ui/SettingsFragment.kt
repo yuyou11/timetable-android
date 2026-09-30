@@ -1,14 +1,9 @@
 package com.yxz.timetable.ui
 
-import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -22,12 +17,8 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
 import com.yxz.timetable.data.ScheduleFormat
-import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
-import com.yxz.timetable.data.TemplateImpact
-import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.Templates
-import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentSettingsBinding
 import com.yxz.timetable.databinding.ItemCourseCheckBinding
@@ -35,17 +26,25 @@ import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
 import java.time.LocalDate
 
+/**
+ * 设置页。
+ *
+ * 本体只保留「界面绑定 + 状态刷新 + 课程/学期/提醒/主题的直接编辑」；
+ * 两块大而独立的流程拆了出去：
+ *
+ *   · [PermissionGuide] —— 权限与系统设置页的跳转引导
+ *   · [ImportExport]    —— 导入 / 导出 / 复制 JSON / 格式说明
+ */
 class SettingsFragment : Fragment() {
 
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var store: Store
+    private lateinit var guide: PermissionGuide
+    private lateinit var io: ImportExport
     private var suppressSwitch = false
     private var suppressLockscreen = false
-
-    /** 文件选择器是异步返回的，用它把「刚才选的是哪种导出」带过去 */
-    private var pendingExportIncludeTemplates = false
 
     /**
      * 文件选择器 / 保存器。
@@ -53,7 +52,7 @@ class SettingsFragment : Fragment() {
      * 这两个**必须在 Fragment 构造阶段就注册好**。registerForActivityResult
      * 要求注册发生在 Fragment 进入 STARTED 状态之前，写在 onViewCreated 里
      * 在某些机型上会抛 IllegalStateException。字段初始化器正好在构造时执行，
-     * 是最安全的写法。
+     * 是最安全的写法。所以它们留在这里，拿到 uri 之后的事归 [ImportExport] 管。
      *
      * 用 SAF（系统文件选择器）而不是直接读写存储路径，好处是**完全不需要
      * 任何存储权限**：用户选中哪个文件，系统就只把那个文件的访问权临时借给 App，
@@ -61,11 +60,11 @@ class SettingsFragment : Fragment() {
      */
     private val pickJsonFile = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let(::onFilePicked) }
+    ) { uri -> uri?.let { io.onFilePicked(it) } }
 
     private val saveJsonFile = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> uri?.let(::onFileChosen) }
+    ) { uri -> uri?.let { io.onFileChosen(it) } }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -76,6 +75,18 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         store = Store(requireContext())
+        guide = PermissionGuide(this)
+        io = ImportExport(
+            fragment = this,
+            store = store,
+            // 课表/模板真的变了之后要做的三件事（顺序与拆分前一致）
+            onChanged = {
+                renderCourses()
+                refresh()
+                rescheduleNotification()
+            },
+            launchSaver = { saveJsonFile.launch(it) }
+        )
 
         suppressSwitch = true
         binding.swEnabled.isChecked = store.enabled
@@ -95,10 +106,10 @@ class SettingsFragment : Fragment() {
             refresh()
         }
 
-        binding.btnNotif.setOnClickListener { openNotificationSettings() }
-        binding.btnExact.setOnClickListener { openExactAlarmSettings() }
-        binding.btnBattery.setOnClickListener { openBatterySettings() }
-        binding.btnAutostart.setOnClickListener { openAutostartSettings() }
+        binding.btnNotif.setOnClickListener { guide.openNotificationSettings() }
+        binding.btnExact.setOnClickListener { guide.openExactAlarmSettings() }
+        binding.btnBattery.setOnClickListener { guide.openBatterySettings() }
+        binding.btnAutostart.setOnClickListener { guide.openAutostartSettings() }
 
         binding.btnWeekMinus.setOnClickListener { changeWeekOverride(-1) }
         binding.btnWeekPlus.setOnClickListener { changeWeekOverride(+1) }
@@ -127,11 +138,11 @@ class SettingsFragment : Fragment() {
             // 认成 application/octet-stream，过滤太严会让用户根本选不中自己的文件
             pickJsonFile.launch(arrayOf("*/*"))
         }
-        binding.btnExport.setOnClickListener { chooseExportScope() }
-        binding.btnCopyJson.setOnClickListener { copyJsonToClipboard() }
-        binding.btnFormatHelp.setOnClickListener { showFormatHelp() }
+        binding.btnExport.setOnClickListener { io.chooseExportScope() }
+        binding.btnCopyJson.setOnClickListener { io.copyJsonToClipboard() }
+        binding.btnFormatHelp.setOnClickListener { io.showFormatHelp() }
 
-        binding.btnLockscreen.setOnClickListener { openLockScreenHelp() }
+        binding.btnLockscreen.setOnClickListener { guide.openLockScreenHelp() }
         binding.rowTheme.setOnClickListener { pickTheme() }
         binding.btnAiGuide.setOnClickListener {
             startActivity(Intent(requireContext(), GenerateGuideActivity::class.java))
@@ -172,7 +183,14 @@ class SettingsFragment : Fragment() {
     //  刷新
     // ==================================================================
 
+    /** 原来是一个 120 行的大方法，按「屏幕上的三个区块」拆开，各自独立刷新 */
     private fun refresh() {
+        refreshPermissions()
+        refreshTerm()
+        refreshData()
+    }
+
+    private fun refreshPermissions() {
         val ctx = requireContext()
 
         suppressSwitch = true
@@ -229,7 +247,9 @@ class SettingsFragment : Fragment() {
             !notifOk -> "需要通知权限才能生效"
             else -> "每节课开始前 $lead 分钟响铃提醒一次"
         }
+    }
 
+    private fun refreshTerm() {
         // ---- 学期 ----
         binding.tvTermName.text = store.termName
 
@@ -240,7 +260,7 @@ class SettingsFragment : Fragment() {
         val total = store.totalWeeks
         binding.tvTotalWeeks.text = "$total 周"
         // 让用户能一眼看出「今天落在第几周」，这比一个孤零零的数字有用
-        val today = java.time.LocalDate.now()
+        val today = LocalDate.now()
         val curWeek = store.weekOf(today)
         binding.tvTotalWeeksHint.text = when {
             curWeek < 1 -> "今天是第 $curWeek 周 —— 学期还没开始"
@@ -250,7 +270,9 @@ class SettingsFragment : Fragment() {
 
         binding.tvWeekOverride.text =
             if (store.weekOverride > 0) "第 ${store.weekOverride} 周" else "自动（第 $curWeek 周）"
+    }
 
+    private fun refreshData() {
         // ---- 数据 ----
         binding.tvDataSummary.text = "当前：共 ${store.totalWeeks} 周 · ${store.courses().size} 门课"
         // 版本号从 ScheduleFormat.VERSION 取，不写死在 strings.xml 里 ——
@@ -349,7 +371,7 @@ class SettingsFragment : Fragment() {
     // ==================================================================
 
     private fun changeWeekOverride(delta: Int, reset: Boolean = false) {
-        val current = store.weekOf(java.time.LocalDate.now())
+        val current = store.weekOf(LocalDate.now())
         if (reset) {
             store.weekOverride = 0
         } else {
@@ -357,352 +379,6 @@ class SettingsFragment : Fragment() {
             store.weekOverride = (base + delta).coerceIn(1, store.totalWeeks)
         }
         refresh()
-    }
-
-    // ==================================================================
-    //  跳转系统设置
-    // ==================================================================
-
-    private fun openNotificationSettings() {
-        val ctx = requireContext()
-        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-        launch(intent) { openAppDetails() }
-    }
-
-    private fun openExactAlarmSettings() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            toast("当前系统版本无需此权限")
-            return
-        }
-        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-            .setData(Uri.parse("package:${requireContext().packageName}"))
-        launch(intent) { openAppDetails() }
-    }
-
-    /**
-     * 申请加入电池优化白名单。
-     *
-     * 这个 Action 在部分厂商 ROM（尤其荣耀/华为/小米）上会被拦掉，
-     * 所以失败时退回到「电池优化列表」页面，让用户自己去列表里找 ——
-     * 少一步自动跳转，但至少不会点了没反应。
-     */
-    @SuppressLint("BatteryLife")
-    private fun openBatterySettings() {
-        val ctx = requireContext()
-        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            .setData(Uri.parse("package:${ctx.packageName}"))
-        launch(direct) {
-            launch(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) {
-                openAppDetails()
-            }
-        }
-    }
-
-    /**
-     * 自启动管理页。
-     *
-     * 这个页面**没有标准 Action**，是各家 ROM 自己加的，
-     * 所以只能硬编码一串厂商组件名挨个试。
-     * 这是 Android 生态里出了名的脏活，属于「必须接受的不优雅」。
-     * 全部失败就退回应用详情页 —— 至少用户能从这里找到「电池」「权限」入口。
-     */
-    private fun openAutostartSettings() {
-        val candidates = listOf(
-            // 荣耀 / 华为
-            ComponentName(
-                "com.huawei.systemmanager",
-                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
-            ),
-            ComponentName(
-                "com.huawei.systemmanager",
-                "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"
-            ),
-            // 荣耀独立后的包名
-            ComponentName(
-                "com.hihonor.systemmanager",
-                "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
-            ),
-            // 小米 / OPPO / vivo
-            ComponentName(
-                "com.miui.securitycenter",
-                "com.miui.permcenter.autostart.AutoStartManagementActivity"
-            ),
-            ComponentName(
-                "com.coloros.safecenter",
-                "com.coloros.safecenter.permission.startup.StartupAppListActivity"
-            ),
-            ComponentName(
-                "com.vivo.permissionmanager",
-                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
-            )
-        )
-
-        var launched = false
-        for (c in candidates) {
-            val ok = runCatching {
-                startActivity(Intent().setComponent(c).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.isSuccess
-            if (ok) { launched = true; break }
-        }
-        if (!launched) {
-            toast("未找到自启动管理页，已打开应用详情。请手动进入「应用启动管理」")
-            openAppDetails()
-        }
-    }
-
-    private fun openAppDetails() {
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            .setData(Uri.parse("package:${requireContext().packageName}"))
-        launch(intent) { toast("无法打开系统设置") }
-    }
-
-    private fun launch(intent: Intent, onFail: () -> Unit) {
-        runCatching {
-            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { onFail() }
-    }
-
-    private fun toast(msg: String) =
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-
-    // ==================================================================
-    //  导入
-    // ==================================================================
-
-    private fun onFilePicked(uri: Uri) {
-        // 读字节 -> 解码，全交给 TextDecode。
-        //
-        // ⚠️ 这里**不能**再写成 `runCatching { ... }.getOrNull()`。那样写有两个问题：
-        //
-        //   1. 失败的**真实原因被丢掉**了 —— 不管是没权限、网盘文件没下完，
-        //      还是 provider 出错，用户看到的都是同一句「读取失败，或者文件是空的」，
-        //      完全没法排查。
-        //   2. 解码规则（BOM / GBK / 二进制）散在 UI 层就没法单测，
-        //      而这次的 bug 恰恰就藏在这条规则里。
-        //
-        // 所以：**异常还是要捕获，但要把原因带出来；判断逻辑挪进纯函数。**
-        val decoded = try {
-            val stream = requireContext().contentResolver.openInputStream(uri)
-            if (stream == null) {
-                TextDecode.Decoded.Failed("系统没能打开这个文件（openInputStream 返回了 null）。")
-            } else {
-                stream.use { TextDecode.readStream(it) }
-            }
-        } catch (e: Exception) {
-            TextDecode.Decoded.Failed(
-                "读取文件时出错：${e.message ?: e.javaClass.simpleName}\n\n" +
-                        "如果这个文件在网盘、微信或 SD 卡里，先把它复制到手机本机再试一次。"
-            )
-        }
-
-        when (decoded) {
-            is TextDecode.Decoded.Failed -> showAlert("无法读取这个文件", decoded.message)
-            is TextDecode.Decoded.Ok -> applyImport(decoded.text)
-        }
-    }
-
-    /** 错误弹窗统一从这里出，免得每处各写一遍 AlertDialog.Builder */
-    private fun showAlert(title: String, message: String) {
-        AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("知道了", null)
-            .show()
-    }
-
-    private fun applyImport(text: String) {
-        when (val result = ScheduleFormat.parse(text, store.totalWeeks)) {
-            // 解析失败时把错误信息直接摊给用户，不做二次包装 ——
-            // 错误信息里已经写清楚了「哪一门、哪个字段、应该改成什么」
-            is ScheduleFormat.Result.Failed -> showAlert("导入失败", result.message)
-
-            is ScheduleFormat.Result.Ok -> confirmImport(result.parsed)
-        }
-    }
-
-    // ==================================================================
-    //  导入预览
-    // ==================================================================
-
-    /**
-     * 导入前先给一份「预览 + 确认」。
-     *
-     * 这一步不能省：导入是要覆盖现有数据的，如果用户选错了文件
-     * （比如选成了别的 App 的配置文件），没有预览就会静默毁掉他的课表。
-     * **任何会覆盖用户数据的操作，都要先让他看见将要发生什么。**
-     */
-    private fun confirmImport(parsed: ScheduleFormat.Parsed) {
-        val msg = buildString {
-            val term = parsed.term
-            if (term != null) {
-                append("学期：").append(term.name).append('\n')
-                append("起始：").append(term.startDate).append("（周一）\n")
-                append("总周数：").append(term.totalWeeks).append("\n\n")
-            } else {
-                append("学期：文件里没写，保持不变\n\n")
-            }
-
-            val courses = parsed.courses
-            if (courses == null) {
-                append("课程：文件里没写，**保持不变**\n")
-            } else {
-                append("课程：").append(courses.size).append(" 门\n")
-
-                // 列出前几门的**课名**，而不是只报个数字。
-                //
-                // 这不是锦上添花，是给「编码读错」上的第二道保险：
-                // 只显示「24 门」的话，用户点确认时完全看不出课名已经变成了
-                //「˼������뷨��」—— 数量是对的，一切看起来都正常。
-                //
-                // **预览要给「能暴露问题」的信息，而不是给「让人安心」的信息。**
-                if (courses.isNotEmpty()) {
-                    append("　")
-                    append(courses.take(3).joinToString("、") { it.name })
-                    if (courses.size > 3) append(" 等")
-                    append('\n')
-                }
-            }
-
-            val tmpl = parsed.templates
-            if (tmpl == null) {
-                append("作息模板：文件里没写，保持不变")
-            } else {
-                append("作息模板：将替换 ").append(tmpl.size).append(" 种日型\n")
-                tmpl.keys.forEach { type ->
-                    val wake = TimelineEngine.wakeMinute(tmpl.getValue(type))
-                    append("· ").append(type.name)
-                    if (wake != null) append("　").append(Slots.fmt(wake)).append(" 起床")
-                    append('\n')
-                }
-            }
-
-            // 日型策略要**在模板之后**单独说一句，因为它决定的是
-            // 「上面那些模板里，哪几种真的会被用到」——
-            // 不写出来的话，用户会以为导入了几套模板就有几套在生效。
-            val dt = parsed.dayTypes
-            if (dt != null) {
-                append('\n')
-                append("启用的日型：")
-                append(
-                    Templates.ALL_TYPES.filter { it in dt.enabled }
-                        .joinToString("、") { it.label }
-                )
-                append('\n')
-                append("未启用时回落到：")
-                append("「").append(dt.fallback.label).append("」那套模板")
-                append('\n')
-                val dropped = Templates.ALL_TYPES - dt.enabled
-                if (dropped.isNotEmpty()) {
-                    append("（不再使用：")
-                    append(dropped.joinToString("、") { it.label })
-                    append("）")
-                }
-            }
-
-            // 节数信息决定了课表页怎么分行，带着它导入等于换一套网格结构 ——
-            // 预览里不说，用户只会在课表页莫名看到行数变了。
-            parsed.periods?.let {
-                append("\n节次结构：").append(it).append("（课表按它分行）\n")
-            }
-
-            if (parsed.warnings.isNotEmpty()) {
-                append("\n⚠️ ").append(parsed.warnings.size).append(" 条提醒：\n")
-                parsed.warnings.take(5).forEach { append("· ").append(it).append('\n') }
-                if (parsed.warnings.size > 5) append("（还有更多，已省略）\n")
-            }
-
-            // 节次时间的不一致要按**导入之后**的状态算。
-            //
-            // ⚠️ 不能用 store.templates() —— 预览是在导入生效之前弹出来的，
-            // 那时候 store 里还是旧数据。这里手动拼出「导完会是什么样」，
-            // 和 doImport 里那两行赋值保持同一个口径。
-            //
-            // 为什么要提醒：课表页的节次列只有一列时间，
-            // 如果 A 型日写 08:30、B 型日写 09:00，那一列没法同时说对。
-            val effective = TemplateSet(
-                custom = parsed.templates ?: store.templates().custom,
-                policy = parsed.dayTypes ?: store.dayTypePolicy()
-            )
-            val conflicts = effective.slotConflicts()
-            if (conflicts.isNotEmpty()) {
-                append("\n⚠️ 各日型的节次时间不一致，课表页只能显示其中的一种：\n")
-                conflicts.take(3).forEach { append("· ").append(it).append('\n') }
-                if (conflicts.size > 3) append("（还有 ${conflicts.size - 3} 处）\n")
-                append("建议改成一致 —— 节次时间是学校的作息，本来就不该各日型不同。\n")
-            }
-        }
-
-        // 文件里没带课程时，「替换 / 合并」这两个选项没有意义 ——
-        // 给一个动作单一的按钮，避免用户以为自己在做选择
-        val builder = AlertDialog.Builder(requireContext())
-            .setTitle("确认导入")
-            .setMessage(msg)
-
-        if (parsed.courses == null) {
-            builder.setPositiveButton("应用") { _, _ -> doImport(parsed, replace = false) }
-        } else {
-            builder.setPositiveButton("替换现有课表") { _, _ -> doImport(parsed, replace = true) }
-                .setNeutralButton("合并") { _, _ -> doImport(parsed, replace = false) }
-        }
-        builder.setNegativeButton("取消", null).show()
-    }
-
-    private fun doImport(parsed: ScheduleFormat.Parsed, replace: Boolean) {
-        // 四段各自独立：**「没写」永远表示「不要动」，而不是「清空」**。
-        // 这条规则贯穿整个导入流程，是防止一次误操作毁掉用户数据的关键。
-        parsed.term?.let { store.applyTerm(it) }
-        parsed.templates?.let { store.saveTemplates(it) }
-        parsed.dayTypes?.let { store.saveDayTypePolicy(it) }
-        parsed.periods?.let { store.periods = it }
-
-        val parts = mutableListOf<String>()
-
-        val incoming = parsed.courses
-        if (incoming == null) {
-            parts += "课表保持不变"
-        } else if (replace) {
-            store.replaceCourses(incoming)
-            parts += "已导入 ${incoming.size} 门课（原课表已替换）"
-        } else {
-            val added = store.mergeCourses(incoming)
-            parts += "合并完成：新增 $added 门，跳过 ${incoming.size - added} 门重复"
-        }
-
-        parsed.templates?.let { parts += "作息模板 ${it.size} 种" }
-
-        // 节次结构只在与默认不同时说 —— 默认结构说「已改为 442」是噪音
-        val periods = parsed.periods
-        if (periods != null && periods != ScheduleFormat.DEFAULT_PERIODS) {
-            parts += "节次结构已改为 $periods"
-        }
-
-        renderCourses()
-        refresh()
-        rescheduleNotification()
-
-        // 作息模板单独给一个说明框，不跟课表一起塞进 toast。
-        //
-        // 原因是这两件事的「见效时机」完全不同：
-        //   换课表   → 立刻就能在主页和周课表上看到，不需要解释
-        //   换作息   → **可能今天根本看不到**（见 TemplateImpact 的注释）
-        //
-        // 而 toast 一闪而过，装不下「为什么今天没变、哪天才会变」这种话。
-        // 用户报的「显示成功但主页没反应」正是缺了这一句。
-        val tmpl = parsed.templates
-        if (tmpl == null) {
-            toast(parts.joinToString("，"))
-        } else {
-            val today = LocalDate.now()
-            val impact = TemplateImpact.compute(
-                changed = tmpl.keys,
-                today = today,
-                termStart = store.termStart,
-                courses = store.courses(),
-                policy = store.dayTypePolicy()
-            )
-            showAlert("导入完成", parts.joinToString("，") + "\n\n" + impact.summary(today))
-        }
     }
 
     // ==================================================================
@@ -729,7 +405,7 @@ class SettingsFragment : Fragment() {
         val dialog = android.app.DatePickerDialog(
             requireContext(),
             { _, year, month, day ->
-                val picked = java.time.LocalDate.of(year, month + 1, day)
+                val picked = LocalDate.of(year, month + 1, day)
                 val monday = TimelineEngine.mondayOf(picked)
 
                 store.termStartIso = monday.toString()
@@ -885,88 +561,6 @@ class SettingsFragment : Fragment() {
     }
 
     // ==================================================================
-    //  锁屏显示
-    // ==================================================================
-
-    /**
-     * 锁屏通知**没有标准开关**：Android 的每个应用都有一组「通知类别」设置，
-     * 其中「锁屏通知」在多数 ROM 上是独立的一项，但位置各不相同。
-     *
-     * 这里能做的：跳到本应用的通知设置页（多数 ROM 的锁屏开关就在那一页），
-     * 并把要找什么说清楚。查不到、点不准是常态，所以**说清楚比跳得准更重要**。
-     */
-    /**
-     * 锁屏显示的引导。
-     *
-     * ## 这里曾经指错路（用户实际反馈）
-     *
-     * 原文写的是「设置 → 通知和状态栏 → 时间规划表 → 打开『锁屏通知』」。
-     * 但用户照着走，在应用级页面上**根本找不到这一项** ——
-     * 那一页只有「允许通知 / 置顶通知 / 类别」。
-     *
-     * 原因是 Android 的通知设置分**两层**，而「锁屏通知」在**第二层**：
-     *
-     *   应用级页面（时间规划表）
-     *     └─ 类别
-     *          └─ 此刻该做什么   ← **锁屏通知 / 横幅通知在这里面**
-     *
-     * 对比一下就清楚了：淘宝的通知设置页顶部写着「系统默认通道」，
-     * 那是**渠道详情页**；而应用级页面顶部写的是应用版本号。
-     * 两者长得像，但不是同一层。
-     *
-     * 所以这里做了两件事：
-     *   ① 把话说清楚：告诉用户要点进「此刻该做什么」
-     *   ② 给一个**直达渠道页**的按钮（见 [openChannelSettings]），
-     *      省掉「自己找那一行」这一步
-     *
-     * 教训：**「告诉用户去哪找」不如「直接把他送到那」**。
-     * 尤其是路径描述 —— 各家 ROM 的层级和叫法都不一样，
-     * 写死的路径迟早会和用户手机上看到的对不上。
-     */
-    private fun openLockScreenHelp() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("让通知出现在锁屏上")
-            .setMessage(
-                "锁屏显示受两层控制：\n\n" +
-                        "【第一层 · App】\n" +
-                        "就是上面那个开关，控制 App 愿不愿意把内容送到锁屏。\n\n" +
-                        "【第二层 · 系统】← 多数人卡在这里\n" +
-                        "国产 ROM 默认不允许第三方应用在锁屏显示通知，要手动开。\n" +
-                        "但**「锁屏通知」不在应用页面上**，它在渠道里面：\n\n" +
-                        "　设置 → 通知管理 → 时间规划表 →\n" +
-                        "　　点「此刻该做什么」这一行 → 里面才有\n" +
-                        "　　「锁屏通知 / 横幅通知」的勾选\n\n" +
-                        "对比：淘宝那一页顶部写着「系统默认通道」——\n" +
-                        "那是渠道页；而写着应用版本号的那一页是应用页，两者不是同一层。\n\n" +
-                        "点下面第一个按钮可以直接跳到「此刻该做什么」这个渠道。\n\n" +
-                        "⚠️ 系统没有提供查询这个开关的接口，App 没法自动检测它开没开 —— " +
-                        "只能靠你自己确认一次。"
-            )
-            .setPositiveButton("打开渠道设置") { _, _ -> openChannelSettings(Notifier.CHANNEL_ID) }
-            .setNeutralButton("打开通知设置") { _, _ -> openNotificationSettings() }
-            .setNegativeButton("知道了", null)
-            .show()
-    }
-
-    /**
-     * 直接跳到**某个通知渠道**的设置页。
-     *
-     * 和 [openNotificationSettings] 的区别很关键：
-     *   ACTION_APP_NOTIFICATION_SETTINGS     → 应用级页面（只有「允许通知」等）
-     *   ACTION_CHANNEL_NOTIFICATION_SETTINGS → **渠道页**（锁屏通知在这里）
-     *
-     * 需要 API 26，正好是本项目的最低版本，所以不用做版本判断。
-     * 部分 ROM 可能拦掉这个 Action，所以失败时退回到应用级页面 ——
-     * 少一步自动跳转，但不会点了没反应。
-     */
-    private fun openChannelSettings(channelId: String) {
-        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
-            .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
-        launch(intent) { openNotificationSettings() }
-    }
-
-    // ==================================================================
     //  外观 / 主题
     // ==================================================================
 
@@ -1007,88 +601,6 @@ class SettingsFragment : Fragment() {
             .show()
     }
 
-    // ==================================================================
-    //  导出
-    // ==================================================================
-
-    /**
-     * 导出前问一句：只导课表，还是连作息配置一起导。
-     *
-     * 为什么要问？因为两者用途不一样：
-     *   · **只导课表** —— 文件几十行，拿来手改课程、发给同学最合适
-     *   · **带作息**   —— 文件一百多行，是完整备份；也是你**想改作息时唯一
-     *                    能拿到的底稿**（不用从零手写六套模板）
-     * 默认总是输出某一种都不合适，所以让用户自己选。
-     */
-    private fun chooseExportScope() {
-        AlertDialog.Builder(requireContext())
-            .setTitle(getString(R.string.export_choice_title))
-            .setItems(
-                arrayOf(
-                    "仅课表（文件短，适合手改和分享）",
-                    // 措辞里带上「日型」：从 v3 起这一档导出的不只是模板，
-                    // 还有「启用哪几种日型」。只说模板的话，
-                    // 用户会以为日型设置没被备份进去
-                    "课表 + 作息（模板与启用的日型，完整备份）"
-                )
-            ) { _, which ->
-                pendingExportIncludeTemplates = (which == 1)
-                saveJsonFile.launch(
-                    if (which == 1) "完整备份-${store.termName}.json" else "课表-${store.termName}.json"
-                )
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    private fun onFileChosen(uri: Uri) {
-        val includeConfig = pendingExportIncludeTemplates
-        val json = store.exportJson(includeConfig)
-
-        val ok = runCatching {
-            requireContext().contentResolver.openOutputStream(uri)?.use {
-                it.write(json.toByteArray(Charsets.UTF_8))
-            } ?: error("无法打开输出流")
-        }.isSuccess
-
-        toast(
-            if (ok) {
-                "已导出 ${store.courses().size} 门课" + if (includeConfig) " + 作息配置" else ""
-            } else "导出失败"
-        )
-    }
-
-    private fun copyJsonToClipboard() {
-        val cm = requireContext()
-            .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        // 模板**或**日型被改过就一起带上，否则只复课表。
-        //
-        // 这里原先只判断 hasCustomTemplates，会漏掉一类配置：
-        // 用户导入了一份只改 dayTypes 的文件 → hasCustomTemplates 是 false
-        // → 复制出来的 JSON 不含 dayTypes → 他的日型设置静默丢失。
-        val json = store.exportJson(store.hasCustomScheduleConfig)
-        cm.setPrimaryClip(ClipData.newPlainText("课表 JSON", json))
-        toast("已复制 ${store.courses().size} 门课的 JSON")
-    }
-
-    // ==================================================================
-    //  格式说明
-    // ==================================================================
-
-    private fun showFormatHelp() {
-        val ctx = requireContext()
-        AlertDialog.Builder(ctx)
-            .setTitle("数据格式 timetable v${ScheduleFormat.VERSION}")
-            .setMessage(FORMAT_HELP)
-            .setPositiveButton("复制示例 JSON") { _, _ ->
-                val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("课表示例", ScheduleFormat.exampleJson()))
-                toast("示例已复制到剪贴板")
-            }
-            .setNegativeButton("关闭", null)
-            .show()
-    }
-
     private fun editTermName() {
         val input = EditText(requireContext()).apply {
             setText(store.termName)
@@ -1108,18 +620,6 @@ class SettingsFragment : Fragment() {
             .show()
     }
 
-    private companion object {
-        /**
-         * 格式说明挪到了 `ScheduleFormat`。
-         *
-         * 原因是**它得能被测试**。放在 Fragment 的伴生对象里，
-         * JVM 单元测试加载不了（Fragment 依赖 Android 框架），
-         * 于是这份「用户看到的格式说明书」就成了唯一没人管的地方 ——
-         * 而它恰恰最容易和真实格式脱节（实际发生过：它一直停在 v1）。
-         *
-         * 现在它在 `ScheduleFormat` 里，紧挨着解析和生成代码，
-         * 并且有测试断言里面的版本号和 dayTypes 说明和代码一致。
-         */
-        val FORMAT_HELP: String get() = ScheduleFormat.formatHelp()
-    }
+    private fun toast(msg: String) =
+        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
 }
