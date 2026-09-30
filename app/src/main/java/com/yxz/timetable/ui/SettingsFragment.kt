@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
 import com.yxz.timetable.data.ScheduleFormat
+import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.Templates
 import com.yxz.timetable.data.TimelineEngine

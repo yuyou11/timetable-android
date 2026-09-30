@@ -23,10 +23,8 @@ fun kindColor(kind: Kind): Int = when (kind) {
     Kind.TRANSIT -> Color.parseColor("#BDBDBD")
 }
 
-fun weekdayCn(dow: Int): String = when (dow) {
-    1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"
-    5 -> "周五"; 6 -> "周六"; else -> "周日"
-}
+// 注意：中文星期名（周一…周日）的唯一实现在 ScheduleFormat.weekdayCn ——
+// 解析报错信息也用它，两处各写一份迟早会说两样话。UI 里直接 import 使用。
 
 fun Context.dp(value: Int): Int =
     (value * resources.displayMetrics.density).toInt()

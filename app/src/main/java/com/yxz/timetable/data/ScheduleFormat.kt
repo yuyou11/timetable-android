@@ -1035,132 +1035,13 @@ object ScheduleFormat {
      *   ① 紧挨着解析和生成代码，改格式时顺手就能看见
      *   ② **可以被单元测试断言**（见 FormatTextTest）
      *
-     * 版本号用 `$VERSION` 插值，不写死数字。
-     *
-     * 通用教训：**凡是「用户会照着做」的文本，都值得放在能被测试的地方。**
-     * 它离代码越远，脱节得越久才被发现。
+     * 文本正文放在 [FormatDocs]（同一个 data 包，纯文本单独成文件，
+     * 免得这一千多行里代码被文本淹没）；这里保留入口，测试和调用点不用动。
      */
-    fun formatHelp(): String = """
-        【顶层】
-        format    固定为 "$FORMAT_ID"
-        version   格式版本，当前是 $VERSION
-        term      学期设置（可选）
-        periods   节数信息（可选，如 "442"）
-        dayTypes  启用哪些日型（可选）
-        courses   课程数组（可选）
-        templates 作息模板（可选）
+    fun formatHelp(): String = FormatDocs.help()
 
-        上面几段都是「没写 = 不要动」，不是「清空」。
-
-        【periods 节数信息】
-        一串数字（1-14 位，每位 1-9），从左到
-        右是当天从早到晚各时段的节数；各位
-        之和 = 一天有多少节：
-          "442"  共 10 节（默认，内置结构）
-          "441"  共 9 节，没有第 10 节
-          "445"  共 13 节，第 11-13 节的时间
-                 按晚课节奏外推
-        之和不能超过 14：第 11 节起 45 分钟
-        一节、间歇 5 分钟、20:40 起始，到
-        第 14 节 23:55 下课，一天排不下更多。
-        课表网格按它分行；导出时只有非默认
-        结构才会写出这个字段。
-
-        【term 段】
-        name        学期名称，随便写
-        startDate   教学第 1 周的周一，YYYY-MM-DD
-        totalWeeks  总周数，默认 19
-
-        【dayTypes 段】
-        决定哪几种日型真的会被用到。不写就用默认那套。
-
-        enabled   启用的日型，至少一个，如
-                  ["A", "B_NORMAL", "SATURDAY", "SUNDAY"]
-        fallback  算出来的日型没启用时，改用哪一套
-
-        全天没课的工作日按休息日过（无课、无晚自习），
-        不参与 enabled / fallback 的映射，文件里也写不了它。
-
-        六种日型：A（有早八）、B_TRAIN_A（周二力量A）、
-        B_TRAIN_B（周四力量B）、B_NORMAL（没早八）、
-        SATURDAY、SUNDAY
-
-        【每门课】
-        name       课程名
-        dayOfWeek  1–7（周一=1，周日=7）
-                   也接受 "周一" 这种写法
-        nodes      [起始节次, 结束节次]，节次
-                   1–14（实际范围由 periods 声明
-                   的节数决定，默认 442 即 1–10；
-                   第 11-14 节按晚课节奏外推）
-        weeks      周次，写法见下
-        place      教室（可选）
-        enabled    false 表示先停掉这门课（可选）
-
-        【weeks 周次写法】
-        "3"          第 3 周
-        "2-4"        第 2 到 4 周
-        "3-17/2"     单周：3、5、7…17
-        "2-16/2"     双周：2、4、6…16
-        "2-4,6-17"   分段
-        "*"          全学期
-
-        中文逗号「，」和波浪号「～」也会被识别。
-        weeks 也可以写成数组，如 [2,3,4,6,7]。
-
-        【设计约定】
-        · 周次不能超过 totalWeeks
-        · startDate 必须是周一
-        · 未知字段会被忽略，所以将来标准加字段
-          不会让老版本 App 出错
-        · 同一时段可以有多门课，只要周次不重叠
-          （比如单周一门、双周另一门）
-    """.trimIndent()
-
-    /**
-     * 一份最小可用的示例，用于 App 内的「格式说明」。
-     *
-     * 版本号用 [VERSION] 而不是写死数字 —— 否则格式升级后这里会被忘掉，
-     * 用户照着复制出去的示例反而是一份旧格式的文件。
-     */
-    fun exampleJson(): String = """
-{
-  "format": "timetable",
-  "version": $VERSION,
-  "term": {
-    "name": "示例大学 2026 级 · 大一上",
-    "startDate": "2026-09-07",
-    "totalWeeks": 19
-  },
-  "dayTypes": {
-    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
-    "fallback": "B_NORMAL"
-  },
-  "courses": [
-    {
-      "name": "大学英语",
-      "dayOfWeek": 1,
-      "nodes": [1, 2],
-      "weeks": "2-4,6-17",
-      "place": "教一-101"
-    },
-    {
-      "name": "数据结构",
-      "dayOfWeek": 4,
-      "nodes": [7, 8],
-      "weeks": "3-17/2",
-      "place": "实验楼-201"
-    },
-    {
-      "name": "程序设计基础",
-      "dayOfWeek": 4,
-      "nodes": [7, 8],
-      "weeks": "2",
-      "place": "实验楼-201"
-    }
-  ]
-}
-""".trim()
+    /** 一份最小可用的示例，用于 App 内的「格式说明」。正文在 [FormatDocs]。 */
+    fun exampleJson(): String = FormatDocs.exampleJson()
 
     // ============================================================
     //  四、给本地存储用的模板序列化

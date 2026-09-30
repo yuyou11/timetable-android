@@ -14,6 +14,7 @@ import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
 import com.yxz.timetable.data.Kind
 import com.yxz.timetable.data.Moment
+import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TimelineEngine

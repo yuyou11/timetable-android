@@ -17,6 +17,7 @@ import com.yxz.timetable.R
 import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.DayType
 import com.yxz.timetable.data.Periods
+import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
