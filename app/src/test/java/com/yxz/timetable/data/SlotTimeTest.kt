@@ -54,8 +54,11 @@ class SlotTimeTest {
         Block(12 * 60 + 30, 1440, "下午其余", kind = Kind.FREE)
     )
 
+    /** 恒等配置（星期映射 = 旧自然槽位），让判定与内置模板一一对应 */
+    private val identity = configFromPolicy(DayTypePolicy.ALL)
+
     private fun set(vararg custom: Pair<DayType, List<Block>>) =
-        TemplateSet(custom.toMap(), DayTypePolicy.ALL)
+        TemplateSet(custom.toMap(), identity)
 
     // ============================================================
     //  一、默认行为不能变（内置模板和 Slots 是一致的）
@@ -158,7 +161,7 @@ class SlotTimeTest {
         val s = TemplateSet(mapOf(DayType.B_NORMAL to listOf(
             Block(0, 7 * 60 + 25, "睡觉", kind = Kind.SLEEP),
             Block(7 * 60 + 25, 1440, "白天", kind = Kind.FREE)
-        )), DayTypePolicy.ALL)
+        )), identity)
 
         assertEquals(Slots.start(1), s.slotStart(1))
         assertEquals(Slots.end(2), s.slotEnd(2))
@@ -166,7 +169,7 @@ class SlotTimeTest {
 
     @Test
     fun `空模板也不会崩`() {
-        val s = TemplateSet(emptyMap(), DayTypePolicy.ALL)
+        val s = TemplateSet(emptyMap(), identity)
         assertEquals(Slots.start(3), s.slotStart(3))
         assertEquals(Slots.end(4), s.slotEnd(4))
     }
@@ -194,7 +197,7 @@ class SlotTimeTest {
                     Block(10 * 60, 1440, "其余", kind = Kind.FREE)
                 )
             ),
-            DayTypePolicy.ALL
+            identity
         )
         val conflicts = s.slotConflicts()
         assertTrue("应当报出第 1-2 节的时间不一致，实际：$conflicts", conflicts.isNotEmpty())
@@ -210,7 +213,7 @@ class SlotTimeTest {
         assertTrue(s.slotConflicts().isNotEmpty())
 
         // 反过来，一份和内置一致的 A 型模板不该报
-        val same = TemplateSet(mapOf(DayType.A to Templates.A), DayTypePolicy.ALL)
+        val same = TemplateSet(mapOf(DayType.A to Templates.A), identity)
         assertEquals(emptyList<String>(), same.slotConflicts())
     }
 }

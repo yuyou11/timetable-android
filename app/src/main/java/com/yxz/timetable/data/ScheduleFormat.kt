@@ -8,10 +8,13 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 /**
- * 《时间规划表》数据格式标准 v1 —— 解析与生成
+ * 《时间规划表》数据格式标准（当前 v5）—— 解析与生成
  *
  * 这个文件就是「标准」的可执行版本：文档写在 docs/数据格式标准.md，
  * 但真正说了算的是这里的代码。文档和代码不一致时，以代码为准。
+ *
+ * 电脑版仓库的 app/format_spec.py 是同一标准的另一实现，
+ * 两边对同一份数据的解析、导出必须完全一致（导出甚至要逐字节相同）。
  *
  * ## 设计这条标准的四条原则
  *
@@ -41,25 +44,30 @@ object ScheduleFormat {
      * v1 → v2 新增了可选的 `templates` 段。
      * v2 → v3 新增了可选的 `dayTypes` 段。
      * v3 又以**字段级追加**的方式新增了可选的顶层 `periods` 字段（节数信息）——
-     * 版本号不动，因为它与 dayTypes 一样「只增不改、缺省回默认」，
-     * 老程序读到 v3 文件本来就拒绝，新程序读老文件照常按 "442" 处理。
+     * 版本号不动，因为它与 dayTypes 一样「只增不改、缺省回默认」。
+     * v3 → v4 日型改用 **id "1"-"7"** 标识（templates 的键、dayTypes 的值都换成
+     * id，v3 旧键名照常接受）；新增可选 `dayTypeNames` 段（自定义日型名）；
+     * templates 新增键 "7"（休息日模板可自定义、可随文件携带）。
+     * v4 → v5 新增可选 `dayTypeConfig` 段：日型可创建/删除（types）、
+     * 星期几映射到哪种日型（weekdayMap）、早八优先层（earlyType）。
+     * 旧 dayTypes 段（启用/回落）**停用**，读到时**确定性迁移**成
+     * dayTypeConfig（见 [configFromPolicy]），行为与旧程序逐日一致。
      *
-     * 每一次都是**只增不改**，没有动过任何已有字段，所以老文件照常能用 ——
-     * 这就是「只增不改」原则的价值：升级格式不需要任何数据迁移。
+     * 每一次都是**只增不改**，没有动过任何已有字段的语义，所以老文件照常能用。
      *
      * ## 既然只是「新增一段」，为什么还要升版本号
      *
      * 因为**老版本 App 会误解新文件，而且不会报错**。
      *
-     * v2 的 App 不认识 `dayTypes`，它会照旧用六种日型跑 ——
-     * 用户明明写了「只启用 A 和周末」，装回老版本却会看到训练日又冒出来。
+     * v3 的 App 不认识 `dayTypeConfig`，它会照旧按启用集合跑 ——
+     * 用户明明写了「周二改用训练日」，周二却纹丝不动，而且完全不知道为什么。
      * 这种「悄悄用错」正是版本号要防的东西。
      *
-     * 升到 v3 之后，老 App 会明确拒绝：
-     * 「文件是 v3 格式，这个 App 只认到 v2，请更新 App 后再导入」——
+     * 升到 v5 之后，老 App 会明确拒绝：
+     * 「文件是 v5 格式，这个 App 只认到 v3，请更新 App 后再导入」——
      * **拒绝比误解好**，这一条在任何数据交换的场合都成立。
      */
-    const val VERSION = 3
+    const val VERSION = 5
 
     /**
      * 节次上限 = 一天能排下的小节数（14），与 [Slots] 的外推时刻表一致。
@@ -122,6 +130,17 @@ object ScheduleFormat {
          * 每导入一份不带 periods 的课表，自己学校的节次结构都会被打回 "442"。
          */
         val periods: String?,
+        /**
+         * 自定义日型名（v4 新增，稀疏表：只有改过名的 id 才有键）。
+         * null 表示「文件里没写，不要动现有名字」。
+         */
+        val dayTypeNames: Map<DayType, String>? = null,
+        /**
+         * 日型配置（v5 新增：现存日型 / 星期映射 / 早八优先层）。
+         * null = 文件里没写。v3/v4 文件带的旧 dayTypes 段会**确定性迁移**
+         * 成这个字段（见 [configFromPolicy]），所以导入方只需要认它。
+         */
+        val dayTypeConfig: DayTypeConfig? = null,
         val warnings: List<String>
     )
 
@@ -446,7 +465,9 @@ object ScheduleFormat {
             }
         }
 
-        // ---- dayTypes 段（可选，v2 新增）----
+        // ---- dayTypes 段（可选，v3/v4 遗留）----
+        // 读进来立刻迁移成 dayTypeConfig —— 旧的「启用/回落」模型不再
+        // 参与运行时；保留 dayTypes 字段只是为了导入预览能展示旧文件。
         var dayTypes: DayTypePolicy? = null
         val dtObj = root.optJSONObject("dayTypes")
         if (dtObj != null) {
@@ -454,6 +475,32 @@ object ScheduleFormat {
                 parseDayTypes(dtObj)
             } catch (e: FormatException) {
                 return Result.Failed(e.message ?: "dayTypes 段格式有误。")
+            }
+        }
+
+        // ---- dayTypeConfig 段（可选，v5）----
+        var dayTypeConfig: DayTypeConfig? = null
+        val dtcObj = root.optJSONObject("dayTypeConfig")
+        if (dtcObj != null) {
+            dayTypeConfig = try {
+                parseDayTypeConfig(dtcObj)
+            } catch (e: FormatException) {
+                return Result.Failed(e.message ?: "dayTypeConfig 段格式有误。")
+            }
+        }
+        if (dayTypeConfig == null && dayTypes != null) {
+            // v3/v4 文件：旧策略确定性迁移（见 configFromPolicy 的对照表）
+            dayTypeConfig = configFromPolicy(dayTypes)
+        }
+
+        // ---- dayTypeNames 段（可选，v4）----
+        var dayTypeNames: Map<DayType, String>? = null
+        val dtnObj = root.optJSONObject("dayTypeNames")
+        if (dtnObj != null) {
+            dayTypeNames = try {
+                parseDayTypeNames(dtnObj)
+            } catch (e: FormatException) {
+                return Result.Failed(e.message ?: "dayTypeNames 段格式有误。")
             }
         }
 
@@ -489,29 +536,37 @@ object ScheduleFormat {
         //
         // ⚠️ periods 不算内容：它只改显示结构，一份只带 periods 的文件
         // 没有可导入的东西，照样拒绝（和电脑版行为一致）。
-        if (term == null && courses == null && templates == null && dayTypes == null) {
+        if (term == null && courses == null && templates == null && dayTypes == null &&
+            dayTypeNames == null && dayTypeConfig == null
+        ) {
             return Result.Failed(
-                "这份文件里 term、courses、templates、dayTypes 四段都没有内容，没有可导入的东西。\n\n" +
+                "这份文件里 term、courses、templates、dayTypes、dayTypeNames、dayTypeConfig " +
+                        "各段都没有内容，没有可导入的东西。\n\n" +
                         "如果你是想导入课表，检查一下 courses 数组是不是空的；\n" +
                         "如果是想让 AI 生成，把「报错修复」提示词发回给它。"
             )
         }
 
-        return Result.Ok(Parsed(term, courses, templates, dayTypes, periods, warnings))
+        return Result.Ok(
+            Parsed(term, courses, templates, dayTypes, periods, dayTypeNames, dayTypeConfig, warnings)
+        )
     }
 
     /**
-     * 解析 dayTypes 段 —— 「这份配置实际启用哪几种日型」。
+     * 解析 `dayTypes` 段 —— 「这份配置实际启用哪几种日型」（v3/v4 遗留，
+     * 读进来立刻被 [configFromPolicy] 迁移成 dayTypeConfig）。
      *
-     * 写法：
      * ```json
      * "dayTypes": {
-     *   "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
-     *   "fallback": "B_NORMAL"
+     *   "enabled": ["1", "2", "5", "6"],
+     *   "fallback": "2"
      * }
      * ```
      *
-     * ## 两个刻意的设计决定
+     * 值是日型 id（v4）；v3 老文件里写的是语义名（"A"、"B_NORMAL"…），
+     * 照常接受 —— 见 [policyDayTypeByName]。
+     *
+     * ## 三个刻意的设计决定（和电脑版一字不差）
      *
      * **① `enabled` 为空数组要报错，而不是当成「什么都不启用」。**
      * 那样的话每天都会落到 fallback 上，等于把整套日型系统废掉 ——
@@ -519,18 +574,19 @@ object ScheduleFormat {
      *
      * **② `fallback` 允许不在 `enabled` 里。**
      * 它表达的是「用哪套模板兜底」，跟「启用了哪些日型」不是一回事。
-     * 比如只启用 A 和周末、却希望周中没早八时回落到 B 型，
-     * 就写成 `enabled: [A, SATURDAY, SUNDAY]` + `fallback: B_NORMAL`。
+     * 比如只启用 A 型和周末、却希望周中没早八时回落到 B 型，
+     * 就写成 `enabled: ["1", "5", "6"]` + `fallback: "2"`。
      * 这是完全正当的用法，所以不拦。
      *
-     * **③ 名字大小写不敏感。** 用户手写时写成 `"a"` 或 `"B_normal"`
-     * 都不该导入失败 —— 和别处解析 kind / dayOfWeek 的宽容度保持一致。
+     * **③ 名字大小写不敏感。**
+     * 用户手写时写成 `"a"` 或 `"B_normal"` 都不该导入失败。
      */
     private fun parseDayTypes(obj: JSONObject): DayTypePolicy {
         val raw = obj.opt("enabled")
             ?: throw FormatException(
                 "dayTypes 段缺少 enabled 字段。\n" +
-                        "它要列出启用的日型，比如 \"enabled\": [\"A\", \"B_NORMAL\", \"SATURDAY\", \"SUNDAY\"]"
+                        "它要列出启用的日型，比如 \"enabled\": [\"1\", \"2\", \"5\", \"6\"]" +
+                        "（1=A 型日、2=B 型日、3/4=训练日、5/6=周末，id 见格式标准）"
             )
 
         val arr = raw as? JSONArray
@@ -539,43 +595,212 @@ object ScheduleFormat {
         if (arr.length() == 0) {
             throw FormatException(
                 "dayTypes.enabled 是空数组 —— 至少要启用一种日型。\n" +
-                        "如果想让「有早八 / 没早八」都能区分，用 [\"A\", \"B_NORMAL\", \"SATURDAY\", \"SUNDAY\"]。"
+                        "如果想让「有早八 / 没早八」都能区分，用 [\"1\", \"2\", \"5\", \"6\"]。"
             )
         }
 
         val enabled = mutableSetOf<DayType>()
         for (i in 0 until arr.length()) {
             val v = arr.optString(i, "").trim()
-            val type = dayTypeByName(v)
+            if (v == DayType.REST.id) {
+                // 特判要放在「未知名字」的通用报错前面 —— 写 "7" 的人不是拼错了，
+                // 是误解了休息日的定位，给一句能纠正误解的话比「可用的值是…」有用。
+                throw FormatException(
+                    "dayTypes.enabled 里写了 \"7\"（休息日）。\n" +
+                            "休息日由引擎自动判定（工作日全天没课的那天），" +
+                            "始终生效，不参与启用/回落，所以不写进这一段。"
+                )
+            }
+            val type = policyDayTypeByName(v)
                 ?: throw FormatException(
                     "dayTypes.enabled 第 ${i + 1} 项 \"$v\" 不是可识别的日型。\n" +
-                            "可用的值是：${DAY_TYPE_NAMES.keys.joinToString("、")}"
+                            "可用的值是：${manageableIdsText()}" +
+                            "（v3 旧文件里的 A、B_NORMAL 等旧名也接受）"
                 )
             enabled += type
         }
 
         // fallback 可以省略；省略时取 enabled 里在标准顺序中最靠前的那种。
-        // 用固定顺序而不是 HashSet 的遍历顺序 —— 后者每次运行可能不一样，
-        // 会导致同一份文件解析出不同结果。
+        //
+        // 用固定顺序（ALL_TYPES，id 升序）而不是集合的遍历顺序 —— 后者每次运行
+        // 可能不一样，会导致同一份文件解析出不同结果，直接违反「输出是确定性的」那条约定。
         val fallbackRaw = obj.optString("fallback", "").trim()
         val fallback = if (fallbackRaw.isEmpty()) {
             Templates.ALL_TYPES.first { it in enabled }
         } else {
-            dayTypeByName(fallbackRaw)
+            if (fallbackRaw == DayType.REST.id) {
+                throw FormatException(
+                    "dayTypes.fallback 写了 \"7\"（休息日）。\n" +
+                            "休息日由引擎自动判定，永远兜不了底 —— " +
+                            "回落目标请从启用的日型里选。"
+                )
+            }
+            policyDayTypeByName(fallbackRaw)
                 ?: throw FormatException(
                     "dayTypes.fallback \"$fallbackRaw\" 不是可识别的日型。\n" +
-                            "可用的值是：${DAY_TYPE_NAMES.keys.joinToString("、")}"
+                            "可用的值是：${manageableIdsText()}" +
+                            "（v3 旧文件里的 A、B_NORMAL 等旧名也接受）"
                 )
         }
 
         return DayTypePolicy(enabled, fallback)
     }
 
-    /** 按名字查日型，大小写不敏感 */
-    private fun dayTypeByName(name: String): DayType? {
-        if (name.isEmpty()) return null
-        val upper = name.uppercase()
-        return Templates.ALL_TYPES.firstOrNull { it.name.uppercase() == upper }
+    /** 旧 dayTypes 解析里按名字查日型的入口（id 或 v3 旧名，大小写不敏感） */
+    private fun dayTypeByName(name: String): DayType? = policyDayTypeByName(name)
+
+    // ============================================================
+    //  二·四、dayTypeConfig（v5）与 dayTypeNames（v4）
+    // ============================================================
+
+    /** 自定义日型名的长度上限。名字要显示在今天页和通知栏的一条横幅里。 */
+    const val DAY_TYPE_NAME_MAX = 20
+
+    /**
+     * 解析 `dayTypeConfig` 段（v5）—— 日型系统的全貌。
+     *
+     * ```json
+     * "dayTypeConfig": {
+     *   "types": ["1", "2", "5", "6", "7"],
+     *   "weekdayMap": ["2", "2", "2", "2", "2", "5", "6"],
+     *   "earlyType": "1"
+     * }
+     * ```
+     *
+     * ## 校验口径
+     *
+     * · types：非空 id 列表；**"7"（休息日）缺了自动补回** —— 它是引擎的
+     *   自动判定层，不存在「删掉休息日」的文件写法；
+     * · weekdayMap：**恰好 7 项**（周一..周日），每一项 ∈ types 且 ≠ "7"
+     *   （休息日不走映射）；
+     * · earlyType：可省 / null / 空串 = 不区分早八；否则 ∈ types 且 ≠ "7"。
+     */
+    private fun parseDayTypeConfig(obj: JSONObject): DayTypeConfig {
+        val rawTypes = obj.opt("types")
+        if (rawTypes !is JSONArray || rawTypes.length() == 0) {
+            throw FormatException(
+                "dayTypeConfig.types 必须是非空数组，比如 [\"1\", \"2\", \"5\", \"6\", \"7\"]" +
+                        "（日型 id，最多 7 个）。"
+            )
+        }
+        val types = mutableListOf<DayType>()
+        for (i in 0 until rawTypes.length()) {
+            val t = dayTypeById(rawTypes.optString(i, ""))
+                ?: throw FormatException(
+                    "dayTypeConfig.types 第 ${i + 1} 项 \"${rawTypes.opt(i)}\" 不是可识别的日型 id。" +
+                            "可用的值是：${allIdsText()}"
+                )
+            if (t !in types) types += t
+        }
+        types.sortBy { it.id.toInt() }
+        if (DayType.REST !in types) {
+            // 休息日是自动判定层，删不掉 —— 文件里漏了就补回，不报错
+            types += DayType.REST
+        }
+
+        val rawMap = obj.opt("weekdayMap")
+        if (rawMap !is JSONArray || rawMap.length() != 7) {
+            throw FormatException(
+                "dayTypeConfig.weekdayMap 必须是恰好 7 项的数组" +
+                        "（从周一到周日，每项是一个日型 id）。"
+            )
+        }
+        val weekdayMap = mutableListOf<DayType>()
+        for (i in 0 until rawMap.length()) {
+            val dow = weekdayCn(i + 1)
+            val t = dayTypeById(rawMap.optString(i, ""))
+            if (t == null || t !in types) {
+                throw FormatException(
+                    "dayTypeConfig.weekdayMap 第 ${i + 1} 项（$dow）" +
+                            "「${rawMap.opt(i)}」不是现存的日型 id。" +
+                            "现存的日型是：${types.joinToString("、") { it.id }}"
+                )
+            }
+            if (t == DayType.REST) {
+                throw FormatException(
+                    "dayTypeConfig.weekdayMap 第 ${i + 1} 项（$dow）" +
+                            "写了 \"7\"（休息日）。\n休息日由引擎自动判定" +
+                            "（工作日全天没课），不参与星期映射。"
+                )
+            }
+            weekdayMap += t
+        }
+
+        val rawEarly = obj.opt("earlyType")
+        var early: DayType? = null
+        // ⚠️ org.json 的坑：JSON 里的 null 解析出来是 JSONObject.NULL 哨兵对象，
+        // 不是 Kotlin 的 null —— 不拦的话它 toString() 成 "null"，
+        // 被当成一个坏 id 报错。省略 / null / 空串三种写法都 = 不区分早八。
+        if (rawEarly != null && rawEarly !== JSONObject.NULL) {
+            val earlyText = rawEarly.toString().trim()
+            if (earlyText.isNotEmpty()) {
+                val earlyT = dayTypeById(earlyText)
+                if (earlyT == null || earlyT !in types) {
+                    throw FormatException(
+                        "dayTypeConfig.earlyType \"${rawEarly}\" 不是现存的日型 id。"
+                    )
+                }
+                if (earlyT == DayType.REST) {
+                    throw FormatException(
+                        "dayTypeConfig.earlyType 写了 \"7\"（休息日）。\n" +
+                                "休息日本身由「工作日全天没课」触发，当不了早八日型。"
+                    )
+                }
+                early = earlyT
+            }
+        }
+
+        return DayTypeConfig(
+            types = types,
+            weekdayMap = weekdayMap,
+            earlyType = early
+        )
+    }
+
+    /**
+     * 解析 `dayTypeNames` 段（v4）—— 用户给日型起的名字。
+     *
+     * ```json
+     * "dayTypeNames": { "1": "早八日", "3": "力量日" }
+     * ```
+     *
+     * ## 宽容与严格各占哪里
+     *
+     * · **未知的键忽略**（不是报错）—— 将来 id 集合若再扩张，
+     *   新版写出的键在旧版这里静默跳过即可，符合「未知字段一律忽略」的总原则；
+     * · **键必须是 id**（"1"-"7"）—— v3 的语义名在这里**不**接受：
+     *   这段是 v4 新增的，v3 程序根本不读它，不存在老文件带着旧名进来的路径；
+     * · **值要严格**：非空字符串、去首尾空白、不超过 20 字 ——
+     *   名字会出现在今天页和通知栏的一条横幅里，空串等于没改，超长必然显示不全，
+     *   都是直接报错让人当场改掉更好。
+     */
+    private fun parseDayTypeNames(obj: JSONObject): Map<DayType, String> {
+        val out = mutableMapOf<DayType, String>()
+        for (key in obj.keys().asSequence().toList()) {
+            val t = dayTypeById(key) ?: continue   // 未知 id：向前兼容，忽略
+            val raw = obj.opt(key)
+            if (raw !is String) {
+                throw FormatException(
+                    "dayTypeNames.\"$key\" 的值必须是字符串，现在读到的是 " +
+                            "${raw?.javaClass?.simpleName ?: "null"}。"
+                )
+            }
+            val name = raw.trim()
+            if (name.isEmpty()) {
+                throw FormatException(
+                    "dayTypeNames.\"$key\" 是空字符串 —— 想恢复默认名就删掉这个键，" +
+                            "整段省略则一个名字都不动。"
+                )
+            }
+            if (name.length > DAY_TYPE_NAME_MAX) {
+                throw FormatException(
+                    "dayTypeNames.\"$key\" 有 ${name.length} 个字，超过上限 " +
+                            "$DAY_TYPE_NAME_MAX（名字要显示在今天页和通知栏上）。"
+                )
+            }
+            out[t] = name
+        }
+        return out
     }
 
     // ============================================================
@@ -589,7 +814,11 @@ object ScheduleFormat {
      * 解析 templates 段。
      *
      * 只要求用户提供**想改的那几种日型**，没提供的会回落到内置模板。
-     * 这样改一个起床时间只要写十来行，而不是把六套模板整套抄一遍。
+     * 这样改一个起床时间只要写十来行，而不是把七套模板整套抄一遍。
+     *
+     * 键是日型 id（"1"-"7"，v4）；v3 老文件的语义名（"A"、"B_TRAIN_A"…）
+     * 照常接受（见 [templateKeyToDayType]）。"7"（休息日）是 v4 新增的 ——
+     * 之前它的模板由程序内置、不可导出，v4 起可以自定义并随文件携带。
      */
     private fun parseTemplates(
         obj: JSONObject,
@@ -599,10 +828,11 @@ object ScheduleFormat {
         val out = mutableMapOf<DayType, List<Block>>()
 
         for (key in obj.keys().asSequence().toList()) {
-            val type = DAY_TYPE_NAMES[key]
+            val type = templateKeyToDayType(key)
                 ?: throw FormatException(
                     "templates 里有无法识别的日型 \"$key\"。\n" +
-                            "可用的值是：${DAY_TYPE_NAMES.keys.joinToString("、")}"
+                            "可用的值是：${manageableIdsText()}、\"7\"（休息日）\n" +
+                            "（v3 旧文件里的 A、B_NORMAL 等旧名也接受）"
                 )
 
             val arr = obj.optJSONArray(key)
@@ -847,6 +1077,15 @@ object ScheduleFormat {
     /**
      * 生成 JSON 文本。
      *
+     * [version] 缺省输出当前版本（v5）；显式传 3/4 走**兼容输出** ——
+     * 日型键用 v3 语义名、段序也复刻旧版（v3 连 dayTypes 段都是旧形状），
+     * 供电脑版 verify_format_parity.py 与字节级回归测试继续对账。
+     * 其他值抛 IllegalArgumentException（这是程序员拿错了参数，不是用户输入问题）。
+     *
+     * [dayTypeConfig] 只在 v5 输出里出现（dayTypeConfig 段）；
+     * v3/v4 兼容输出仍然写 dayTypes（由 [dayTypes] 参数给）——
+     * **一个版本只写它那个年代能理解的日型配置。**
+     *
      * ## 为什么不用 JSONObject.toString(2)
      *
      * 一开始我用的是它，结果发现同一个函数在两个平台上产出的文件**字段顺序不同**：
@@ -859,6 +1098,7 @@ object ScheduleFormat {
      *
      * 所以这里**手写序列化**，把输出完全握在自己手里：
      * 字段顺序固定、数组写成一行、缩进统一。
+     * 电脑版按同一套顺序手写，两边导出同一份规划**逐字节相同**。
      *
      * 教训：**只要输出是给人看的产物，就不要把它交给第三方库的默认行为。**
      * 库的实现细节（内部用什么 Map）不该泄漏到你的产品形态里。
@@ -870,13 +1110,24 @@ object ScheduleFormat {
         courses: List<Course>,
         templates: Map<DayType, List<Block>> = emptyMap(),
         dayTypes: DayTypePolicy? = null,
-        periods: String = DEFAULT_PERIODS
+        periods: String = DEFAULT_PERIODS,
+        dayTypeNames: Map<DayType, String>? = null,
+        dayTypeConfig: DayTypeConfig? = null,
+        version: Int = VERSION
     ): String {
+        require(version in listOf(3, 4, 5)) { "serialize 只支持输出 v3/v4/v5，收到 v$version" }
+        // v3 兼容：键用语义名、段序按当年的语义分组序；v4 起：键是 id、按 id 升序
+        // （templates 段含休息日，见 FILE_ORDER）。
+        val dtOrder = if (version == 3) V3_ORDER else Templates.ALL_TYPES
+        val tmplOrder = if (version == 3) V3_ORDER else Templates.FILE_ORDER
+        val keyOf: (DayType) -> String =
+            if (version == 3) { t -> LEGACY_VALUE.getValue(t) } else { t -> t.id }
+
         val sb = StringBuilder()
         sb.append("{\n")
 
         sb.append("  \"format\": \"").append(FORMAT_ID).append("\",\n")
-        sb.append("  \"version\": ").append(VERSION).append(",\n")
+        sb.append("  \"version\": ").append(version).append(",\n")
 
         // 节数信息：只有和默认结构不同才写出来。
         //
@@ -902,13 +1153,48 @@ object ScheduleFormat {
         if (dayTypes != null) {
             sb.append("  \"dayTypes\": {\n")
             sb.append("    \"enabled\": [")
-            // 按标准顺序输出，保证同一份数据每次导出结果完全一致
+            // 按 dtOrder 固定顺序输出，保证同一份数据每次导出结果完全一致
             sb.append(
-                Templates.ALL_TYPES.filter { it in dayTypes.enabled }
-                    .joinToString(", ") { "\"${it.name}\"" }
+                dtOrder.filter { it in dayTypes.enabled }
+                    .joinToString(", ") { "\"${keyOf(it)}\"" }
             )
             sb.append("],\n")
-            sb.append("    \"fallback\": \"").append(dayTypes.fallback.name).append("\"\n")
+            sb.append("    \"fallback\": \"").append(keyOf(dayTypes.fallback)).append("\"\n")
+            sb.append("  },\n")
+        }
+
+        // dayTypeNames 段（v4）：用户给日型起的名字，稀疏表 —— 只有改过名的
+        // id 才有键，没改过的不写（写了也是默认值，纯噪音）。位置紧跟
+        // dayTypes：两段都在描述「日型这套系统」，名字是策略的邻居。
+        if (version >= 4 && !dayTypeNames.isNullOrEmpty()) {
+            val named = Templates.FILE_ORDER.filter { it in dayTypeNames }
+            if (named.isNotEmpty()) {
+                sb.append("  \"dayTypeNames\": {\n")
+                named.forEachIndexed { i, t ->
+                    sb.append("    \"${t.id}\": \"").append(escape(dayTypeNames.getValue(t))).append('"')
+                    if (i < named.size - 1) sb.append(',')
+                    sb.append('\n')
+                }
+                sb.append("  },\n")
+            }
+        }
+
+        // dayTypeConfig 段（v5）：取代 dayTypes —— 「哪些日型存在 + 星期怎么映射
+        // + 早八优先层」。位置紧跟 dayTypeNames：先说有哪些日型（config）、
+        // 再说它们各自叫什么（names），读者按这个顺序理解最顺。
+        if (version >= 5 && dayTypeConfig != null) {
+            sb.append("  \"dayTypeConfig\": {\n")
+            sb.append("    \"types\": [")
+            sb.append(dayTypeConfig.types.joinToString(", ") { "\"${it.id}\"" })
+            sb.append("],\n")
+            sb.append("    \"weekdayMap\": [")
+            sb.append(dayTypeConfig.weekdayMap.joinToString(", ") { "\"${it.id}\"" })
+            sb.append("],\n")
+            sb.append("    \"earlyType\": ")
+            sb.append(
+                dayTypeConfig.earlyType?.let { "\"${it.id}\"" } ?: "null"
+            )
+            sb.append('\n')
             sb.append("  },\n")
         }
 
@@ -936,7 +1222,7 @@ object ScheduleFormat {
         // 没改过的模板没必要把它那 100 多行铺进去。
         if (templates.isNotEmpty()) {
             sb.append(",\n")
-            appendTemplates(sb, templates)
+            appendTemplates(sb, templates, order = tmplOrder, keyOf = keyOf)
         }
 
         sb.append("\n}\n")
@@ -945,7 +1231,12 @@ object ScheduleFormat {
 
     /**
      * 写出 templates 段。
-     * 按 Templates.ALL_TYPES 的固定顺序输出，保证同一份数据每次导出结果完全一致。
+     * 按 [order] 的固定顺序输出，保证同一份数据每次导出结果完全一致。
+     *
+     * [order] 缺省按 v4 的 id 升序（含休息日）；v3 兼容输出传 V3_ORDER。
+     * [keyOf] 把日型映射成文件里的键字符串：v4 是 id（t.id），
+     * v3 兼容输出传语义名（LEGACY_VALUE）。两个参数必须成对给 ——
+     * 「v3 的顺序配 v4 的键」这种半吊子组合只会产出谁也读不了的文件。
      *
      * ## withKey 这个参数是踩坑之后加的
      *
@@ -962,12 +1253,14 @@ object ScheduleFormat {
      * 症状特别隐蔽：导入时预览是对的（预览用的是内存里的对象），
      * 关掉界面再打开就打回原形，而且**一句报错都没有**。
      *
-     * 这类「不报错的错」只有「存进去再读出来」的往返测试才能抓住。
+     * 这类「不报错的错」只有「存进去再读回来」的往返测试才能抓住。
      */
     private fun appendTemplates(
         sb: StringBuilder,
         templates: Map<DayType, List<Block>>,
-        withKey: Boolean = true
+        withKey: Boolean = true,
+        order: List<DayType> = Templates.FILE_ORDER,
+        keyOf: (DayType) -> String = { it.id }
     ) {
         val indent = if (withKey) "  " else ""
         val inner = if (withKey) "    " else "  "
@@ -976,9 +1269,9 @@ object ScheduleFormat {
         if (withKey) sb.append(indent).append("\"templates\": ")
         sb.append("{\n")
 
-        val types = Templates.ALL_TYPES.filter { templates.containsKey(it) }
+        val types = order.filter { templates.containsKey(it) }
         types.forEachIndexed { ti, type ->
-            sb.append(inner).append('"').append(type.name).append("\": [\n")
+            sb.append(inner).append('"').append(keyOf(type)).append("\": [\n")
             val blocks = templates.getValue(type)
             blocks.forEachIndexed { bi, b ->
                 sb.append(deeper).append("{ \"start\": \"").append(Slots.fmt(b.start)).append('"')
@@ -1091,11 +1384,13 @@ object ScheduleFormat {
      * （`{"enabled":[...],"fallback":"..."}`），因为它要能被 [dayTypesFromJson]
      * 独立解析回来。这个「存进去的和导出的格式不一致」的坑，
      * templates 那边已经踩过一次了，详见 appendTemplates 的注释。
+     *
+     * 只在迁移路径上还有意义：新代码存的是 [dayTypeConfigToJson]。
      */
     fun dayTypesToJson(policy: DayTypePolicy): String {
         val enabled = Templates.ALL_TYPES.filter { it in policy.enabled }
-            .joinToString(",") { "\"${it.name}\"" }
-        return "{\"enabled\":[$enabled],\"fallback\":\"${policy.fallback.name}\"}"
+            .joinToString(",") { "\"${it.id}\"" }
+        return "{\"enabled\":[$enabled],\"fallback\":\"${policy.fallback.id}\"}"
     }
 
     /**
@@ -1104,6 +1399,11 @@ object ScheduleFormat {
      * 解析失败回落到 [DayTypePolicy.DEFAULT]，而不是抛异常 ——
      * 和 templatesFromJson 同样的理由：**存储损坏不能变成「程序打不开」**，
      * 否则用户连进去修的入口都没有。
+     *
+     * ⚠️ 返回的是 DEFAULT 而**不是 null**，这一点和文件解析不同。
+     * null 在别处有专门的含义 ——「文件里没写这一段，不要动现有策略」。
+     * 如果这里也用 null 表示「坏了」，调用方就没法区分
+     * 「没配过」和「配过但存储坏了」，两者该做的事不一样。
      */
     fun dayTypesFromJson(json: String): DayTypePolicy {
         if (json.isBlank()) return DayTypePolicy.DEFAULT
@@ -1113,10 +1413,129 @@ object ScheduleFormat {
     }
 
     // ------------------------------------------------------------
+    //  五、v5 的本地存储编解码：dayTypeConfig / dayTypeNames
+    // ------------------------------------------------------------
 
-    /** 日型的 JSON 键名 -> 枚举。导出和导入都靠它，保证两边一致。 */
-    private val DAY_TYPE_NAMES: Map<String, DayType> =
+    /**
+     * 把日型配置序列化成一小段 JSON，给本地存储用。
+     * 写法与 [dayTypesToJson] 一致：一份**不带外层键名的完整对象**，
+     * 存进去之后能被 [dayTypeConfigFromJson] 独立解析回来。
+     */
+    fun dayTypeConfigToJson(config: DayTypeConfig): String {
+        val types = config.types.joinToString(", ") { "\"${it.id}\"" }
+        val map = config.weekdayMap.joinToString(", ") { "\"${it.id}\"" }
+        val early = config.earlyType?.let { "\"${it.id}\"" } ?: "null"
+        return "{\n" +
+                "  \"types\": [$types],\n" +
+                "  \"weekdayMap\": [$map],\n" +
+                "  \"earlyType\": $early\n" +
+                "}"
+    }
+
+    /**
+     * 读回本地存储里的日型配置。坏了返回 [DayTypeConfig.DEFAULT]，
+     * **绝不让程序起不来**（和 templatesFromJson / dayTypesFromJson 同一个路子）。
+     */
+    fun dayTypeConfigFromJson(text: String): DayTypeConfig {
+        if (text.isBlank()) return DayTypeConfig.DEFAULT
+        return runCatching {
+            parseDayTypeConfig(JSONObject(text))
+        }.getOrDefault(DayTypeConfig.DEFAULT)
+    }
+
+    /**
+     * **宽容版**的名字表读取：本地存储（SharedPreferences 用户能手改）用的。
+     *
+     * 坏键、坏值一律跳过，绝不抛错 —— 存储损坏不能变成「程序打不开」。
+     * （文件解析走 [parseDayTypeNames]，那边要严格报错，让人当场改掉。）
+     */
+    fun dayTypeNamesFromJson(text: String?): Map<DayType, String> {
+        if (text.isNullOrBlank()) return emptyMap()
+        val obj = runCatching { JSONObject(text) }.getOrNull() ?: return emptyMap()
+        val out = mutableMapOf<DayType, String>()
+        for (key in obj.keys().asSequence()) {
+            val t = dayTypeById(key) ?: continue
+            val name = obj.opt(key) as? String ?: continue
+            val trimmed = name.trim()
+            if (trimmed.isNotEmpty() && trimmed.length <= DAY_TYPE_NAME_MAX) {
+                out[t] = trimmed
+            }
+        }
+        return out
+    }
+
+    /** 名字表写进本地存储：键是 id 字符串。剔除/保序由调用方（Store）负责。 */
+    fun dayTypeNamesToJson(names: Map<DayType, String>): String {
+        if (names.isEmpty()) return ""
+        val obj = JSONObject()
+        // 按 id 升序写，保证同一份数据每次存出来长得一样
+        Templates.FILE_ORDER.filter { it in names }
+            .forEach { obj.put(it.id, names.getValue(it)) }
+        return obj.toString()
+    }
+
+    // ------------------------------------------------------------
+
+    /**
+     * 日型 id 字符串（"1"-"7"）-> 枚举。
+     * templates / dayTypeConfig / dayTypeNames 的键都按它认。
+     */
+    private val DAY_TYPE_IDS: Map<String, DayType> =
+        DayType.entries.associateBy { it.id }
+
+    /** 日型 id 字符串（"1"-"7"）-> 枚举。不认识返回 null。解析与本地存储读取共用。 */
+    fun dayTypeById(id: String): DayType? = DAY_TYPE_IDS[id]
+
+    /**
+     * v3 及更早文件里的语义名 -> 枚举。**只进解析**（兼容老文件和
+     * 按旧键存的自定义模板），导出永远写 id。
+     */
+    private val LEGACY_DAY_TYPE_NAMES: Map<String, DayType> =
         Templates.ALL_TYPES.associateBy { it.name }
+
+    /** 反向表：枚举 -> v3 语义名。只在 v3 兼容导出（serialize(version=3)）时使用。 */
+    private val LEGACY_VALUE: Map<DayType, String> =
+        LEGACY_DAY_TYPE_NAMES.entries.associate { (k, v) -> v to k }
+
+    /** v3 兼容输出的键序（当年的语义分组序）。仅供 serialize(version=3)。 */
+    private val V3_ORDER: List<DayType> = listOf(
+        DayType.A, DayType.B_TRAIN_A, DayType.B_TRAIN_B,
+        DayType.B_NORMAL, DayType.SATURDAY, DayType.SUNDAY
+    )
+
+    /**
+     * templates 段的键 -> 日型。
+     *
+     * v4 键是 id 字符串（"1"-"7"，**精确匹配**）；v3 老键是语义名
+     * （"A"、"B_TRAIN_A"…，同样精确匹配 —— 大小写宽容只给了 dayTypes 的值，
+     * 这里保持 v3 的原口径，让同一份老文件在两个版本里行为一致）。
+     * 未知键返回 null，由调用方报错。
+     */
+    private fun templateKeyToDayType(key: String): DayType? =
+        DAY_TYPE_IDS[key] ?: LEGACY_DAY_TYPE_NAMES[key]
+
+    /**
+     * dayTypes 段里的日型值 -> 枚举（**id 或 v3 旧名，大小写不敏感**）。
+     *
+     * 只认 [Templates.ALL_TYPES] 里的六种：休息日（id "7"）由引擎自动判定，
+     * 不参与启用/回落 —— 写进这段属于配置错误，调用方给专门报错。
+     * 大小写不敏感是刻意的：用户手写 "a" 或 "B_normal" 都不该导入失败。
+     */
+    private fun policyDayTypeByName(name: String): DayType? {
+        val wanted = name.trim().uppercase()
+        for (t in Templates.ALL_TYPES) {
+            if (t.id == wanted || LEGACY_VALUE.getValue(t) == wanted) return t
+        }
+        return null
+    }
+
+    /** 报错里那份「可用的值是：1、2、…、6」，顺序固定（id 升序） */
+    private fun manageableIdsText(): String =
+        Templates.ALL_TYPES.joinToString("、") { "\"${it.id}\"" }
+
+    /** 报错里那份全部 id 的列表（含休息日） */
+    private fun allIdsText(): String =
+        DayType.entries.sortedBy { it.id.toInt() }.joinToString("、") { "\"${it.id}\"" }
 
     /** 时段性质的名字 -> 枚举。大小写不敏感（解析时统一转成大写再查）。 */
     private val KIND_NAMES: Map<String, Kind> =

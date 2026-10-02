@@ -28,14 +28,16 @@ class TimelineEngineTest {
     private fun weekOf(date: LocalDate) = TimelineEngine.weekOf(date, termStart)
 
     /**
-     * 这个测试类测的是**引擎和内置模板本身**，所以要关掉日型策略的裁剪
-     * —— 用 [DayTypePolicy.ALL] 让映射变成恒等，算出什么就用什么。
+     * 这个测试类测的是**引擎和内置模板本身**，所以要用「恒等配置」
+     * （星期映射 = 旧自然槽位、早八层 = A）—— 它让引擎判定与 v4 的
+     * 自然规则逐日一致，算出什么就用什么。
      *
-     * 不这么做的话，「周二晚间是力量 A 训练」这类断言会因为默认策略
-     * 把 B_TRAIN_A 映射成 B_NORMAL 而失败 —— 那是**策略层**的行为，
-     * 不该由这个类来管。策略本身在 DayTypePolicyTest 里单独测。
+     * 不这么做的话，「周二晚间是力量 A 训练」这类断言会因为默认映射
+     * 把周二派给 B_NORMAL 而失败 —— 那是**配置层**的行为，
+     * 不该由这个类来管。配置本身在 DayTypePolicyTest 里单独测。
      */
-    private val templatesAll = TemplateSet(policy = DayTypePolicy.ALL)
+    private val identityConfig = configFromPolicy(DayTypePolicy.ALL)
+    private val templatesAll = TemplateSet(config = identityConfig)
 
     private fun moments(date: LocalDate, week: Int) =
         TimelineEngine.moments(date, week, courses, templatesAll)
@@ -103,15 +105,15 @@ class TimelineEngineTest {
 
     @Test
     fun `有早八的周一按 A 型日`() {
-        // 第 3 周周一第 1-2 节有大学英语
-        assertEquals(DayType.A, TimelineEngine.naturalDayType(d(2026, 9, 21), 3, courses))
+        // 第 3 周周一第 1-2 节有大学英语；恒等配置下早八层就是 A
+        assertEquals(DayType.A, TimelineEngine.dayType(d(2026, 9, 21), 3, courses, identityConfig))
     }
 
     @Test
     fun `还没开课的周一全天无课按休息日过`() {
         // 第 1 周大学英语还没开（它是 2-4、6-17 周），周一其余的课也都没开 →
         // 全天无课 → 休息日。开学前一周不该出现 06:55 的 A 型作息
-        assertEquals(DayType.REST, TimelineEngine.naturalDayType(d(2026, 9, 7), 1, courses))
+        assertEquals(DayType.REST, TimelineEngine.dayType(d(2026, 9, 7), 1, courses, identityConfig))
     }
 
     @Test
@@ -119,19 +121,19 @@ class TimelineEngineTest {
         // 高数周三 1-2 节是「2-7、9-17 周」，第 8 周正好不上；
         // 周三其余的课（形势/近现代史/人工智能）也都不在第 8 周 →
         // 全天无课 → 休息日，按休息模板过（无课、无晚自习）
-        assertEquals(DayType.REST, TimelineEngine.naturalDayType(d(2026, 10, 28), 8, courses))
+        assertEquals(DayType.REST, TimelineEngine.dayType(d(2026, 10, 28), 8, courses, identityConfig))
     }
 
     @Test
     fun `周二周四是训练日`() {
-        assertEquals(DayType.B_TRAIN_A, TimelineEngine.naturalDayType(d(2026, 9, 22), 3, courses))
-        assertEquals(DayType.B_TRAIN_B, TimelineEngine.naturalDayType(d(2026, 9, 24), 3, courses))
+        assertEquals(DayType.B_TRAIN_A, TimelineEngine.dayType(d(2026, 9, 22), 3, courses, identityConfig))
+        assertEquals(DayType.B_TRAIN_B, TimelineEngine.dayType(d(2026, 9, 24), 3, courses, identityConfig))
     }
 
     @Test
     fun `周末用周六周日的模板`() {
-        assertEquals(DayType.SATURDAY, TimelineEngine.naturalDayType(d(2026, 9, 26), 3, courses))
-        assertEquals(DayType.SUNDAY, TimelineEngine.naturalDayType(d(2026, 9, 27), 3, courses))
+        assertEquals(DayType.SATURDAY, TimelineEngine.dayType(d(2026, 9, 26), 3, courses, identityConfig))
+        assertEquals(DayType.SUNDAY, TimelineEngine.dayType(d(2026, 9, 27), 3, courses, identityConfig))
     }
 
     // ============================================================
@@ -147,25 +149,25 @@ class TimelineEngineTest {
 
     @Test
     fun `工作日全天没课算休息日`() {
-        assertEquals(DayType.REST, TimelineEngine.naturalDayType(restFri, 3, courses))
+        assertEquals(DayType.REST, TimelineEngine.dayType(restFri, 3, courses, identityConfig))
     }
 
     @Test
-    fun `休息日在任何策略下都不被映射`() {
-        // ★ REST 必须在进入策略之前被拦下。它不在任何 policy.enabled 里
-        // （不是可选日型）—— 不拦的话 resolve() 会把它映射成 fallback，
-        // 假期又变回上学日，晚自习就跟着回来了。
-        for (policy in listOf(DayTypePolicy.DEFAULT, DayTypePolicy.ALL)) {
+    fun `休息日在任何配置下都不被映射`() {
+        // ★ 无课工作日永远是休息日。它是引擎的第一条判定（客观事实），
+        // 不走星期映射 —— 映射到哪都改变不了「那天没课」。
+        for (config in listOf(
+            DayTypeConfig.DEFAULT,
+            identityConfig,
+            configFromPolicy(
+                DayTypePolicy(setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY), DayType.A)
+            )
+        )) {
             assertEquals(
-                "${policy} 策略把无课日映射走了",
-                DayType.REST, TimelineEngine.dayType(restFri, 3, courses, policy)
+                "配置把无课日映射走了",
+                DayType.REST, TimelineEngine.dayType(restFri, 3, courses, config)
             )
         }
-        // fallback 就算是 A 也不行
-        val aOnly = DayTypePolicy(
-            setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY), DayType.A
-        )
-        assertEquals(DayType.REST, TimelineEngine.dayType(restFri, 3, courses, aOnly))
     }
 
     @Test
@@ -185,7 +187,7 @@ class TimelineEngineTest {
     fun `休息日的界面标签是无课休息日`() {
         assertEquals(
             "无课 · 休息日",
-            TimelineEngine.dayTypeDisplay(restFri, 3, courses, DayTypePolicy.DEFAULT)
+            TimelineEngine.dayTypeDisplay(restFri, 3, courses, DayTypeConfig.DEFAULT)
         )
     }
 
@@ -319,7 +321,7 @@ class TimelineEngineTest {
         val disabled = courses.map { if (it.name == "大学英语") it.copy(enabled = false) else it }
         val ms = TimelineEngine.moments(d(2026, 9, 21), 3, disabled)
 
-        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(d(2026, 9, 21), 3, disabled))
+        assertEquals(DayType.B_NORMAL, TimelineEngine.dayType(d(2026, 9, 21), 3, disabled, identityConfig))
         val m = TimelineEngine.currentAt(ms, 9 * 60)!!
         assertTrue("实际得到: ${m.title}", m.title.contains("黄金自习块"))
     }

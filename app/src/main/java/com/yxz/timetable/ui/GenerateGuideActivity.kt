@@ -73,7 +73,11 @@ class GenerateGuideActivity : AppCompatActivity() {
             copy("课表提示词", coursePrompt)
         }
         binding.btnCopyTemplatePrompt.setOnClickListener {
-            copy("作息模板提示词", AiPrompt.forTemplates(store.termName, store.periods))
+            copy(
+                "作息模板提示词",
+                // 提示词里的日型表念用户改过的名字（v4）—— AI 输出的键仍是 id
+                AiPrompt.forTemplates(store.termName, store.periods, store.dayTypeNames())
+            )
         }
         binding.btnCopyFixPrompt.setOnClickListener {
             copy(

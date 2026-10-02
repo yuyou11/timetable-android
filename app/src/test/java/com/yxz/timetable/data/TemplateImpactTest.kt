@@ -26,9 +26,12 @@ class TemplateImpactTest {
 
     private fun d(day: Int) = LocalDate.of(2026, 9, day)
 
+    /** 恒等配置（星期映射 = 旧自然槽位），让「周二是训练日」这些断言继续成立 */
+    private val identity = configFromPolicy(DayTypePolicy.ALL)
+
     private fun impact(changed: Set<DayType>, today: LocalDate) =
         TemplateImpact.compute(
-            changed, today, termStart, courses, DayTypePolicy.ALL
+            changed, today, termStart, courses, identity
         )
 
     // ============================================================
@@ -96,7 +99,7 @@ class TemplateImpactTest {
                         r.nextDate!!,
                         TimelineEngine.weekOf(r.nextDate!!, termStart),
                         courses,
-                        DayTypePolicy.ALL
+                        identity
                     ) == DayType.A
         )
     }
@@ -112,7 +115,7 @@ class TemplateImpactTest {
                 val r = impact(setOf(type), today)
                 val next = r.nextDate ?: continue
                 val actual = TimelineEngine.dayType(
-                    next, TimelineEngine.weekOf(next, termStart), courses, DayTypePolicy.ALL
+                    next, TimelineEngine.weekOf(next, termStart), courses, identity
                 )
                 assertEquals(
                     "起始日 $today 找 $type 时，给出的 $next 实际是 $actual",
@@ -173,7 +176,7 @@ class TemplateImpactTest {
             today = d(14),          // 周一
             termStart = termStart,
             courses = courses,
-            policy = DayTypePolicy.ALL,
+            config = identity,
             horizonDays = 1         // 只看明天（周二，B_TRAIN_A）
         )
         assertNull("窗口内找不到，nextDate 应为 null", r.nextDate)

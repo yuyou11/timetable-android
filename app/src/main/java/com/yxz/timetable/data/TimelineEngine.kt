@@ -56,112 +56,100 @@ object TimelineEngine {
     // ============================================================
 
     /**
-     * **原始日历规则** —— 不算策略，只看日历。判断依据按顺序两条：
+     * 「有早八」的日历定义：今天第 1-2 节有课。
      *
-     * 1. **工作日全天没课 → [DayType.REST]**（无课休息日）。程序不认识国庆中秋，
-     *    但「课表里这天一门课都没有」是数据里写得明明白白的客观事实 ——
-     *    假期、停课、课表没排到的周次都会落到这里，按休息日过（无课、无晚自习）。
-     * 2. 有课的工作日，再看**今天第 1-2 节有没有课**区分 A / B 型。
-     *
-     * 这是整个设计里我最想让你注意的一处：
-     * 文档里写死了「周一、周三 = A 型」，但如果照抄成 `if (dow == 1 || dow == 3)`，
-     * 那么第 8 周停课、国庆调课、中秋放假时，App 还会按 A 型让你 06:55 起床 —— 错的。
-     *
-     * 改成「现算」之后，这几种情况**自动就对**了，一行特判都不用写。
-     * 判断规则和文档里那句「真正需要你记住的只有一件事：今天有没有早八」完全一致。
-     *
-     * ============================================================
-     *  它和 [dayType] 的分工
-     * ============================================================
-     *
-     * 这个函数回答「**日历上是哪种日**」，[dayType] 回答「**这次实际要用哪套模板**」。
-     * 两者的差别来自 [DayTypePolicy]：这份配置可能根本没启用训练日，
-     * 那么算出来的 `B_TRAIN_A` 就要被映射成别的。
-     *
-     * 拆成两层的好处是策略可配置 —— 如果这里直接把训练日那两行删掉，
-     * 就再也没有「想让训练日生效」的余地了。
-     *
-     * **要测「日历规则」本身（比如「周二算不算训练日」）就调这个。**
+     * 这是**日历事实**，不受任何配置影响 —— 界面上的「· 有早八」
+     * 后缀永远按它说话（见 [dayTypeDisplay]）。
      */
-    fun naturalDayType(date: LocalDate, week: Int, courses: List<Course>): DayType {
+    fun hasEarlyClass(date: LocalDate, week: Int, courses: List<Course>): Boolean =
+        coursesOn(date, week, courses).any { it.startNode <= 2 }
+
+    /**
+     * 今天实际用哪套模板 —— 引擎判定的唯一入口。按顺序三条：
+     *
+     *   ① **工作日全天无课 → [DayType.REST]**（休息日）。程序不认识国庆中秋，
+     *      但「课表里这天一门课都没有」是数据里写得明明白白的客观事实 ——
+     *      假期、停课、课表没排到的周次都落到这里。
+     *      它**不受星期映射影响**：休息日不是一种「偏好」，
+     *      再怎么映射也不能把没课的日子变成上学日。
+     *
+     *   ② **工作日有早八且配置指定了早八日型 → [DayTypeConfig.earlyType]**。
+     *      「今天要不要早起」是这个 App 存在的理由，这一层优先于星期映射。
+     *
+     *   ③ 其余 → [DayTypeConfig.weekdayMap] 按星期几取。
+     *
+     * ## ⚠️ [config] 故意不给默认值
+     *
+     * 忘了传配置的话，程序会静悄悄按默认映射跑 —— 界面按 A 型显示、
+     * 通知却按 B 型排，这类不一致查起来非常费劲。不给默认值，
+     * 编译器会把**每一个**漏改的调用点都列出来，一个都跑不掉。
+     * **让编译器替你找调用点，比靠人记住可靠得多。**
+     *
+     * ## 周末为什么不做「无课 → 休息日」
+     *
+     * 周末不管有没有课都按星期映射的模板过 —— 周末的作息本来就不由
+     * 课表驱动。只有**工作日**的无课才判休息日（假期、停课、调课都发生在工作日）。
+     */
+    fun resolveDayType(
+        date: LocalDate,
+        week: Int,
+        courses: List<Course>,
+        config: DayTypeConfig
+    ): DayType {
         val dow = date.dayOfWeek.value           // 1=周一 … 7=周日
-        if (dow == 6) return DayType.SATURDAY
-        if (dow == 7) return DayType.SUNDAY
-
-        val today = courses.filter {
-            it.enabled && it.dayOfWeek == dow && week in it.weeks
+        if (dow >= 6) return config.weekdayMap[dow - 1]
+        if (coursesOn(date, week, courses).isEmpty()) return DayType.REST
+        if (config.earlyType != null && hasEarlyClass(date, week, courses)) {
+            return config.earlyType
         }
-        if (today.isEmpty()) return DayType.REST // 全天没课 → 按休息日过
-
-        if (today.any { it.startNode <= 2 }) return DayType.A
-
-        return when (dow) {
-            2 -> DayType.B_TRAIN_A       // 周二 · 力量 A
-            4 -> DayType.B_TRAIN_B       // 周四 · 力量 B
-            else -> DayType.B_NORMAL     // 周五
-        }
+        return config.weekdayMap[dow - 1]
     }
 
     /**
-     * **实际要用的日型** —— 原始规则再经过 [DayTypePolicy] 映射。
+     * **实际要用的日型** —— [resolveDayType] 的对外名字。
      *
-     * ## REST 不参与映射
-     *
-     * 无课休息日在进入策略**之前**就拦下来了：「那天没课」是课表决定的
-     * 客观事实，不是用户可以配置的偏好。而且它不在任何 [DayTypePolicy.enabled] 里
-     * （它不是可选日型）—— 不拦的话，[DayTypePolicy.resolve] 会把它映射成
-     * fallback，假期里又变回上学日，晚自习就回来了。
-     *
-     * ⚠️ **[policy] 这个参数故意不给默认值。**
-     *
-     * 如果给它一个默认值，那么调用方「忘了传策略」时不会有任何提示，
-     * 程序会静悄悄地按默认策略跑 —— 而界面按 A 型显示、通知却按 B 型排，
-     * 这类不一致查起来非常费劲。
-     *
-     * 不给默认值的话，编译器会把**每一个**调用点都列出来，一个都跑不掉。
-     * **让编译器替你找调用点，比靠人记住可靠得多。**
+     * [config] 不给默认值的理由见 [resolveDayType]：漏传配置必须
+     * 当场被编译器揪出来，不能静默按默认跑。
      */
     fun dayType(
         date: LocalDate,
         week: Int,
         courses: List<Course>,
-        policy: DayTypePolicy
-    ): DayType {
-        val natural = naturalDayType(date, week, courses)
-        if (natural == DayType.REST) return DayType.REST
-        return policy.resolve(natural)
-    }
+        config: DayTypeConfig
+    ): DayType = resolveDayType(date, week, courses, config)
 
     /**
      * 界面上显示的日型描述 —— 会区分「用哪套模板」和「今天有没有早八」。
      *
+     * [names] 是 store 里的自定义日型名（v4，稀疏表）；不传或传空就用默认名。
+     * 引擎本身不碰 store，所以名字只能由调用方带进来。
+     *
      * ## 为什么需要单独一个函数
      *
-     * [DayType.label] 只说明「这套模板叫什么」。但用户看到今天标着「A 型日」时，
-     * 自然会想知道今天要不要早起 —— 而这**不能从 label 推出来**：
+     * 日型名只说明「这套模板叫什么」。但用户看到今天标着「A 型日」时，
+     * 自然会想知道今天要不要早起 —— 而这**不能从标签推出来**：
      *
      *   默认配置下   A 型日 ⟺ 当天第 1-2 节有课（有早八）
-     *   自定义配置下 用户可以让工作日全部回落到 A 型模板，
+     *   自定义配置下 用户可以把工作日全部映射到 A 型模板，
      *               于是「A 型日」不再意味着「有早八」
      *
      * 实测过一次：把工作日全落到 A 之后，周二（当天没课）的界面
      * 依然显示「A 型日 · 有早八」—— **那是一句假话**。
      *
-     * 所以「有没有早八」去问**日历**（[naturalDayType]），
-     * 「用哪套模板」去问**策略**（[dayType]），两者拼起来才是完整的描述。
+     * 所以「有没有早八」去问**日历**（[hasEarlyClass]），
+     * 「用哪套模板」去问**配置**（[dayType]），两者拼起来才是完整的描述。
      */
     fun dayTypeDisplay(
         date: LocalDate,
         week: Int,
         courses: List<Course>,
-        policy: DayTypePolicy
+        config: DayTypeConfig,
+        names: Map<DayType, String> = emptyMap()
     ): String {
-        val natural = naturalDayType(date, week, courses)
-        // REST 的短路和 dayType() 里的是**同一条规则**，写两遍是因为这个函数
-        // 需要 natural（判有早八）和 used（出标签）两个答案，凑不到一次调用里。
-        // 改策略映射规则时，两处要一起动。
-        val used = if (natural == DayType.REST) natural else policy.resolve(natural)
-        return if (natural == DayType.A) "${used.label} · 有早八" else used.label
+        val used = dayType(date, week, courses, config)
+        val label = dayTypeName(used, names)
+        val early = date.dayOfWeek.value <= 5 && hasEarlyClass(date, week, courses)
+        return if (early) "$label · 有早八" else label
     }
 
     /**
@@ -206,9 +194,9 @@ object TimelineEngine {
         courses: List<Course>,
         templates: TemplateSet = TemplateSet.BUILTIN
     ): List<Moment> {
-        // 策略跟着模板走 —— 两者都是「用户的作息配置」的一部分，
-        // 放在一起就不会出现「用了 A 的策略、却取了 B 的模板」这种错配
-        val base = template(dayType(date, week, courses, templates.policy), templates)
+        // 配置跟着模板走 —— 两者都是「用户的作息配置」的一部分，
+        // 放在一起就不会出现「按 A 型的配置、却取了 B 型的模板」这种错配
+        val base = template(dayType(date, week, courses, templates.config), templates)
         val todayCourses = coursesOn(date, week, courses)
 
         // 课程占哪一段，**以模板的占位格为准**（templates.slotStart/End）。

@@ -22,13 +22,14 @@ internal object FormatDocs {
      */
     fun help(): String = """
         【顶层】
-        format    固定为 "${ScheduleFormat.FORMAT_ID}"
-        version   格式版本，当前是 ${ScheduleFormat.VERSION}
-        term      学期设置（可选）
-        periods   节数信息（可选，如 "442"）
-        dayTypes  启用哪些日型（可选）
-        courses   课程数组（可选）
-        templates 作息模板（可选）
+        format        固定为 "${ScheduleFormat.FORMAT_ID}"
+        version       格式版本，当前是 ${ScheduleFormat.VERSION}
+        periods       节数信息（可选，如 "442"）
+        term          学期设置（可选）
+        dayTypeConfig 日型配置（可选）
+        dayTypeNames  自定义日型名（可选）
+        courses       课程数组（可选）
+        templates     作息模板（可选）
 
         上面几段都是「没写 = 不要动」，不是「清空」。
 
@@ -51,19 +52,40 @@ internal object FormatDocs {
         startDate   教学第 1 周的周一，YYYY-MM-DD
         totalWeeks  总周数，默认 19
 
-        【dayTypes 段】
-        决定哪几种日型真的会被用到。不写就用默认那套。
+        【dayTypeConfig 段】
+        日型用 id "1"-"7" 标识，名字可以改（见下一段）：
 
-        enabled   启用的日型，至少一个，如
-                  ["A", "B_NORMAL", "SATURDAY", "SUNDAY"]
-        fallback  算出来的日型没启用时，改用哪一套
+          "1"  A 型日            有早八的工作日优先用
+          "2"  B 型日            无早八的普通工作日
+          "3"  训练日 · 力量A    默认闲置，映射后启用
+          "4"  训练日 · 力量B    默认闲置，映射后启用
+          "5"  周六
+          "6"  周日
+          "7"  无课 · 休息日     引擎自动判定，不可删除
+
+        types        现存的日型 id；"7" 缺了自动补回
+        weekdayMap   恰好 7 项（周一..周日），
+                     每项 ∈ types 且不能是 "7"
+        earlyType    有早八时优先用的日型；
+                     省略 / null = 不区分早八
+
+        例：
+        "dayTypeConfig": {
+          "types": ["1", "2", "5", "6", "7"],
+          "weekdayMap": ["2", "2", "2", "2", "2", "5", "6"],
+          "earlyType": "1"
+        }
+        想恢复经典的「周二/周四训练日」排法，把 weekdayMap
+        改成 ["2","3","2","4","2","5","6"] 即可。
 
         全天没课的工作日按休息日过（无课、无晚自习），
-        不参与 enabled / fallback 的映射，文件里也写不了它。
+        不受星期映射影响，文件里也映射不了它。
 
-        六种日型：A（有早八）、B_TRAIN_A（周二力量A）、
-        B_TRAIN_B（周四力量B）、B_NORMAL（没早八）、
-        SATURDAY、SUNDAY
+        【dayTypeNames 段】
+        给日型起自己的名字，只影响显示不改行为：
+          "dayTypeNames": { "3": "力量日" }
+        键是 id，值最多 20 个字。写空对象 {} = 清空
+        全部自定义名、恢复默认。
 
         【每门课】
         name       课程名
@@ -87,6 +109,14 @@ internal object FormatDocs {
 
         中文逗号「，」和波浪号「～」也会被识别。
         weeks 也可以写成数组，如 [2,3,4,6,7]。
+
+        【templates 段】
+        键是日型 id（"1"-"7"）；v3 老文件里的
+        A、B_TRAIN_A 等旧键名也认识。
+        "7"（休息日）的模板同样可以自定义。
+        **只写想改的那几种**，没写的回落到内置模板。
+        占位格（带 nodes 的格子）里写的时刻就是
+        上课时间 —— 改上课时间就是改这里的时刻。
 
         【设计约定】
         · 周次不能超过 totalWeeks
@@ -112,9 +142,10 @@ internal object FormatDocs {
     "startDate": "2026-09-07",
     "totalWeeks": 19
   },
-  "dayTypes": {
-    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
-    "fallback": "B_NORMAL"
+  "dayTypeConfig": {
+    "types": ["1", "2", "5", "6", "7"],
+    "weekdayMap": ["2", "2", "2", "2", "2", "5", "6"],
+    "earlyType": "1"
   },
   "courses": [
     {
@@ -138,7 +169,14 @@ internal object FormatDocs {
       "weeks": "2",
       "place": "实验楼-201"
     }
-  ]
+  ],
+  "templates": {
+    "1": [
+      { "start": "00:00", "end": "06:55", "title": "睡觉", "kind": "SLEEP" },
+      { "start": "06:55", "end": "07:10", "title": "起床、洗漱" },
+      { "start": "08:30", "end": "10:05", "title": "第 1-2 节", "kind": "CLASS", "nodes": [1, 2] }
+    ]
+  }
 }
 """.trim()
 }

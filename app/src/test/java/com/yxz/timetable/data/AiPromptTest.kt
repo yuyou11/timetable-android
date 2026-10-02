@@ -97,10 +97,17 @@ class AiPromptTest {
     }
 
     @Test
-    fun `模板提示词提到了全部六种日型`() {
-        for (type in Templates.ALL_TYPES) {
-            assertTrue("模板提示词里缺少日型 ${type.name}", templatePrompt.contains(type.name))
+    fun `模板提示词提到了全部七种日型的 id`() {
+        // v4 起模板的键是 id —— 提示词里那张对照表必须把七个 id 列全
+        // （名字可以改，id 是格式的一部分），AI 才知道键能写哪些。
+        for (type in DayType.entries) {
+            assertTrue(
+                "模板提示词里缺少日型 id \"${type.id}\"（${type.label}）",
+                templatePrompt.contains("\"${type.id}\"")
+            )
         }
+        // 键必须写 id 的要求要说出来 —— AI 最爱犯的就是拿名字当键
+        assertTrue(templatePrompt, templatePrompt.contains("键是**日型 id**"))
     }
 
     @Test

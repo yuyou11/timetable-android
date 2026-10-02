@@ -2,26 +2,33 @@ package com.yxz.timetable.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
 /**
- * 日型策略的测试 —— 「这份配置实际用哪几种日型」。
+ * 日型配置的测试 —— 「哪些日型存在、星期几用哪种、早八优先层」（v5 模型）。
  *
- * ## 背景
+ * ## 模型变了，测试意图没变
  *
- * 引擎原来固定算六种日型，其中 `B_TRAIN_A / B_TRAIN_B`（周二力量A、周四力量B）
- * 来自某一份具体规划表里的训练安排，不是通用规律。
- * 现在改成可配置：JSON 里写 `dayTypes.enabled` 决定用哪几种，
- * 不在其中的一律落到 `dayTypes.fallback`。
+ * v4 及更早是 [DayTypePolicy]（启用集合 + 回落），v5 换成 [DayTypeConfig]
+ * （types / weekdayMap / earlyType）：日型可删除、星期可映射、早八优先层可指定。
+ * 这个文件的用例整体重写，但守的还是同两件事：
  *
- * 这个文件守两件事：
- *
- *   ① **默认策略不能把「有早八 / 没早八」这档区分弄丢** ——
+ *   ① **配置不能把「有早八 / 没早八」这档区分弄丢** ——
  *      那是这个 App 存在的理由（它回答的就是「今天要不要早起」）
- *   ② 策略要真的穿透到 [TimelineEngine.moments]，而不只是改个标签
+ *   ② 配置要真的穿透到 [TimelineEngine.moments]，而不只是改个标签
+ *
+ * ## 为什么两边各有一份测试
+ *
+ * 引擎测试（TimelineEngineTest）测时间轴本身（用恒等配置当基线），
+ * 这里测配置与迁移。分开是因为**配置错了和引擎错了表现完全不同**：
+ * 引擎错是时间轴不对，配置错是「用错了哪套模板」——
+ * 后者更隐蔽（时间轴看起来完全正常，只是比该起的时间早/晚了半小时）。
+ *
+ * 用例与电脑版 tests/test_day_type_policy.py 一一对应。
  */
 class DayTypePolicyTest {
 
@@ -35,194 +42,329 @@ class DayTypePolicyTest {
     private val mon = d(21)
     private val tue = d(22)
     private val thu = d(24)
-    private val fri = d(25)
     private val sat = d(26)
     private val sun = d(27)
 
-    /**
-     * 第 5 周周五（10/9）：高数/思德/体育/音乐都从这一周起才上，但都从第 3 节开始
-     * —— **有课但没早八**，是原始规则里 B_NORMAL 的夹具。
-     * （第 3 周周五全天无课，是休息日，见 `工作日全天没课算休息日`；
-     * 别用第 5 周周一 —— 周一的课是「2-4、6-17 周」，第 5 周也停，那天也是休息日。）
-     */
+    /** 第 5 周周五（10/9）：有课但没早八 —— 星期映射层的夹具 */
     private val friWeek5 = LocalDate.of(2026, 10, 9)
 
-    private fun typeOf(date: LocalDate, policy: DayTypePolicy) =
-        TimelineEngine.dayType(date, weekOf(date), courses, policy)
+    /** 第 3 周周五：内置课表全天无课 → 休息日 */
+    private val restFri = d(25)
 
-    private fun wakeOf(date: LocalDate, policy: DayTypePolicy): Int? {
-        val set = TemplateSet(policy = policy)
+    /**
+     * 「恒等配置」——星期映射到旧自然槽位（周二→训练A、周四→训练B…）、
+     * 早八优先层 = A。它让 [TimelineEngine.resolveDayType] 的行为与 v4 的
+     * 自然规则 + [DayTypePolicy.ALL] **逐日一致**：
+     * 测「引擎原始行为」（训练日模板还在、周二晚上真有训练）用它。
+     */
+    private val identity = configFromPolicy(DayTypePolicy.ALL)
+
+    private fun typeOf(date: LocalDate, config: DayTypeConfig) =
+        TimelineEngine.dayType(date, weekOf(date), courses, config)
+
+    private fun wakeOf(date: LocalDate, config: DayTypeConfig): Int? {
+        val set = TemplateSet(config = config)
         return TimelineEngine.wakeMinute(
-            TimelineEngine.template(typeOf(date, policy), set)
+            TimelineEngine.template(typeOf(date, config), set)
         )
     }
 
+    /** 改映射用的便捷构造：默认配置基础上改派星期几 */
+    private fun makeConfig(overrides: Map<Int, DayType>, early: DayType? = DayType.A): DayTypeConfig {
+        val m = DayTypeConfig.DEFAULT.weekdayMap.toMutableList()
+        overrides.forEach { (dow, t) -> m[dow - 1] = t }
+        return DayTypeConfig(DayTypeConfig.DEFAULT.types, m, early)
+    }
+
     // ============================================================
-    //  一、原始规则本身没有被改坏
+    //  一、引擎判定：默认配置与恒等配置
     // ============================================================
 
     @Test
-    fun `原始规则仍然算得出全部六种日型`() {
-        // 政策层的改动**不能**动到日历规则本身。
-        // 这条保证了「想让训练日生效」时，引擎还拿得出那个答案。
-        assertEquals(DayType.A, TimelineEngine.naturalDayType(mon, 3, courses))
-        assertEquals(DayType.B_TRAIN_A, TimelineEngine.naturalDayType(tue, 3, courses))
-        assertEquals(DayType.B_TRAIN_B, TimelineEngine.naturalDayType(thu, 3, courses))
-        assertEquals(DayType.B_NORMAL, TimelineEngine.naturalDayType(friWeek5, 5, courses))
-        assertEquals(DayType.SATURDAY, TimelineEngine.naturalDayType(sat, 3, courses))
-        assertEquals(DayType.SUNDAY, TimelineEngine.naturalDayType(sun, 3, courses))
+    fun `有早八的工作日走早八优先层`() {
+        // 第 3 周周一有英语（1-2 节）→ 走早八层 → A 型
+        assertEquals(DayType.A, typeOf(mon, DayTypeConfig.DEFAULT))
+        assertTrue(TimelineEngine.hasEarlyClass(mon, 3, courses))
+    }
+
+    @Test
+    fun `没早八的工作日按星期映射走`() {
+        assertEquals(DayType.B_NORMAL, typeOf(friWeek5, DayTypeConfig.DEFAULT))
     }
 
     @Test
     fun `工作日全天没课算休息日`() {
-        // 第 3 周周五：高数/思德/体育/音乐都从第 5 周才开始 → 全天无课
-        assertEquals(DayType.REST, TimelineEngine.naturalDayType(fri, 3, courses))
-        // 第 1 周还没开课的周一也是
+        // 第 1 周还没开课的周一 → 全天无课 → 休息日，
+        // 不是按星期映射把人按 07:25 的节奏排满
         assertEquals(
             DayType.REST,
-            TimelineEngine.naturalDayType(LocalDate.of(2026, 9, 7), 1, courses)
+            typeOf(LocalDate.of(2026, 9, 7), DayTypeConfig.DEFAULT)
         )
+        assertEquals(DayType.REST, typeOf(restFri, DayTypeConfig.DEFAULT))
     }
 
     @Test
-    fun `ALL 策略是恒等映射`() {
-        for (date in listOf(mon, tue, thu, fri, sat, sun)) {
+    fun `周末跟星期映射走即使没课`() {
+        // 周末不判休息日（周末作息本来就不由课表驱动）
+        assertEquals(DayType.SATURDAY, typeOf(sat, DayTypeConfig.DEFAULT))
+        assertEquals(DayType.SUNDAY, typeOf(sun, DayTypeConfig.DEFAULT))
+    }
+
+    @Test
+    fun `早八层可以关掉`() {
+        // earlyType = null = 不区分早八：有早八的日子也按星期映射走
+        val noEarly = DayTypeConfig(
+            DayTypeConfig.DEFAULT.types, DayTypeConfig.DEFAULT.weekdayMap, null
+        )
+        assertEquals(
+            "取消早八区分后，周一（有早八）该按映射走 B 型",
+            DayType.B_NORMAL, typeOf(mon, noEarly)
+        )
+    }
+
+    // ============================================================
+    //  二、迁移的金测试：恒等配置必须与 v4 逐日一致
+    // ============================================================
+
+    @Test
+    fun `恒等配置复刻 v4 自然规则对照表`() {
+        val golden = listOf(
+            Triple(mon, 3, DayType.A),          // 周一有早八
+            Triple(tue, 3, DayType.B_TRAIN_A),  // 周二晚训练（无早八）
+            Triple(thu, 3, DayType.B_TRAIN_B),  // 周四力量B
+            Triple(friWeek5, 5, DayType.B_NORMAL),   // 周五有课无早八
+            Triple(sat, 3, DayType.SATURDAY),
+            Triple(sun, 3, DayType.SUNDAY),
+            Triple(LocalDate.of(2026, 9, 7), 1, DayType.REST),   // 开学前周一无课
+            Triple(LocalDate.of(2026, 10, 28), 8, DayType.REST)  // 第 8 周周三无课
+        )
+        for ((date, week, want) in golden) {
             assertEquals(
-                "ALL 策略不该改变任何日型",
-                TimelineEngine.naturalDayType(date, weekOf(date), courses),
-                typeOf(date, DayTypePolicy.ALL)
+                "$date 与 v4 自然规则不一致",
+                want, TimelineEngine.dayType(date, week, courses, identity)
             )
         }
     }
 
-    // ============================================================
-    //  二、默认策略：保住核心区分，去掉训练日细分
-    // ============================================================
-
     @Test
-    fun `默认策略下周二不再算训练日`() {
-        assertEquals(DayType.B_NORMAL, typeOf(tue, DayTypePolicy.DEFAULT))
-        assertEquals(DayType.B_NORMAL, typeOf(thu, DayTypePolicy.DEFAULT))
-    }
-
-    @Test
-    fun `默认策略保住了「有早八就是 A 型」`() {
-        assertEquals(DayType.A, typeOf(mon, DayTypePolicy.DEFAULT))
-    }
-
-    @Test
-    fun `默认策略保住了周末`() {
-        assertEquals(DayType.SATURDAY, typeOf(sat, DayTypePolicy.DEFAULT))
-        assertEquals(DayType.SUNDAY, typeOf(sun, DayTypePolicy.DEFAULT))
-    }
-
-    @Test
-    fun `默认策略下没早八的日子仍然是 07 点 25 起床`() {
-        // ★ 这条是默认值取舍的核心。
-        //
-        // 「有早八 06:55 起 / 没早八 07:25 起」是这个 App 存在的理由 ——
-        // 它回答的就是「今天要不要早起」。默认策略削掉了训练日的细分，
-        // 但**绝不能**顺手把这一档也弄丢：那样周二会被按 A 型排，
-        // 没早八的日子也会 06:55 把人叫起来。
-        assertEquals(7 * 60 + 25, wakeOf(tue, DayTypePolicy.DEFAULT))
-        assertEquals(7 * 60 + 25, wakeOf(thu, DayTypePolicy.DEFAULT))
-        assertEquals(7 * 60 + 25, wakeOf(friWeek5, DayTypePolicy.DEFAULT))
-        // 有早八的日子照旧 06:55
-        assertEquals(6 * 60 + 55, wakeOf(mon, DayTypePolicy.DEFAULT))
-        // 休息日不参与映射，走休息日模板睡到 09:00
-        assertEquals(9 * 60, wakeOf(fri, DayTypePolicy.DEFAULT))
-    }
-
-    @Test
-    fun `默认策略真的穿透到了时间轴而不只是改了标签`() {
-        // 日型不一致最典型的坏法：界面显示 B 型、实际按 A 型排。
-        // 这条不看日型名字，**直接看排出来的时间轴** ——
-        //
-        // 每套模板的第一格都是「00:00 到起床」，
-        // 所以第一格的结束时刻就是那天的起床时间，一目了然。
-        val tueDefault = TimelineEngine.moments(
-            tue, 3, courses, TemplateSet(policy = DayTypePolicy.DEFAULT)
+    fun `恒等映射就是旧自然槽位`() {
+        assertEquals(
+            listOf(
+                DayType.B_NORMAL, DayType.B_TRAIN_A, DayType.B_NORMAL,
+                DayType.B_TRAIN_B, DayType.B_NORMAL, DayType.SATURDAY,
+                DayType.SUNDAY
+            ),
+            identity.weekdayMap
         )
-        assertEquals("周二应当按 B 型日排（07:25 起）", 7 * 60 + 25, tueDefault.first().end)
+        assertEquals(DayType.A, identity.earlyType)
+    }
 
-        val tueAll = TimelineEngine.moments(
-            tue, 3, courses, TemplateSet(policy = DayTypePolicy.ALL)
+    @Test
+    fun `默认配置就是旧默认策略迁移的结果`() {
+        // 结构性金测试：新默认 == 旧默认策略迁移的结果
+        assertEquals(configFromPolicy(DayTypePolicy.DEFAULT), DayTypeConfig.DEFAULT)
+    }
+
+    @Test
+    fun `默认配置下训练日闲置`() {
+        // 默认配置下周二晚上不该出现训练块 —— 「训练日」不是通用规律
+        val ms = TimelineEngine.moments(tue, 3, courses, TemplateSet(config = DayTypeConfig.DEFAULT))
+        val m = TimelineEngine.currentAt(ms, 19 * 60 + 30)!!
+        assertFalse("不该出现训练块，实际：${m.title}", m.title.contains("训练"))
+        assertFalse(m.kind == Kind.TRAIN)
+    }
+
+    @Test
+    fun `恒等配置下训练块真的在`() {
+        // 对照：恒等配置（周二映射到训练日）下训练块真的在
+        val ms = TimelineEngine.moments(tue, 3, courses, TemplateSet(config = identity))
+        val m = TimelineEngine.currentAt(ms, 19 * 60 + 30)!!
+        assertTrue("实际得到: ${m.title}", m.title.contains("训练"))
+        assertEquals(Kind.TRAIN, m.kind)
+    }
+
+    // ============================================================
+    //  三、星期映射 + 早八层的组合行为
+    // ============================================================
+
+    @Test
+    fun `星期映射决定工作日用哪套`() {
+        val cfg = makeConfig(mapOf(2 to DayType.B_TRAIN_A))   // 周二 → 训练日A
+        assertEquals(DayType.B_TRAIN_A, typeOf(tue, cfg))
+        assertEquals("没被改派的星期仍走默认映射", DayType.B_NORMAL, typeOf(friWeek5, cfg))
+    }
+
+    @Test
+    fun `映射改了要真的穿透到时间轴而不只是改标签`() {
+        val msDefault = TimelineEngine.moments(
+            tue, 3, courses, TemplateSet(config = DayTypeConfig.DEFAULT)
+        )
+        val msTrain = TimelineEngine.moments(
+            tue, 3, courses, TemplateSet(config = makeConfig(mapOf(2 to DayType.B_TRAIN_A)))
+        )
+        assertNotEquals(
+            "映射改了，时间轴却一模一样 —— 配置没穿透到引擎",
+            msDefault.map { it.start to it.title },
+            msTrain.map { it.start to it.title }
+        )
+    }
+
+    @Test
+    fun `改映射后起床时间跟着变`() {
+        // 训练日模板 07:25 起、B 型也是 07:25 —— 换成 A 型（06:55）看得清
+        assertEquals(7 * 60 + 25, wakeOf(tue, makeConfig(mapOf(2 to DayType.B_TRAIN_A))))
+        assertEquals(6 * 60 + 55, wakeOf(tue, makeConfig(mapOf(2 to DayType.A))))
+    }
+
+    @Test
+    fun `早八层优先于星期映射`() {
+        // 周一有早八：早八层优先于星期映射
+        val cfg = makeConfig(mapOf(1 to DayType.B_NORMAL), early = DayType.A)
+        assertEquals("有早八的日子没走早八层", DayType.A, typeOf(mon, cfg))
+    }
+
+    @Test
+    fun `没早八的日子仍然 07 点 25 起床`() {
+        // ★ 这条是默认值取舍的核心：「有早八 06:55 / 没早八 07:25」
+        // 是这个 App 存在的理由，配置再怎么改也不能把这档弄丢
+        assertEquals(7 * 60 + 25, wakeOf(friWeek5, DayTypeConfig.DEFAULT))
+        assertEquals(7 * 60 + 25, wakeOf(tue, DayTypeConfig.DEFAULT))
+        assertEquals(6 * 60 + 55, wakeOf(mon, DayTypeConfig.DEFAULT))
+        assertEquals(9 * 60, wakeOf(restFri, DayTypeConfig.DEFAULT))
+    }
+
+    // ============================================================
+    //  四、REST：自动判定层
+    // ============================================================
+
+    @Test
+    fun `休息日在任何映射下都不被改派`() {
+        // ★ 无课工作日永远是休息日 —— 星期映射管不到它
+        for (override in listOf(DayType.A, DayType.B_TRAIN_A, DayType.SATURDAY)) {
+            val cfg = makeConfig(mapOf(1 to override), early = null)
+            assertEquals("$override 的映射不该影响休息日", DayType.REST, typeOf(restFri, cfg))
+        }
+    }
+
+    @Test
+    fun `休息日的界面标签是无课休息日`() {
+        assertEquals(
+            "无课 · 休息日",
+            TimelineEngine.dayTypeDisplay(restFri, 3, courses, DayTypeConfig.DEFAULT)
+        )
+    }
+
+    // ============================================================
+    //  五、显示：标签不能说谎
+    // ============================================================
+
+    @Test
+    fun `早八日显示日历事实`() {
+        val label = TimelineEngine.dayTypeDisplay(mon, 3, courses, DayTypeConfig.DEFAULT)
+        assertTrue("实际：$label", label.contains("A 型日"))
+        assertTrue("实际：$label", label.contains("有早八"))
+    }
+
+    @Test
+    fun `自定义映射下标签不说谎`() {
+        // 「A 型日 · 有早八」是句假话的情形：
+        // 把工作日全映射到 A、又关掉早八层之后，周二（无早八）也会用 A 模板 ——
+        // 但那天没有早八，标签**不能**带「· 有早八」。
+        val cfg = DayTypeConfig(
+            DayTypeConfig.DEFAULT.types,
+            listOf(DayType.A, DayType.A, DayType.A, DayType.A, DayType.A, DayType.A, DayType.A),
+            null
+        )
+        // 注意：周六周日映射成 A 是非法配置（weekdayMap 允许，只是引擎周末也走映射）；
+        // 这里只关心周二的标签
+        val label = TimelineEngine.dayTypeDisplay(tue, 3, courses, cfg)
+        assertEquals("A 型日", label)
+    }
+
+    @Test
+    fun `自定义日型名参与显示`() {
+        val label = TimelineEngine.dayTypeDisplay(
+            mon, 3, courses, DayTypeConfig.DEFAULT, mapOf(DayType.A to "早八日")
+        )
+        assertTrue("实际：$label", label.contains("早八日"))
+    }
+
+    @Test
+    fun `周末标签用各自的名字`() {
+        assertEquals(
+            "周六", TimelineEngine.dayTypeDisplay(sat, 3, courses, DayTypeConfig.DEFAULT)
         )
         assertEquals(
-            "ALL 策略下周二走训练日模板，同样是 07:25 起 —— 但内容不同",
-            7 * 60 + 25, tueAll.first().end
+            "周日", TimelineEngine.dayTypeDisplay(sun, 3, courses, DayTypeConfig.DEFAULT)
         )
-
-        // 真正证明「策略生效了」的是：两种策略排出来的东西**不一样**
-        assertTrue(
-            "默认策略和 ALL 策略在周二应当排出不同的时间轴",
-            tueDefault != tueAll
-        )
-
-        // 而周一（有早八）两种策略都该是 06:55 起，不受影响
-        val monDefault = TimelineEngine.moments(
-            mon, 3, courses, TemplateSet(policy = DayTypePolicy.DEFAULT)
-        )
-        assertEquals("周一有早八，仍是 06:55 起", 6 * 60 + 55, monDefault.first().end)
     }
 
     // ============================================================
-    //  三、自定义策略
+    //  六、迁移：configFromPolicy（旧策略 → 新配置）
     // ============================================================
 
     @Test
-    fun `只启用 A 和周末时 周二回落到 A 型`() {
-        // 用户明确选择「我只要 A 型和周末」——这时周二就该按 A 型走，
-        // 哪怕那意味着没早八的日子也 06:55 起床。
-        // 这是**用户的选择**，不是 bug。
+    fun `迁移 默认策略得到默认配置`() {
+        assertEquals(DayTypeConfig.DEFAULT, configFromPolicy(DayTypePolicy.DEFAULT))
+    }
+
+    @Test
+    fun `迁移 恒等策略得到恒等配置`() {
+        assertEquals(identity, configFromPolicy(DayTypePolicy.ALL))
+    }
+
+    @Test
+    fun `迁移 未启用的槽位落到回落项`() {
+        // 例：只启用 A + 周末、回落 B 型 → 周二（自然槽位训练日A，未启用）落 B 型。
+        // 这正是旧 resolve() 对那天给出的答案。
         val p = DayTypePolicy(
             enabled = setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY),
-            fallback = DayType.A
+            fallback = DayType.B_NORMAL
         )
-        assertEquals(DayType.A, typeOf(tue, p))
-        assertEquals(DayType.A, typeOf(thu, p))
-        assertEquals(DayType.A, typeOf(friWeek5, p))
-        assertEquals(DayType.SATURDAY, typeOf(sat, p))
-        assertEquals(6 * 60 + 55, wakeOf(tue, p))
-        // 但休息日**不落 fallback** —— 就算 fallback 是 A，假期也不按 A 型过
-        assertEquals(DayType.REST, typeOf(fri, p))
-        assertEquals(9 * 60, wakeOf(fri, p))
+        assertEquals("周二应落到回落项", DayType.B_NORMAL, configFromPolicy(p).weekdayMap[1])
     }
 
     @Test
-    fun `fallback 允许不在 enabled 里`() {
-        // 「只启用 A 和周末，但周中没早八时要回落成 B 型」是完全正当的用法。
-        // fallback 表达的是「拿哪套模板兜底」，和「启用了哪些日型」不是一回事。
+    fun `迁移 回落项可以不在启用集合里`() {
         val p = DayTypePolicy(
             enabled = setOf(DayType.A, DayType.SATURDAY),
             fallback = DayType.B_NORMAL
         )
-        assertFalse(DayType.B_NORMAL in p.enabled)
-        assertEquals(DayType.B_NORMAL, typeOf(friWeek5, p))
-        assertEquals(7 * 60 + 25, wakeOf(friWeek5, p))
+        assertEquals(DayType.B_NORMAL, configFromPolicy(p).weekdayMap[0])
     }
 
     @Test
-    fun `只启用训练日时其他日子全落到训练日模板`() {
+    fun `迁移 A 没启用时早八层落到回落项`() {
         val p = DayTypePolicy(
-            enabled = setOf(DayType.B_TRAIN_A),
-            fallback = DayType.B_TRAIN_A
+            enabled = setOf(DayType.B_NORMAL, DayType.SATURDAY, DayType.SUNDAY),
+            fallback = DayType.B_NORMAL
         )
-        assertEquals(DayType.B_TRAIN_A, typeOf(mon, p))
-        assertEquals(DayType.B_TRAIN_A, typeOf(tue, p))
-        assertEquals(DayType.B_TRAIN_A, typeOf(sat, p))
+        assertEquals(DayType.B_NORMAL, configFromPolicy(p).earlyType)
+    }
+
+    @Test
+    fun `迁移结果必含休息日`() {
+        assertEquals(DayType.REST, DayTypeConfig.DEFAULT.types.last())
+        assertTrue(identity.manages(DayType.REST))
+    }
+
+    @Test
+    fun `weekdaysOf 报出日型管哪几天`() {
+        assertEquals(listOf(1, 2, 3, 4, 5), DayTypeConfig.DEFAULT.weekdaysOf(DayType.B_NORMAL))
+        assertEquals(listOf(6), DayTypeConfig.DEFAULT.weekdaysOf(DayType.SATURDAY))
+        assertEquals(emptyList<Int>(), DayTypeConfig.DEFAULT.weekdaysOf(DayType.B_TRAIN_A))
     }
 
     // ============================================================
-    //  四、JSON 解析
+    //  七、JSON 解析（v3/v4 旧段照常导入）
     // ============================================================
 
-    private fun doc(dayTypes: String) =
-        """{"format":"timetable","version":3,"dayTypes":$dayTypes,"courses":[]}"""
+    private fun doc(dayTypes: String, version: Int = 4) =
+        """{"format":"timetable","version":$version,"dayTypes":$dayTypes,"courses":[]}"""
 
     private fun parsed(json: String): ScheduleFormat.Parsed {
         val r = ScheduleFormat.parse(json, 19)
-        assertTrue("期望解析成功，实际失败", r is ScheduleFormat.Result.Ok)
+        assertTrue("期望解析成功，实际失败：${(r as? ScheduleFormat.Result.Failed)?.message}", r is ScheduleFormat.Result.Ok)
         return (r as ScheduleFormat.Result.Ok).parsed
     }
 
@@ -233,23 +375,42 @@ class DayTypePolicyTest {
     }
 
     @Test
-    fun `能解析一份完整的 dayTypes 段`() {
+    fun `旧 dayTypes 段默认值迁移成默认配置`() {
         val p = parsed(
-            doc("""{"enabled":["A","SATURDAY","SUNDAY"],"fallback":"A"}""")
-        ).dayTypes!!
+            doc("""{"enabled":["A","B_NORMAL","SATURDAY","SUNDAY"],"fallback":"B_NORMAL"}""")
+        )
+        assertEquals(DayTypeConfig.DEFAULT, p.dayTypeConfig)
+    }
 
-        assertEquals(setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY), p.enabled)
-        assertEquals(DayType.A, p.fallback)
+    @Test
+    fun `旧 dayTypes 段恒等值迁移成恒等配置`() {
+        val p = parsed(
+            doc("""{"enabled":["A","B_NORMAL","B_TRAIN_A","B_TRAIN_B","SATURDAY","SUNDAY"],"fallback":"B_NORMAL"}""")
+        )
+        assertEquals(identity, p.dayTypeConfig)
+    }
+
+    @Test
+    fun `旧段解析结果仍在 dayTypes 字段里供预览`() {
+        val p = parsed(doc("""{"enabled":["A","SATURDAY"],"fallback":"B_NORMAL"}"""))
+        assertEquals(setOf(DayType.A, DayType.SATURDAY), p.dayTypes!!.enabled)
+        assertEquals(DayType.B_NORMAL, p.dayTypes!!.fallback)
+        // 同时给出了迁移后的配置
+        assertEquals(DayType.B_NORMAL, p.dayTypeConfig!!.weekdayMap[0])
+    }
+
+    @Test
+    fun `v3 文件的旧段照常导入`() {
+        val p = parsed(doc("""{"enabled":["A"],"fallback":"A"}""", version = 3))
+        assertTrue(p.dayTypeConfig != null)
     }
 
     @Test
     fun `没写 dayTypes 段时是 null 表示不动`() {
-        // 和 courses 一样的「null = 不要动」语义。
-        // 如果当成「用默认值」，用户每导入一份只改课表的文件，
-        // 辛苦配好的日型策略都会被打回默认。
-        val json = """{"format":"timetable","version":3,""" +
+        val json = """{"format":"timetable","version":5,""" +
                 """"courses":[{"name":"高数","dayOfWeek":1,"nodes":[1,2],"weeks":"1-5"}]}"""
         assertNull(parsed(json).dayTypes)
+        assertNull(parsed(json).dayTypeConfig)
     }
 
     @Test
@@ -265,39 +426,43 @@ class DayTypePolicyTest {
     }
 
     @Test
-    fun `日型名字大小写不敏感`() {
-        val p = parsed(
-            doc("""{"enabled":["a","b_normal","saturday"],"fallback":"b_normal"}""")
-        ).dayTypes!!
+    fun `旧名与 id 都认识且大小写不敏感`() {
+        val p = parsed(doc("""{"enabled":["a","b_normal","5"],"fallback":"b_normal"}"""))
         assertEquals(
             setOf(DayType.A, DayType.B_NORMAL, DayType.SATURDAY),
-            p.enabled
+            p.dayTypes!!.enabled
         )
-        assertEquals(DayType.B_NORMAL, p.fallback)
+        assertEquals(DayType.B_NORMAL, p.dayTypes!!.fallback)
     }
 
     @Test
-    fun `不认识的名字要报错并列出自定义项`() {
+    fun `不认识的名字要报错并列出可用 id`() {
         val msg = failed(doc("""{"enabled":["A","FOO"],"fallback":"A"}"""))
         assertTrue("要指出第几项，实际：$msg", msg.contains("第 2 项"))
-        assertTrue("要列出可用值，实际：$msg", msg.contains("B_TRAIN_A"))
+        assertTrue("要列出可用 id，实际：$msg", msg.contains("\"4\""))
     }
 
     @Test
-    fun `省略 fallback 时按标准顺序取第一个已启用项`() {
+    fun `旧段里写休息日要被专门拦下`() {
+        // 写 "7" 的人不是拼错了，是误解了休息日的定位 ——
+        // 给一句能纠正误解的话比「可用的值是…」有用
+        val msg = failed(doc("""{"enabled":["A","7"],"fallback":"A"}"""))
+        assertTrue("实际：$msg", msg.contains("休息日"))
+        val msg2 = failed(doc("""{"enabled":["A"],"fallback":"7"}"""))
+        assertTrue("实际：$msg2", msg2.contains("休息日"))
+    }
+
+    @Test
+    fun `省略 fallback 时按 id 升序取第一个已启用项`() {
         // 用固定顺序而不是集合遍历顺序 —— 后者每次运行可能不同，
         // 会让同一份文件解析出不同结果
-        val p = parsed(
-            doc("""{"enabled":["SUNDAY","B_TRAIN_B"]}""")
-        ).dayTypes!!
-        // 标准顺序是 A, B_TRAIN_A, B_TRAIN_B, B_NORMAL, SATURDAY, SUNDAY
-        // 其中被启用的有 B_TRAIN_B 和 SUNDAY → 取更靠前的 B_TRAIN_B
-        assertEquals(DayType.B_TRAIN_B, p.fallback)
+        val p = parsed(doc("""{"enabled":["SUNDAY","B_TRAIN_B"]}"""))
+        // id 升序里 B_TRAIN_B(4) 比 SUNDAY(6) 靠前
+        assertEquals(DayType.B_TRAIN_B, p.dayTypes!!.fallback)
     }
 
     @Test
-    fun `四段全空才报错 dayTypes 单独存在也算有效内容`() {
-        // 一份只写 dayTypes 的文件是正当的（只想改日型，课表模板都别动）
+    fun `旧段单独存在也算有效内容`() {
         val p = parsed(doc("""{"enabled":["A"],"fallback":"A"}"""))
         assertNull(p.courses)
         assertNull(p.templates)
@@ -305,11 +470,11 @@ class DayTypePolicyTest {
     }
 
     // ============================================================
-    //  五、往返
+    //  八、往返与存储
     // ============================================================
 
     @Test
-    fun `导出再导入 日型策略不变`() {
+    fun `v3 兼容导出再导入 日型策略不变`() {
         val policy = DayTypePolicy(
             enabled = setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY),
             fallback = DayType.B_NORMAL
@@ -319,8 +484,9 @@ class DayTypePolicyTest {
             startDate = termStart,
             totalWeeks = 19,
             courses = emptyList(),
-            templates = TemplateSet(policy = policy).expanded(),
-            dayTypes = policy
+            templates = TemplateSet(config = DayTypeConfig.DEFAULT).expanded(),
+            dayTypes = policy,
+            version = 3
         )
         val back = parsed(json).dayTypes!!
         assertEquals(policy.enabled, back.enabled)
@@ -328,9 +494,8 @@ class DayTypePolicyTest {
     }
 
     @Test
-    fun `enabled 的输出顺序是固定的`() {
+    fun `旧存储键的输出顺序是固定的`() {
         // 输入顺序不同、内容相同 → 输出必须一致。
-        // 否则同一份数据每次导出都产生 diff，版本对比就没法看了。
         val a = DayTypePolicy(
             enabled = setOf(DayType.SUNDAY, DayType.A, DayType.SATURDAY),
             fallback = DayType.A
@@ -343,26 +508,20 @@ class DayTypePolicyTest {
             ScheduleFormat.dayTypesToJson(a),
             ScheduleFormat.dayTypesToJson(b)
         )
+        // v4 起存储也写 id
         assertTrue(
-            ScheduleFormat.dayTypesToJson(a).contains("""["A","SATURDAY","SUNDAY"]""")
+            ScheduleFormat.dayTypesToJson(a).contains("""["1","5","6"]""")
         )
     }
 
-    // ============================================================
-    //  六、本地存储往返
-    // ============================================================
-
     @Test
     fun `存进本地再读回来 策略不变`() {
-        // 这个坑 templates 那边踩过一次：写出去的形状和读回来的对不上，
-        // 结果用户改的设置**静默消失**。所以每个存储格式都要有一条往返测试。
         val policy = DayTypePolicy(
             enabled = setOf(DayType.A, DayType.B_TRAIN_A, DayType.SATURDAY),
             fallback = DayType.B_TRAIN_A
         )
         val json = ScheduleFormat.dayTypesToJson(policy)
         val back = ScheduleFormat.dayTypesFromJson(json)
-
         assertEquals(policy.enabled, back.enabled)
         assertEquals(policy.fallback, back.fallback)
     }
@@ -381,5 +540,25 @@ class DayTypePolicyTest {
             ScheduleFormat.dayTypesToJson(DayTypePolicy.DEFAULT)
         )
         assertEquals(DayTypePolicy.DEFAULT, back)
+    }
+
+    // ============================================================
+    //  九、v5 本地存储编解码
+    // ============================================================
+
+    @Test
+    fun `dayTypeConfig 存储往返`() {
+        val config = DayTypeConfig(
+            DayTypeConfig.DEFAULT.types, DayTypeConfig.DEFAULT.weekdayMap, null
+        )
+        val json = ScheduleFormat.dayTypeConfigToJson(config)
+        assertEquals(config, ScheduleFormat.dayTypeConfigFromJson(json))
+    }
+
+    @Test
+    fun `dayTypeConfig 存储损坏回默认`() {
+        for (bad in listOf("", "{", "[]", "null", """{"types":[]}""")) {
+            assertEquals(DayTypeConfig.DEFAULT, ScheduleFormat.dayTypeConfigFromJson(bad))
+        }
     }
 }

@@ -1,6 +1,6 @@
 {
   "format": "timetable",
-  "version": 3,
+  "version": 5,
   "term": {
     "name": "示例大学 2026 级 · 大一上",
     "startDate": "2026-09-07",

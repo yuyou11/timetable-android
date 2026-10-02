@@ -148,7 +148,9 @@ object Notifier {
 
         val cur = TimelineEngine.currentAt(moments, minute) ?: return
         val next = TimelineEngine.nextAfter(moments, minute)
-        val type = TimelineEngine.dayType(today, week, courses, templates.policy)
+        // 自定义日型名（v4）跟着显示走 —— 改名不改行为，但所有展示日型名的
+        // 地方都得认它，通知栏不例外
+        val names = store.dayTypeNames()
 
         val endAtMillis = today.atStartOfDay(zone)
             .plusMinutes(cur.end.toLong())
@@ -161,7 +163,7 @@ object Notifier {
         // 晚上躺床上拉一下通知栏就能知道明天几点起、第一节什么课。
         val tomorrow = today.plusDays(1)
         val tWeek = store.weekOf(tomorrow)
-        val tType = TimelineEngine.dayType(tomorrow, tWeek, courses, templates.policy)
+        val tType = TimelineEngine.dayType(tomorrow, tWeek, courses, templates.config)
         val tWake = TimelineEngine.wakeMinute(
             TimelineEngine.template(tType, templates)
         )
@@ -174,11 +176,11 @@ object Notifier {
             append(if (next != null) "${Slots.fmt(next.start)}　${next.title}" else "今天没有下一项了")
             append("\n\n▸ 今天　第 ").append(week).append(" 周 · ").append(weekdayLabel(today.dayOfWeek.value))
             append(" · ").append(
-                TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
+                TimelineEngine.dayTypeDisplay(today, week, courses, templates.config, names)
             )
             append("\n▸ 明天　").append(weekdayLabel(tomorrow.dayOfWeek.value))
             append(" · ").append(
-                TimelineEngine.dayTypeDisplay(tomorrow, tWeek, courses, templates.policy)
+                TimelineEngine.dayTypeDisplay(tomorrow, tWeek, courses, templates.config, names)
             )
             if (tWake != null) append(" · ").append(Slots.fmt(tWake)).append(" 起床")
         }
@@ -203,7 +205,7 @@ object Notifier {
             .setContentText(rangeText + whereText)
             .setSubText(
                 "第 $week 周 · " +
-                        TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
+                        TimelineEngine.dayTypeDisplay(today, week, courses, templates.config, names)
             )
             .setStyle(NotificationCompat.BigTextStyle().bigText(expanded))
             .setWhen(endAtMillis)

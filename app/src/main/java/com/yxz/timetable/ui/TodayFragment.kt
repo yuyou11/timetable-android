@@ -125,9 +125,11 @@ class TodayFragment : Fragment() {
             "${today.year} 年 ${today.monthValue} 月 ${today.dayOfMonth} 日 · " +
                     "${weekdayCn(today.dayOfWeek.value)} · 第 $week 教学周"
         // 用 dayTypeDisplay 而不是 .label：后者只说模板名，
-        // 加上「有早八」得看日历，见该函数的注释
+        // 加上「有早八」得看日历，见该函数的注释。
+        // names = 用户改过的日型名（v4）—— 改名不改行为，但显示要跟。
+        val names = store.dayTypeNames()
         binding.tvHeaderDayType.text =
-            TimelineEngine.dayTypeDisplay(today, week, courses, templates.policy)
+            TimelineEngine.dayTypeDisplay(today, week, courses, templates.config, names)
 
         // ---- 此刻 ----
         val cur = TimelineEngine.currentAt(moments, minute)
@@ -177,13 +179,13 @@ class TodayFragment : Fragment() {
     private fun renderTomorrow(courses: List<com.yxz.timetable.data.Course>, templates: com.yxz.timetable.data.TemplateSet) {
         val tomorrow = LocalDate.now().plusDays(1)
         val week = store.weekOf(tomorrow)
-        val type = TimelineEngine.dayType(tomorrow, week, courses, templates.policy)
+        val type = TimelineEngine.dayType(tomorrow, week, courses, templates.config)
         val template = TimelineEngine.template(type, templates)
         val moments = TimelineEngine.moments(tomorrow, week, courses, templates)
 
         binding.tvTomorrowHeader.text =
             "${weekdayCn(tomorrow.dayOfWeek.value)} · 第 $week 周 · " +
-                    TimelineEngine.dayTypeDisplay(tomorrow, week, courses, templates.policy)
+                    TimelineEngine.dayTypeDisplay(tomorrow, week, courses, templates.config, store.dayTypeNames())
 
         // ---- 起床时间 ----
         tomorrowWake = TimelineEngine.wakeMinute(template)

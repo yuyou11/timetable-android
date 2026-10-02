@@ -14,8 +14,39 @@ package com.yxz.timetable.data
  *
  * 同理，格式说明也内嵌在提示词里 —— AI 不需要知道这个 App 的存在，
  * 读完这段提示词就能产出合规的文件。
+ *
+ * ## 输出版本为什么是 v4 而不是 v5
+ *
+ * AI 需要的就是「id 键的模板」（v4 起才有）—— 课表提示词里根本没有日型段，
+ * 作息提示词里 AI 也不需要发明 dayTypeConfig（哪天用哪套是用户自己的事）。
+ * v4 文件 App 照常导入（旧 dayTypes 段不存在就沿用当前配置），
+ * 跟电脑版的提示词保持一致，两台设备给 AI 的输入完全一样。
  */
 object AiPrompt {
+
+    /**
+     * 七种日型的触发规则。**规则是格式标准的一部分，不会因为用户改名而变** ——
+     * id 与「哪天自动用这一套」的对应关系写死在这里，名字才是用户数据。
+     */
+    private val DAY_TYPE_RULES = mapOf(
+        "1" to "工作日第 1-2 节有课（有早八）的那天自动用",
+        "2" to "没有早八的普通工作日",
+        "3" to "每周二（是否启用由用户的星期映射决定）",
+        "4" to "每周四（是否启用由用户的星期映射决定）",
+        "5" to "周六",
+        "6" to "周日",
+        "7" to "工作日全天没课的日子（休息日，可选）"
+    )
+
+    /** 提示词里那张表的排列顺序：id 升序（含休息日） */
+    private val DAY_TYPE_TABLE_ORDER =
+        Templates.ALL_TYPES + DayType.REST
+
+    /** 生成提示词里那张「id → 当前名字 → 触发规则」对照表 */
+    private fun dayTypeTable(dayTypeNames: Map<DayType, String>): String =
+        DAY_TYPE_TABLE_ORDER.joinToString("\n") { t ->
+            "  \"${t.id}\"   ${dayTypeName(t, dayTypeNames)} —— ${DAY_TYPE_RULES.getValue(t.id)}"
+        }
 
     /**
      * 课表提示词。
@@ -41,7 +72,7 @@ object AiPrompt {
 
 {
   "format": "timetable",
-  "version": 3,
+  "version": 4,
   "periods": "$periods",
   "term": {
     "name": "$termName",
@@ -133,28 +164,31 @@ object AiPrompt {
      *
      * 模板是「没人管我的时候，我打算怎么过这一天」。
      * 这段提示词比课表那段长很多，因为模板的结构更自由 ——
-     * 需要把六种日型、八种时段性质、课表占位格都说清楚。
+     * 需要把七种日型、八种时段性质、课表占位格都说清楚。
+     *
+     * [dayTypeNames] 是用户改过的日型名 —— 表里念**用户认得的名字**，
+     * 但要求 AI 输出的键仍然是 id。
      */
     fun forTemplates(
         termName: String,
-        periods: String = ScheduleFormat.DEFAULT_PERIODS
+        periods: String = ScheduleFormat.DEFAULT_PERIODS,
+        dayTypeNames: Map<DayType, String> = emptyMap()
     ): String {
         val nodeLimit = ScheduleFormat.nodeCount(periods)
+        val table = dayTypeTable(dayTypeNames)
         return """
 你是数据格式转换助手。请把我描述的日常作息转换成下面这个 JSON 格式。
+
+（这是给「$termName」用的）
 
 # 输出格式
 
 {
   "format": "timetable",
-  "version": 3,
+  "version": 4,
   "courses": [],
-  "dayTypes": {
-    "enabled": ["A", "B_NORMAL", "SATURDAY", "SUNDAY"],
-    "fallback": "B_NORMAL"
-  },
   "templates": {
-    "A": [
+    "1": [
       { "start": "00:00", "end": "06:55", "title": "睡觉", "kind": "SLEEP" },
       { "start": "06:55", "end": "07:10", "title": "起床、洗漱" },
       { "start": "07:10", "end": "07:35", "title": "早餐", "kind": "MEAL" },
@@ -163,34 +197,18 @@ object AiPrompt {
   }
 }
 
+注意 "courses": [] 是**故意留空**的，表示「只改作息，不动课表」。
+程序支持这样导入，不要替我把课程补上。
+
 # templates 段
 
-键是日型名称，只能从下面六个里选：
+键是**日型 id**（不是名字）。每种 id 管哪一天由程序自动判定，你不用管；
+下面是全部 7 种的当前名字和触发规则：
 
-  "A"           有早八的日子（当天第 1-2 节有课时自动用这一套）
-  "B_NORMAL"    没有早八的工作日
-  "B_TRAIN_A"   没有早八的周二（训练日·力量A）
-  "B_TRAIN_B"   没有早八的周四（训练日·力量B）
-  "SATURDAY"    周六
-  "SUNDAY"      周日
+$table
 
 **你只需要输出我改动过的那几种**，没提到的日型会自动沿用内置模板。
-
-# dayTypes 段（可选，但建议写）
-
-它决定**哪几种日型真的会被用到**。没启用的日型那天，会改用 fallback 指定的那一套。
-
-  enabled   启用的日型列表，至少一个
-  fallback  算出来的日型不在 enabled 里时，改用哪一套
-
-只把「我描述里真的出现过」的日型写进 enabled。**不要为了凑数把六种全写上** ——
-比如我没提过力量训练，就别启用 B_TRAIN_A / B_TRAIN_B，
-否则那两套没用的模板会一直参与排程，让人搞不清周二到底按哪套走。
-
-全天没课的工作日由 App 自动按休息日过（无课、无晚自习），
-不需要、也不允许为它定义模板或发明新的日型名。
-
-不写这个字段也可以，App 会沿用当前设置。
+键永远写 id 数字字符串，不要写日型的名字。
 
 # 每一格（block）
 
@@ -225,7 +243,7 @@ object AiPrompt {
    比如 00:00-08:00 的「睡觉」和 07:00-24:00 的「早起」是冲突的，
    要么改成 08:00 开始，要么把睡觉的结束时间改到 07:00。
 2. 尽量让每套模板从 00:00 连续铺到 24:00，中间不要留空。
-   留空不是错误，但 App 会自动填成「空档 · 机动」，通常不是你想要的。
+   留空不是错误，但程序会自动填成「空档 · 机动」，通常不是你想要的。
 
 # 输出要求
 
@@ -264,10 +282,12 @@ $errorMessage
 5. 检查 nodes 是否是两个整数且起始 ≤ 结束，值在 periods 声明的节数范围内
    （默认 "442" 即 1-10）
 6. 检查 startDate 是不是周一，格式 YYYY-MM-DD
-7. 检查 dayTypes.enabled 里的日型名是不是这六个之一：
-   A、B_TRAIN_A、B_TRAIN_B、B_NORMAL、SATURDAY、SUNDAY，且至少有一个
+7. 检查 templates 的键是不是日型 id（"1" 到 "7" 的数字字符串）——
+   不是日型名字，也不是数字字面量（键必须带引号）
 8. 检查每套模板里格子之间的时间有没有重叠，end 必须晚于 start
 9. 检查 periods（如果写了）是不是 1-14 位数字、每位 1-9、各位之和不超过 14
+10. 如果写了 dayTypeConfig：weekdayMap 必须恰好 7 项（周一到周日），
+    每项 ∈ types 且不能是 "7"（休息日）
 
 你上次生成的 JSON（供参考）：
 

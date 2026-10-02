@@ -387,7 +387,13 @@ class ScheduleFormatTest {
         val p = ok(ScheduleFormat.exampleJson())
         assertEquals(3, p.courses!!.size)
         assertEquals(LocalDate.of(2026, 9, 7), p.term!!.startDate)
-        assertTrue(p.warnings.isEmpty())
+        assertTrue("示例里的 dayTypeConfig 应当被解析出来", p.dayTypeConfig != null)
+        // 示例里那段模板只写了三格（点到为止的示范），会有「没排到」的提醒 ——
+        // 这不叫坏数据；但**不许**有冲突、编码这类真警告
+        assertTrue(
+            "示例不该有除「没排到」之外的警告：${p.warnings}",
+            p.warnings.all { it.contains("没排到") }
+        )
     }
 
     @Test
@@ -525,8 +531,9 @@ class ScheduleFormatTest {
         val t = """"templates": { "MONDAY": [ { "start": "00:00", "end": "24:00", "title": "x" } ] }"""
         val msg = fail(docWithTemplates(oneCourse, t))
         assertTrue(msg, msg.contains("MONDAY"))
-        assertTrue(msg, msg.contains("A"))
-        assertTrue(msg, msg.contains("SATURDAY"))
+        // v4 起可用的值是 id（含休息日），并提示 v3 旧名也接受
+        assertTrue(msg, msg.contains("\"7\"（休息日）"))
+        assertTrue(msg, msg.contains("旧名"))
     }
 
     @Test
@@ -589,8 +596,9 @@ class ScheduleFormatTest {
         )
         val back = ok(json).templates!!
 
-        assertEquals(6, back.size)
-        for (type in Templates.ALL_TYPES) {
+        // v4 起展开含休息日，共七套
+        assertEquals(7, back.size)
+        for (type in Templates.FILE_ORDER) {
             assertEquals(
                 "$type 往返不一致",
                 signature2(templates.getValue(type)),
@@ -696,12 +704,13 @@ class ScheduleFormatTest {
     }
 
     @Test
-    fun `六套模板全部存取往返一致`() {
+    fun `七套模板全部存取往返一致`() {
         val original = TemplateSet.BUILTIN.expanded()
         val back = ScheduleFormat.templatesFromJson(ScheduleFormat.templatesToJson(original))
 
-        assertEquals(6, back.size)
-        for (type in Templates.ALL_TYPES) {
+        // v4 起存储也带休息日那套
+        assertEquals(7, back.size)
+        for (type in Templates.FILE_ORDER) {
             assertEquals(
                 "$type 存取往返不一致",
                 signature2(original.getValue(type)),
@@ -959,5 +968,348 @@ class ScheduleFormatTest {
         val iTerm = lines.indexOfFirst { it.contains("\"term\"") }
         assertTrue("version 应在 periods 之前", iVersion in 0 until iPeriods)
         assertTrue("periods 应在 term 之前", iPeriods in 0 until iTerm)
+    }
+
+    // ============================================================
+    //  九、dayTypeConfig（v5）/ dayTypeNames（v4）
+    //
+    //  用例与电脑版 tests/test_day_type_policy.py 的
+    //  TestParseDayTypeConfig / TestLegacyDayTypesMigration /
+    //  TestSerializeDayTypeConfig 一一对应 —— 两边解析、导出的
+    //  行为必须一致，同一份文件才能在两个平台导入导出。
+    // ============================================================
+
+    /** 拼一份只带 dayTypeConfig 段的最小文件 */
+    private fun docWithConfig(segment: String) =
+        """{"format":"timetable","version":5,"dayTypeConfig":$segment,"courses":[]}"""
+
+    private fun configOf(segment: String): DayTypeConfig = ok(docWithConfig(segment)).dayTypeConfig!!
+
+    @Test
+    fun `dayTypeConfig 完整段能解析`() {
+        val c = configOf(
+            """{"types":["1","2","5","6","7"],""" +
+                """"weekdayMap":["2","2","2","2","2","5","6"],""" +
+                """"earlyType":"1"}"""
+        )
+        assertEquals(
+            listOf(DayType.A, DayType.B_NORMAL, DayType.SATURDAY, DayType.SUNDAY, DayType.REST),
+            c.types
+        )
+        assertEquals(DayType.A, c.earlyType)
+        assertEquals(listOf(1, 2, 3, 4, 5), c.weekdaysOf(DayType.B_NORMAL))
+    }
+
+    @Test
+    fun `types 里漏了休息日会自动补回`() {
+        // 休息日是自动判定层，删不掉 —— 文件里漏了就补回，不报错
+        val c = configOf(
+            """{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"]}"""
+        )
+        assertTrue(c.types.contains(DayType.REST))
+    }
+
+    @Test
+    fun `types 里写了未知 id 要报错`() {
+        val msg = fail(
+            docWithConfig("""{"types":["1","9"],"weekdayMap":["1","1","1","1","1","1","1"]}""")
+        )
+        assertTrue("实际：$msg", msg.contains("9"))
+    }
+
+    @Test
+    fun `weekdayMap 不是恰好 7 项要报错`() {
+        val msg = fail(
+            docWithConfig("""{"types":["1","2"],"weekdayMap":["1","1","1"]}""")
+        )
+        assertTrue("实际：$msg", msg.contains("7"))
+    }
+
+    @Test
+    fun `weekdayMap 映射到不存在的日型要报错`() {
+        // 映射目标必须在 types 里 —— 映射到不存在的日型会找不到模板
+        val msg = fail(
+            docWithConfig(
+                """{"types":["1","2"],"weekdayMap":["1","1","3","1","1","1","1"]}"""
+            )
+        )
+        assertTrue("实际：$msg", msg.contains("3"))
+    }
+
+    @Test
+    fun `weekdayMap 映射到休息日要报错`() {
+        val msg = fail(
+            docWithConfig(
+                """{"types":["1","2","7"],"weekdayMap":["1","1","7","1","1","1","1"]}"""
+            )
+        )
+        assertTrue("实际：$msg", msg.contains("休息日"))
+    }
+
+    @Test
+    fun `earlyType 指向不存在的日型要报错`() {
+        val msg = fail(
+            docWithConfig(
+                """{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"],"earlyType":"9"}"""
+            )
+        )
+        assertTrue("实际：$msg", msg.contains("9"))
+    }
+
+    @Test
+    fun `earlyType 写休息日要报错`() {
+        val msg = fail(
+            docWithConfig(
+                """{"types":["1","2","7"],"weekdayMap":["1","1","1","1","1","1","1"],"earlyType":"7"}"""
+            )
+        )
+        assertTrue("实际：$msg", msg.contains("休息日"))
+    }
+
+    @Test
+    fun `earlyType 省略 null 空串都表示不区分早八`() {
+        // ⚠️ null 那条专门防 org.json 的 JSONObject.NULL 哨兵 ——
+        // 不拦的话它 toString() 成 "null"，被当成坏 id 报错
+        for (segment in listOf(
+            """{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"]}""",
+            """{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"],"earlyType":null}""",
+            """{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"],"earlyType":""}"""
+        )) {
+            assertNull(
+                "earlyType 应为 null（$segment）",
+                configOf(segment).earlyType
+            )
+        }
+    }
+
+    @Test
+    fun `只带 dayTypeConfig 的文件也是有效内容`() {
+        val p = ok(
+            docWithConfig("""{"types":["1","2"],"weekdayMap":["1","1","1","1","1","1","1"]}""")
+        )
+        assertNull(p.courses)
+        assertNull(p.templates)
+        assertNull(p.dayTypeConfig?.earlyType)
+        assertTrue(p.dayTypeConfig != null)
+    }
+
+    @Test
+    fun `dayTypeConfig 与旧 dayTypes 同时出现时以 config 为准`() {
+        val raw = """{"format":"timetable","version":5,""" +
+            """"dayTypes":{"enabled":["A"],"fallback":"A"},""" +
+            """"dayTypeConfig":{"types":["2","5","7"],""" +
+            """"weekdayMap":["2","2","2","2","2","5","5"],""" +
+            """"earlyType":null},"courses":[]}"""
+        val c = ok(raw).dayTypeConfig!!
+        assertEquals(
+            listOf(DayType.B_NORMAL, DayType.SATURDAY, DayType.REST),
+            c.types
+        )
+        assertNull(c.earlyType)
+    }
+
+    // ---------- dayTypeNames（v4） ----------
+
+    @Test
+    fun `dayTypeNames 能解析`() {
+        val p = ok(
+            """{"format":"timetable","version":5,"dayTypeNames":{"1":"早八日","3":"力量日"},"courses":[]}"""
+        )
+        assertEquals(
+            mapOf(DayType.A to "早八日", DayType.B_TRAIN_A to "力量日"),
+            p.dayTypeNames
+        )
+    }
+
+    @Test
+    fun `dayTypeNames 未知的键忽略 向前兼容`() {
+        val p = ok(
+            """{"format":"timetable","version":5,"dayTypeNames":{"9":"第九种","1":"早八日"},"courses":[]}"""
+        )
+        assertEquals(mapOf(DayType.A to "早八日"), p.dayTypeNames)
+    }
+
+    @Test
+    fun `dayTypeNames 值不是字符串要报错`() {
+        val msg = fail(
+            """{"format":"timetable","version":5,"dayTypeNames":{"1":42},"courses":[]}"""
+        )
+        assertTrue("实际：$msg", msg.contains("字符串"))
+    }
+
+    @Test
+    fun `dayTypeNames 空串要报错并说明怎么恢复默认`() {
+        val msg = fail(
+            """{"format":"timetable","version":5,"dayTypeNames":{"1":""},"courses":[]}"""
+        )
+        assertTrue("实际：$msg", msg.contains("空字符串"))
+        assertTrue("实际：$msg", msg.contains("恢复默认名"))
+    }
+
+    @Test
+    fun `dayTypeNames 超长要报错`() {
+        val msg = fail(
+            """{"format":"timetable","version":5,"dayTypeNames":{"3":"123456789012345678901"},"courses":[]}"""
+        )
+        assertTrue("实际：$msg", msg.contains("21 个字"))
+        assertTrue("实际：$msg", msg.contains("20"))
+    }
+
+    @Test
+    fun `空对象 dayTypeNames 是合法内容 表示清空`() {
+        // 全篇唯一「写了但为空 ≠ 不动」的地方（「恢复默认名」是完整意图）
+        val p = ok("""{"format":"timetable","version":5,"dayTypeNames":{},"courses":[]}""")
+        assertTrue(p.dayTypeNames != null)
+        assertTrue(p.dayTypeNames!!.isEmpty())
+    }
+
+    // ---------- 序列化：v3 / v4 / v5 各写各的年代 ----------
+
+    @Test
+    fun `v5 导出写 dayTypeConfig 往返一致`() {
+        val config = DayTypeConfig(
+            types = listOf(DayType.A, DayType.B_NORMAL, DayType.SATURDAY, DayType.REST),
+            weekdayMap = listOf(
+                DayType.A, DayType.B_NORMAL, DayType.A,
+                DayType.B_NORMAL, DayType.A, DayType.SATURDAY, DayType.SATURDAY
+            ),
+            earlyType = null
+        )
+        val json = ScheduleFormat.serialize(
+            "测试学期", LocalDate.of(2026, 9, 7), 19, emptyList(),
+            templates = TemplateSet(config = config).expanded(),
+            dayTypeConfig = config
+        )
+        assertTrue(json.contains("\"version\": 5"))
+        assertEquals(config, ok(json).dayTypeConfig)
+    }
+
+    @Test
+    fun `dayTypeConfig 在 dayTypeNames 之后 courses 之前`() {
+        // 段序是字节契约：先有哪些日型（config）、再叫什么名字（names）
+        val json = ScheduleFormat.serialize(
+            "学期", LocalDate.of(2026, 9, 7), 19, emptyList(),
+            templates = TemplateSet.BUILTIN.expanded(),
+            dayTypeNames = mapOf(DayType.A to "早八日"),
+            dayTypeConfig = DayTypeConfig.DEFAULT
+        )
+        val iNames = json.indexOf("\"dayTypeNames\"")
+        val iConfig = json.indexOf("\"dayTypeConfig\"")
+        val iCourses = json.indexOf("\"courses\"")
+        assertTrue(iNames in 0 until iConfig)
+        assertTrue(iConfig in 0 until iCourses)
+    }
+
+    @Test
+    fun `不带配置导出时不写新段`() {
+        val json = ScheduleFormat.serialize("学期", LocalDate.of(2026, 9, 7), 19, emptyList())
+        assertFalse(json.contains("dayTypeConfig"))
+        assertFalse(json.contains("dayTypeNames"))
+    }
+
+    @Test
+    fun `v3 兼容输出保持旧形状供逐字节对账`() {
+        // parity 依赖它：version=3 写旧 dayTypes 段（语义名）、不写任何新段
+        val json = ScheduleFormat.serialize(
+            "学期", LocalDate.of(2026, 9, 7), 19, emptyList(),
+            templates = TemplateSet.BUILTIN.expanded(),
+            dayTypes = DayTypePolicy.DEFAULT,
+            dayTypeConfig = DayTypeConfig.DEFAULT,
+            version = 3
+        )
+        assertTrue(json.contains("\"version\": 3"))
+        assertTrue(json.contains("\"dayTypes\""))
+        assertTrue(json.contains("\"A\""))
+        assertFalse(json.contains("dayTypeConfig"))
+        assertFalse(json.contains("dayTypeNames"))
+    }
+
+    @Test
+    fun `v4 兼容输出写 id 键但不写 dayTypeConfig`() {
+        val json = ScheduleFormat.serialize(
+            "学期", LocalDate.of(2026, 9, 7), 19, emptyList(),
+            templates = TemplateSet.BUILTIN.expanded(),
+            dayTypes = DayTypePolicy.DEFAULT,
+            dayTypeConfig = DayTypeConfig.DEFAULT,
+            version = 4
+        )
+        assertTrue(json.contains("\"version\": 4"))
+        assertTrue(json.contains("\"dayTypes\""))
+        assertTrue(json.contains("\"1\""))
+        assertFalse("v4 文件不认识 dayTypeConfig", json.contains("dayTypeConfig"))
+    }
+
+    @Test
+    fun `serialize 只支持 3 4 5 三个版本`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ScheduleFormat.serialize(
+                "x", LocalDate.of(2026, 9, 7), 19, emptyList(), version = 2
+            )
+        }
+    }
+
+    @Test
+    fun `休息日模板可以随文件携带并往返`() {
+        // v4 新增键 "7"：之前休息日模板由程序内置、不可导出
+        val customRest = listOf(
+            Block(0, 10 * 60, "睡到十点", "", Kind.SLEEP),
+            Block(10 * 60, 1440, "躺平一整天", "", Kind.FREE)
+        )
+        val templates = TemplateSet.BUILTIN.expanded() + (DayType.REST to customRest)
+        val json = ScheduleFormat.serialize(
+            "学期", LocalDate.of(2026, 9, 7), 19, emptyList(), templates = templates
+        )
+        assertTrue(json.contains("\"7\""))
+        val back = ok(json).templates!!
+        assertEquals("躺平一整天", back.getValue(DayType.REST)[1].title)
+        // 旧键名 "A" 也照常往返
+        val legacyJson = json.replace("\"1\":", "\"A\":")
+        assertEquals("躺平一整天", ok(legacyJson).templates!!.getValue(DayType.REST)[1].title)
+    }
+
+    @Test
+    fun `自定义 REST 模板参与合成时间轴`() {
+        val customRest = listOf(
+            Block(0, 11 * 60, "睡到十一点", "", Kind.SLEEP),
+            Block(11 * 60, 1440, "自由", "", Kind.FREE)
+        )
+        val set = TemplateSet(mapOf(DayType.REST to customRest))
+        // 第 3 周周五全天无课 → 休息日 → 用自定义模板睡到 11 点
+        val ms = TimelineEngine.moments(LocalDate.of(2026, 9, 25), 3, BuiltinCourses.LIST, set)
+        assertEquals(11 * 60, ms.first().end)
+    }
+
+    // ---------- docs 示例文件：真实导出的活样本 ----------
+
+    /** 比 [java.io.File] 更稳的仓库根定位：测试的工作目录是 app/ 模块目录 */
+    private fun docsFile(name: String) =
+        java.io.File("../docs").resolve(name)
+
+    @Test
+    fun `docs 里的 v5 完整示例与引擎导出逐字节一致`() {
+        // example-full-v5.json 不是手抄的，它必须恰好等于
+        // 「内置数据 + 默认日型配置」的真实导出 —— 要么引擎变了没更新示例，
+        // 要么示例被手改坏，这条都会红。
+        val expected = ScheduleFormat.serialize(
+            Store.DEFAULT_TERM_NAME,
+            Store.DEFAULT_TERM_START,
+            19,
+            BuiltinCourses.LIST,
+            templates = TemplateSet.BUILTIN.expanded(),
+            dayTypeNames = null,
+            dayTypeConfig = DayTypeConfig.DEFAULT
+        )
+        val actual = docsFile("example-full-v5.json").readText()
+        assertEquals("示例文件与真实导出有出入（逐字节对比）", expected, actual)
+    }
+
+    @Test
+    fun `docs 里的 v3 老示例在新引擎下照常导入`() {
+        // 它是「老文件照常能用」的活样本，也是电脑版 parity 工具的对账源
+        val f = docsFile("example-full.json")
+        val p = ok(f.readText())
+        assertTrue(p.dayTypes != null)
+        assertEquals(DayTypeConfig.DEFAULT, p.dayTypeConfig)   // 迁移结果
+        assertTrue("v3 文件的模板没有休息日那套", p.templates!!.size == 6)
     }
 }

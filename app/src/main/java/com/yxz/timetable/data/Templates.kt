@@ -1,49 +1,70 @@
 package com.yxz.timetable.data
 
 /**
- * 一天属于哪种模板 —— 对应你文档里的 A 型 / B 型 / 训练日 / 周六 / 周日。
+ * 一天属于哪种模板。
  *
  * 关键点：**这个类型不是按星期几写死的，而是每天现算的**。
- * 判断依据只有一条：「今天第 1-2 节有没有课」。
- * 这样第 8 周停课、国庆调课、临时加课，程序会自己从 A 型切回 B 型，
- * 不需要你手动去改设置。详见 TimelineEngine.dayType()。
+ * 「哪天用哪套」在 v5 里由 [DayTypeConfig]（星期映射 + 早八优先层）决定，
+ * 判定见 [TimelineEngine.resolveDayType]。
+ *
+ * ## v4/v5：id 是格式的一部分
+ *
+ * 日型在文件、存储里的身份是 **id "1"–"7"**；成员名（A / B_TRAIN_A / …）
+ * 只是代码里的语义别名，方便引擎和测试读。id 与规则的对应关系是
+ * **格式标准的一部分**，改名也不能动：
+ *
+ *     id 1  工作日有早八（第 1-2 节有课）
+ *     id 2  无早八的普通工作日
+ *     id 3  周二（默认闲置，映射后启用）
+ *     id 4  周四（默认闲置，映射后启用）
+ *     id 5  周六
+ *     id 6  周日
+ *     id 7  工作日全天无课（休息日，自动判定，不可删除）
+ *
+ * v3 及更早的文件里写的是语义名（"A"、"B_TRAIN_A"…），解析层负责翻译。
  */
 /**
- * `label` 描述的是**这套模板叫什么**，不是「今天有没有早八」。
+ * `label` 描述的是**这套模板的默认名**，不是「今天有没有早八」，也不是
+ * 用户当前看到的名字 —— 用户可以在文件里给任何 id 改名（dayTypeNames 段）。
  *
- * ⚠️ A 的 label 原本是 `"A 型日 · 有早八"`，加了 [DayTypePolicy] 之后
- * 这句话会变成假话：用户可以把工作日全都回落到 A 型模板，
- * 于是周二（当天没早八）也会被标成「A 型日 · 有早八」。
+ * ⚠️ A 的 label 是「A 型日」，**不带「有早八」**。理由见 [TimelineEngine]
+ * 顶部对 dayTypeDisplay 的说明：把「用哪套模板」和「今天有没有早八」
+ * 焊在同一个字符串里，等其中一件事能独立变化时就会说假话。
  *
- * 根子在于它把两件独立的事焊在了一起：
- *   · **用哪套模板** —— 由策略决定（[DayTypePolicy.resolve]）
- *   · **今天有没有早八** —— 由日历决定（[TimelineEngine.naturalDayType]）
- *
- * 拆开之后，需要连起来显示的地方调 [TimelineEngine.dayTypeDisplay]。
- * **凡是「一个字段同时表达两件事」的地方，等其中一件事能独立变化时就会出问题。**
+ * 所有「界面要显示日型名」的地方都应该走 [dayTypeName]，而不是直接查
+ * label —— 否则用户的改名在某些页面会静默失效。
  */
-enum class DayType(val label: String) {
-    A("A 型日"),
-    B_TRAIN_A("B 型日 · 训练日 力量A"),
-    B_TRAIN_B("B 型日 · 训练日 力量B"),
-    B_NORMAL("B 型日"),
-    SATURDAY("周六"),
-    SUNDAY("周日"),
+enum class DayType(val id: String, val label: String) {
+    A("1", "A 型日"),
+    B_NORMAL("2", "B 型日"),
+    B_TRAIN_A("3", "B 型日 · 训练日 力量A"),
+    B_TRAIN_B("4", "B 型日 · 训练日 力量B"),
+    SATURDAY("5", "周六"),
+    SUNDAY("6", "周日"),
 
     /**
      * 无课休息日（假期 / 停课 / 课表没排到的工作日）—— 引擎**推导**出来的状态，
-     * 不是用户可选的日型。见 [TimelineEngine.naturalDayType] 的规则 1。
+     * 不是用户可选的日型。见 [TimelineEngine.resolveDayType] 的规则 ①。
      *
-     * ⚠️ REST **故意不进** [Templates.ALL_TYPES]。它不是用户可选的日型，
+     * ⚠️ REST（id "7"）**故意不进** [Templates.ALL_TYPES]。它不是用户可映射的日型，
      * 而是「那天没课」这一客观事实的体现。不进 ALL_TYPES 的连锁效果全部是故意的：
-     *   · 文件里写不了它（DAY_TYPE_NAMES 按 ALL_TYPES 构建，写进文件会被拒收，
-     *     和导入错误提示「可用的值是：A、B_TRAIN_A…」一致）
-     *   · 导出 / 本地存储永远不会带它（序列化按 ALL_TYPES 过滤）
-     *   · 设置页预览、周次标签等列出日型的地方都不会出现它
-     * 它的模板内容只来自内置的 [Templates.REST]，用户数据不需要、也不能定义它。
+     *   · dayTypeConfig 的 weekdayMap / earlyType 写不了它（写了会报错）
+     *   · 旧 dayTypes 段的 enabled / fallback 也写不了它
+     * 与 v3 的区别：从 v4 起它的**名字和模板**可以自定义、可以随文件携带
+     * （templates 段允许键 "7"）—— 只是「哪天算休息日」这件事仍然由引擎定。
      */
-    REST("无课 · 休息日")
+    REST("7", "无课 · 休息日")
 }
+
+/**
+ * 当前生效的日型名：**自定义优先，没改过用默认**。
+ *
+ * [custom] 是 store 里那份稀疏的名字表（只有用户改过的 id 才有键）。
+ * 所有「界面要显示日型名」的地方都必须走这里 —— 直接用 [DayType.label]
+ * 的话，用户的改名在那个页面会静默失效。
+ */
+fun dayTypeName(type: DayType, custom: Map<DayType, String> = emptyMap()): String =
+    custom[type]?.takeIf { it.isNotBlank() } ?: type.label
 
 /**
  * 五套作息模板，逐条抄自《时间规划表》第四、五、六节。
@@ -186,8 +207,9 @@ object Templates {
      * （假期、停课、课表没排到的日子），那天按这一套过：
      * 没有课程格子、没有晚自习，全是自由块。
      *
-     * REST 不在 [ALL_TYPES] 里（不能出现在 JSON 文件中，理由见枚举上的注释），
-     * 所以这套模板用户定义不了，只能内置 —— TemplateSet.of(REST) 永远走到这里。
+     * REST 不在 [ALL_TYPES] 里（不参与星期映射，理由见枚举注释），
+     * 但从 v4 起它的模板可以自定义并随文件携带 —— 用户导入了 templates["7"]
+     * 时 [TemplateSet.of] 会优先用自定义的，没导入就落到这里的内置版。
      */
     val REST: List<Block> = listOf(
         b("00:00", "09:00", "睡觉", "", Kind.SLEEP),
@@ -213,15 +235,24 @@ object Templates {
     val B_TRAIN_B: List<Block> get() = trainPair.second
 
     /**
-     * 六种日型，按一周的自然顺序排列。UI 和导出都依赖这个顺序保持稳定。
+     * 六种**可映射**的日型，按 id 升序排列（v4 起 id 是格式的一部分）。
+     * UI 列表、旧 dayTypes 段的输出顺序都依赖它保持稳定。
      *
-     * ⚠️ 这也是「文件里合法的日型」全集：[com.yxz.timetable.data.ScheduleFormat]
-     * 解析 `dayTypes` / `templates` 键名都按它来，REST 不在其中（见枚举注释）。
+     * ⚠️ 这也是旧 dayTypes 段里「合法的日型」全集：REST（id "7"）不参与
+     * 启用/回落与星期映射（理由见枚举注释）。
+     * 序列化/模板展开用的七种完整顺序见 [FILE_ORDER]。
      */
     val ALL_TYPES: List<DayType> = listOf(
-        DayType.A, DayType.B_TRAIN_A, DayType.B_TRAIN_B,
-        DayType.B_NORMAL, DayType.SATURDAY, DayType.SUNDAY
+        DayType.A, DayType.B_NORMAL, DayType.B_TRAIN_A,
+        DayType.B_TRAIN_B, DayType.SATURDAY, DayType.SUNDAY
     )
+
+    /**
+     * 文件里 templates 段的完整键序：id 升序，**含休息日**（"7" 从 v4 起
+     * 可以自定义并随文件携带）。导出与本地存储序列化都按它输出，
+     * 保证「同一份数据每次导出结果完全一致」。
+     */
+    val FILE_ORDER: List<DayType> = ALL_TYPES + DayType.REST
 
     /** 取内置模板 */
     fun builtin(type: DayType): List<Block> = when (type) {
@@ -255,14 +286,14 @@ object Templates {
 data class TemplateSet(
     val custom: Map<DayType, List<Block>> = emptyMap(),
     /**
-     * 这份配置实际启用哪几种日型。
+     * 这份配置的日型系统（v5）：哪些日型存在、星期几用哪套、有早八优先用哪套。
      *
-     * 放在这里而不是让调用方另外传，是因为**策略和模板必须同源**：
-     * 如果模板来自 A 处方、策略来自 B 处，就可能出现
-     * 「按策略这是 A 型日，但取到的却是 B 型的模板」这种错配。
+     * 放在这里而不是让调用方另外传，是因为**配置和模板必须同源**：
+     * 如果模板来自 A 处方、配置来自 B 处，就可能出现
+     * 「按配置这是 A 型日，但取到的却是 B 型的模板」这种错配。
      * 让它们待在一个对象里，就没法分开传错了。
      */
-    val policy: DayTypePolicy = DayTypePolicy.DEFAULT
+    val config: DayTypeConfig = DayTypeConfig.DEFAULT
 ) {
 
     fun of(type: DayType): List<Block> = custom[type] ?: Templates.builtin(type)
@@ -290,8 +321,9 @@ data class TemplateSet(
 
     private fun buildSlotEdge(start: Boolean): Map<Int, Int> {
         val out = mutableMapOf<Int, Int>()
-        // 按 ALL_TYPES 的固定顺序遍历，结果才是确定的
-        for (type in Templates.ALL_TYPES) {
+        // 按 FILE_ORDER 的固定顺序遍历（含休息日 —— 它的模板从 v4 起
+        // 也可以带占位格），结果才是确定的
+        for (type in Templates.FILE_ORDER) {
             for (b in of(type)) {
                 val n = b.nodes ?: continue
                 // 第一次见到就用它 —— 各种日型之间本该一致，
@@ -317,12 +349,12 @@ data class TemplateSet(
     fun slotConflicts(): List<String> {
         val seen = mutableMapOf<Int, Pair<Int, Int>>()
         val bad = mutableListOf<String>()
-        for (type in Templates.ALL_TYPES) {
+        for (type in Templates.FILE_ORDER) {
             for (b in of(type)) {
                 val n = b.nodes ?: continue
                 val prev = seen.putIfAbsent(n.first, b.start to b.end)
                 if (prev != null && prev != (b.start to b.end)) {
-                    bad += "第 ${n.first}-${n.last} 节：${type.name} 写的是 " +
+                    bad += "第 ${n.first}-${n.last} 节：${dayTypeName(type)} 写的是 " +
                             "${Slots.fmt(b.start)}-${Slots.fmt(b.end)}，" +
                             "而另一种日型写的是 " +
                             "${Slots.fmt(prev.first)}-${Slots.fmt(prev.second)}"
@@ -336,14 +368,14 @@ data class TemplateSet(
     val isCustomized: Boolean get() = custom.isNotEmpty()
 
     /**
-     * 展开成「六种都在」的完整表，导出时用。
+     * 展开成「七种都在」的完整表，导出时用。
      *
-     * 注意仍然展开**全部六种**：导出的文件是一份可以拿来手改的完整底稿，
-     * 没启用的那几种也一起写出去，用户想启用时直接改 `dayTypes` 就行，
-     * 不用再去找模板正文。
+     * 注意仍然展开**全部七种（含休息日）**：导出的文件是一份可以拿来手改的
+     * 完整底稿，没映射到的那几种也一起写出去，用户想改星期映射时直接改
+     * `dayTypeConfig` 就行，不用再去找模板正文。
      */
     fun expanded(): Map<DayType, List<Block>> =
-        Templates.ALL_TYPES.associateWith { of(it) }
+        Templates.FILE_ORDER.associateWith { of(it) }
 
     companion object {
         val BUILTIN = TemplateSet()

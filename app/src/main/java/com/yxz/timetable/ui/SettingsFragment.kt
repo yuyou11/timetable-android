@@ -21,6 +21,7 @@ import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.Templates
 import com.yxz.timetable.data.TimelineEngine
+import com.yxz.timetable.data.dayTypeName
 import com.yxz.timetable.databinding.FragmentSettingsBinding
 import com.yxz.timetable.databinding.ItemCourseCheckBinding
 import com.yxz.timetable.notify.AlarmScheduler
@@ -286,32 +287,40 @@ class SettingsFragment : Fragment() {
         binding.tvThemeStatus.text = "当前：${AppTheme.from(store.themeKey).label}　点此切换"
 
         val custom = store.templates().custom
-        val policy = store.dayTypePolicy()
+        val config = store.dayTypeConfig()
+        val names = store.dayTypeNames()
 
         // 这行要同时说清两件事，因为它们容易被混为一谈：
         //
-        //   模板   —— 每种日型具体长什么样
-        //   日型   —— 这几种里，哪几种真的会被用到
+        //   模板     —— 每种日型具体长什么样
+        //   日型配置 —— 哪些日型存在、星期几用哪套、有早八优先用哪套
         //
         // 只显示「使用内置（A 型 / B 型 / 周六 / 周日）」是不够的：
-        // 用户会以为四套都在生效，实际可能只启用了两种。
+        // 用户会以为四套都在生效，实际只有被映射到的那几种会用到（v5）。
         //
-        // 日型名直接用 JSON 里的写法（A、B_NORMAL…）而不是中文标签 ——
-        // 用户要改的话就是改 JSON，让他在这里先把名字认熟，比好看更重要。
-        val enabledNames = Templates.ALL_TYPES
-            .filter { it in policy.enabled }
-            .joinToString("、") { it.name }
-
+        // 日型显示用名字（dayTypeName，含用户改过的自定义名）而不是 id ——
+        // 改配置没有编辑入口、只能导入 JSON，但 v5 的键已经是 id 了，
+        // 把 id 念给用户听没有信息量。
         binding.tvTemplateState.text = buildString {
             append(
                 if (custom.isEmpty()) "作息模板：使用内置"
                 else "作息模板：已自定义 ${custom.size} 种 · 点此恢复内置"
             )
             append('\n')
-            append("启用日型：").append(enabledNames)
-            if (policy.enabled.size < Templates.ALL_TYPES.size) {
-                append("　（其余回落到 ").append(policy.fallback.name).append("）")
-            }
+            append("日型：")
+            append(
+                Templates.ALL_TYPES.filter { it in config.types }
+                    .filter { config.weekdaysOf(it).isNotEmpty() }
+                    .joinToString("；") { t ->
+                        dayTypeName(t, names) + "←" +
+                                config.weekdaysOf(t).joinToString("、") { weekdayCn(it) }
+                    }
+            )
+            append('\n')
+            append(
+                if (config.earlyType != null) "早八优先用：${dayTypeName(config.earlyType, names)}"
+                else "不区分早八 —— 有早八也按星期映射走"
+            )
         }
     }
 
@@ -523,10 +532,10 @@ class SettingsFragment : Fragment() {
     /**
      * 恢复内置作息配置。
      *
-     * ## 为什么连 `dayTypes` 一起重置
+     * ## 为什么连日型配置和自定义名一起重置
      *
-     * 日型策略**只能通过导入 JSON 设置，App 里没有编辑入口**。
-     * 如果这个按钮只重置模板，用户导入一份自定义了日型的文件之后
+     * 日型配置**只能通过导入 JSON 设置，App 里没有编辑入口**。
+     * 如果这个按钮只重置模板，用户导入一份自定义了映射的文件之后
      * 就再也回不到默认状态了 —— 唯一的办法是手搓一份新的 JSON 导进来。
      *
      * 而「恢复内置」这四个字在用户听来本来就该是「全都回到出厂状态」。
@@ -534,9 +543,10 @@ class SettingsFragment : Fragment() {
      */
     private fun resetTemplates() {
         val hasTemplates = store.hasCustomTemplates
-        val hasDayTypes = store.hasCustomDayTypes
+        val hasConfig = store.hasCustomDayTypeConfig || store.hasCustomDayTypes
+        val hasNames = store.hasCustomDayTypeNames
 
-        if (!hasTemplates && !hasDayTypes) {
+        if (!hasTemplates && !hasConfig && !hasNames) {
             toast("当前用的就是内置配置")
             return
         }
@@ -545,14 +555,16 @@ class SettingsFragment : Fragment() {
             .setTitle("恢复内置作息")
             .setMessage(
                 "会丢弃你导入的作息配置，重新使用内置版本：\n\n" +
-                        "· 模板：A 型 / B 型 / 周六 / 周日\n" +
-                        "· 日型：启用 A、B_NORMAL、SATURDAY、SUNDAY\n" +
-                        "　（未启用时回落到 B_NORMAL）\n\n" +
+                        "· 模板：A 型 / B 型 / 训练日 / 周六 / 周日 / 休息日\n" +
+                        "· 日型配置：默认映射（周一~周五→B 型日，周六/周日各自那套，" +
+                        "有早八优先 A 型日）\n" +
+                        "· 自定义日型名：恢复默认\n\n" +
                         "课表不受影响。"
             )
             .setPositiveButton("恢复") { _, _ ->
                 store.resetTemplates()
-                store.resetDayTypePolicy()
+                store.resetDayTypeConfig()
+                store.resetDayTypeNames()
                 refresh()
                 rescheduleNotification()
                 toast("已恢复内置作息")

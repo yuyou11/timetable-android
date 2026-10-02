@@ -143,45 +143,55 @@ class WeekFragment : Fragment() {
     /**
      * 日型提示里的一个小标签，形如「一·早八」。day 是 1..7，monday 是本周周一。
      *
-     * 用的是 [TimelineEngine.dayType] 而不是 naturalDayType ——
+     * 用的是 [TimelineEngine.dayType]（v5 起配置带着星期映射和早八层）——
      * 显示的必须是**实际会生效**的日型。如果这里显示 B 型、
      * 实际却按 A 型的模板走，用户看到的就是一条假信息。
      *
-     * ⚠️ 也**不能**自己拿 `policy.resolve(natural)` 映射 ——
-     * 无课休息日（REST）要在进入策略之前被引擎拦下（「那天没课」是客观事实，
-     * 不是偏好），直接 resolve 会把它错误地落成 fallback，
-     * 假期那格就会标着「无早八」，实际上全天按休息日过。
+     * ⚠️ 也**不能**自己拿映射表查一遍 —— 无课休息日（REST）由引擎的
+     * 第一条规则拦下（「那天没课」是客观事实，不走星期映射），
+     * 自己查表会把假期那格错误地标成映射目标。
      */
     private fun dayTypeLabel(
         day: Int, monday: LocalDate, week: Int, courses: List<Course>
     ): String {
         val date = monday.plusDays((day - 1).toLong())
-        val policy = store.dayTypePolicy()
-        val natural = TimelineEngine.naturalDayType(date, week, courses)
-        val used = TimelineEngine.dayType(date, week, courses, policy)
-        return "${weekdayCn(day).removePrefix("周")}·${shortType(natural, used)}"
+        val used = TimelineEngine.dayType(date, week, courses, store.templates().config)
+        return "${weekdayCn(day).removePrefix("周")}·${shortType(date, week, used, courses)}"
     }
 
     /**
      * 一两字的短标签。
      *
-     * ⚠️ **不能只看 [used]**。这里原来写的是 `A -> "早八"`，
-     * 那在默认配置下没问题（A 型日 ⟺ 当天有早八），
-     * 但用户可以把工作日全回落到 A 型模板 —— 那时周二会被标成「早八」，
+     * ⚠️ **「早八」不能只看用的哪套模板**。这里原来按「模板 == A」判断，
+     * 默认配置下没问题（A 型日 ⟺ 当天有早八），但自定义映射后用户可以
+     * 把工作日全映射到 A 型模板 —— 那时周二会被标成「早八」，
      * 而那天根本没有早课。
      *
-     * 所以「早八」这个说法只在**日历确实算出 A** 时才用；
-     * 光是用 A 的模板、当天却没早课时，说「A型」——
+     * 所以「早八」这个说法只在**日历确实算出早八**（[TimelineEngine.hasEarlyClass]）
+     * 时才用；光是用 A 的模板、当天却没早课时，说「A型」——
      * 同样简洁，而且是真的。
+     *
+     * ⚠️ 自定义日型名**有意不进**这个紧凑提示：名字最长 20 字，
+     * 七个格子挤两行放不下；完整的（自定义）名字在今日页和通知栏都有。
+     * 这里写的是日型的**默认语义**，不是它的名字 —— 两者都为真。
      */
-    private fun shortType(natural: DayType, used: DayType): String = when (used) {
-        DayType.A -> if (natural == DayType.A) "早八" else "A型"
-        DayType.B_TRAIN_A -> "训A"
-        DayType.B_TRAIN_B -> "训B"
-        DayType.B_NORMAL -> "无早八"
-        DayType.SATURDAY -> "周六"
-        DayType.SUNDAY -> "周日"
-        DayType.REST -> "无课"
+    private fun shortType(
+        date: LocalDate, week: Int, used: DayType, courses: List<Course>
+    ): String {
+        val early = date.dayOfWeek.value <= 5 && TimelineEngine.hasEarlyClass(date, week, courses)
+        return when {
+            used == DayType.REST -> "无课"
+            early -> "早八"
+            else -> when (used) {
+                DayType.A -> "A型"
+                DayType.B_TRAIN_A -> "训A"
+                DayType.B_TRAIN_B -> "训B"
+                DayType.B_NORMAL -> "无早八"
+                DayType.SATURDAY -> "周六"
+                DayType.SUNDAY -> "周日"
+                DayType.REST -> "无课"
+            }
+        }
     }
 
     // ==================================================================

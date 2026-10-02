@@ -1,5 +1,7 @@
 package com.yxz.timetable.data
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -81,68 +83,79 @@ class FormatTextTest {
         )
     }
 
+    /**
+     * 提示词声明的版本是**双方约定的 v4**，而不是当前的 v5 ——
+     * AI 需要的只是「id 键的模板」（v4 起才有），发明 dayTypeConfig
+     * 不是它的职责；v4 文件当前解析器照常接受（旧段缺省 = 不动现有配置）。
+     * 与电脑版的提示词保持同版本，两台设备给 AI 的输入完全一样。
+     */
     @Test
-    fun `课表提示词里的版本号和代码一致`() {
+    fun `课表提示词声明的版本是约定的 v4`() {
         val p = AiPrompt.forCourses("测试学期", "2026-09-07", 19)
         assertTrue(
-            "课表提示词里的 version 不是 $v —— AI 会照旧版本生成文件：\n" +
+            "课表提示词里的 version 不是 4：\n" +
                     p.lines().firstOrNull { it.contains("version") }.orEmpty(),
-            p.contains(""""version": $v""")
+            p.contains("\"version\": 4")
+        )
+        // 且这个版本当前解析器必须接受（别哪天把 v4 支持删了）
+        val r = ScheduleFormat.parse(extractJsonBlock(p), 19)
+        assertTrue(
+            "课表提示词的示例解析失败：${(r as? ScheduleFormat.Result.Failed)?.message}",
+            r is ScheduleFormat.Result.Ok
         )
     }
 
     @Test
-    fun `作息模板提示词里的版本号和代码一致`() {
+    fun `作息模板提示词声明的版本是约定的 v4`() {
         val p = AiPrompt.forTemplates("测试学期")
         assertTrue(
-            "作息提示词里的 version 不是 $v",
-            p.contains(""""version": $v""")
+            "作息提示词里的 version 不是 4",
+            p.contains("\"version\": 4")
         )
     }
 
     // ============================================================
-    //  二、v3 的 dayTypes 必须在每一处都讲到
+    //  二、v5 的 dayTypeConfig / dayTypeNames 必须在每一处都讲到
     // ============================================================
 
     @Test
-    fun `格式说明讲了 dayTypes 段`() {
+    fun `格式说明讲了 dayTypeConfig 段`() {
         val help = ScheduleFormat.formatHelp()
-        assertTrue("格式说明里没提 dayTypes", help.contains("dayTypes"))
-        assertTrue("格式说明里没解释 enabled", help.contains("enabled"))
-        assertTrue("格式说明里没解释 fallback", help.contains("fallback"))
+        assertTrue("格式说明里没提 dayTypeConfig", help.contains("dayTypeConfig"))
+        assertTrue("格式说明里没解释 types", help.contains("types"))
+        assertTrue("格式说明里没解释 weekdayMap", help.contains("weekdayMap"))
+        assertTrue("格式说明里没解释 earlyType", help.contains("earlyType"))
+        assertTrue("格式说明里没提 dayTypeNames（v4 的自定义名）", help.contains("dayTypeNames"))
     }
 
     @Test
-    fun `示例 JSON 带了 dayTypes 段且能被解析`() {
+    fun `示例 JSON 带了 dayTypeConfig 段且能被解析`() {
         val raw = ScheduleFormat.exampleJson()
-        assertTrue("示例 JSON 里没有 dayTypes 段", raw.contains("\"dayTypes\""))
+        assertTrue("示例 JSON 里没有 dayTypeConfig 段", raw.contains("\"dayTypeConfig\""))
 
         val parsed = (ScheduleFormat.parse(raw, 19) as ScheduleFormat.Result.Ok).parsed
-        assertTrue("示例里的 dayTypes 没被解析出来", parsed.dayTypes != null)
-        assertTrue(
-            "示例里的 enabled 是空的",
-            parsed.dayTypes!!.enabled.isNotEmpty()
-        )
+        val cfg = parsed.dayTypeConfig
+        assertTrue("示例里的 dayTypeConfig 没被解析出来", cfg != null)
+        assertEquals("weekdayMap 必须是 7 项", 7, cfg!!.weekdayMap.size)
+        assertTrue("示例的早八层不该是空的", cfg.earlyType != null)
     }
 
     @Test
-    fun `作息模板提示词讲了 dayTypes 段`() {
-        // 这是最要紧的一处：AI 拿到的提示词里不写 dayTypes，
-        // 它就永远不会生成这一节，用户也就没法裁剪日型
+    fun `作息模板提示词讲了日型 id 键`() {
+        // 这是最要紧的一处：AI 拿到的提示词里必须说清「templates 的键是 id」，
+        // 否则它会照着日型名写键，导入直接被拒收。
+        // 反过来，dayTypeConfig（哪天用哪套）是用户自己的配置，提示词**不**让 AI 发明。
         val p = AiPrompt.forTemplates("测试学期")
-        assertTrue("作息提示词里没解释 enabled", p.contains("enabled"))
-        assertTrue("作息提示词里没解释 fallback", p.contains("fallback"))
+        assertTrue("作息提示词里没解释「键是日型 id」", p.contains("日型 id"))
         assertTrue(
-            "作息提示词应当劝 AI 别把用不到的日型也启用",
-            p.contains("不要为了凑数")
+            "作息提示词应当说明「只输出改动过的日型」",
+            p.contains("只需要输出我改动过的那几种")
         )
 
-        // ⚠️ 上面这几条只证明「正文里提到过这些词」，
-        // 证明不了「示例 JSON 里真的有这一段」——
-        // 而 AI 是照着**示例**抄结构的。所以下面单独把示例抠出来验。
+        // AI 是照着**示例**抄结构的，示例里的键必须真的是 id
         assertTrue(
-            "作息提示词的**示例**里没有 dayTypes 这个键（正文提过不算）",
-            p.contains("\"dayTypes\": {")
+            "作息提示词的**示例**里没有 templates 段（正文提过不算）",
+            p.contains("\"templates\": {")
         )
     }
 
@@ -160,10 +173,12 @@ class FormatTextTest {
             r is ScheduleFormat.Result.Ok
         )
 
-        // 而且它必须真的带上 dayTypes —— 否则 AI 照着抄也不会写这一段
         val parsed = (r as ScheduleFormat.Result.Ok).parsed
-        assertTrue("示例里没有解析出 dayTypes", parsed.dayTypes != null)
         assertTrue("示例里有模板", parsed.templates != null)
+        // ⚠️ 示例**不该**带日型配置 —— 「哪天用哪套」是用户自己的配置，
+        // AI 生成的文件要是把它覆盖了，用户自己的星期映射就被冲掉了
+        assertNull("AI 的作息示例不该带 dayTypeConfig", parsed.dayTypeConfig)
+        assertNull("AI 的作息示例不该带旧 dayTypes 段", parsed.dayTypes)
     }
 
     /** 把提示词里第一段 `{ ... }` 抠出来。提示词里只有一个 JSON 示例，所以够用 */
@@ -175,77 +190,50 @@ class FormatTextTest {
     }
 
     @Test
-    fun `报错修复提示词把 dayTypes 也列进了检查项`() {
-        // 用户导入失败时会把这句发给 AI。如果检查清单里没有 dayTypes，
-        // 一个写坏的 dayTypes 段会让 AI 反复改不出来
+    fun `报错修复提示词把模板键和 dayTypeConfig 列进了检查项`() {
+        // 用户导入失败时会把这句发给 AI。如果检查清单里没有
+        // 「templates 的键是 id」，一个写坏的键名会让 AI 反复改不出来
         val p = AiPrompt.forFix("（报错）", "（JSON）")
-        assertTrue("修复提示词里没提 dayTypes", p.contains("dayTypes"))
-        assertTrue(
-            "修复提示词应当列出六个合法的日型名",
-            p.contains("B_TRAIN_A") && p.contains("SUNDAY")
-        )
+        assertTrue("修复提示词里没提 templates 的键要写 id", p.contains("日型 id"))
+        assertTrue("修复提示词里没提 dayTypeConfig 的校验", p.contains("dayTypeConfig"))
+        assertTrue("修复提示词里没提 weekdayMap 的 7 项要求", p.contains("weekdayMap"))
     }
 
     // ============================================================
-    //  三、六种日型名要写全 —— 任何一处都不能漏
+    //  三、七个日型 id 要写全 —— 任何一处都不能漏
     // ============================================================
 
     @Test
-    fun `凡是列出日型名的地方 六个都要列全`() {
-        // 漏写某一种的后果：用户不知道有这个东西，或者 AI 生成的键名被我们拒收。
+    fun `凡是列出日型的地方 七个 id 都要列全`() {
+        // 漏写某一个的后果：用户不知道有这个东西，或者 AI 生成的键被我们拒收。
         //
-        // ⚠️ 这里**不能**直接用 `text.contains(name)`。
+        // v4 起日型的身份是 **id**（"1"-"7"），名字反而可以自定义 ——
+        // 所以这里断言的是**带引号的 id 字面量**（`"3"` 这种），
+        // 而不是枚举成员名：名字只出现在对照表里，id 才是文件里真正要写的。
         //
-        // 第一版就是那么写的，跑出来全绿 —— 但其中有一条是废的：
-        // `contains("A")` 检查的是单个字母 A，而任何含 A 的词都会命中它，
-        // 比如 "SATURDAY"、"B_TRAIN_A"。也就是说**哪怕日型 A 从清单里被删掉，
-        // 这条断言照样通过**。
-        //
-        // 现在用「前后不能是字母或下划线」把它锚成整词：
-        //   · "SATURDAY" 里的 A 前面是 S  → 不匹配，符合预期
-        //   · "B_TRAIN_A" 里的 A 前面是 _ → 不匹配，符合预期
-        //   · 清单里单独的 "A、"           → 匹配
-        //
-        // 教训重申：**写完断言要问一句「它在出问题的时候真的会红吗？」**
-        fun containsDayType(text: String, name: String): Boolean =
-            Regex("(?<![A-Z_])${Regex.escape(name)}(?![A-Z_])").containsMatchIn(text)
-
-        val sources = mapOf(
+        // 例外：报错修复提示词只在「键要写 id（"1" 到 "7"）」这一句里出现 id，
+        // 与电脑版同款措辞 —— 它只要求「1」和「7」在场。
+        val full = mapOf(
             "格式说明" to ScheduleFormat.formatHelp(),
-            "作息模板提示词" to AiPrompt.forTemplates("测试学期"),
-            "报错修复提示词" to AiPrompt.forFix("（报错）", "（JSON）")
+            "作息模板提示词" to AiPrompt.forTemplates("测试学期")
         )
-
-        for ((label, text) in sources) {
-            for (name in Templates.ALL_TYPES.map { it.name }) {
-                assertTrue("$label 里漏了日型 $name", containsDayType(text, name))
+        for ((label, text) in full) {
+            for (t in DayType.entries) {
+                assertTrue(
+                    "$label 里漏了日型 id \"${t.id}\"（${t.label}）",
+                    text.contains("\"${t.id}\"")
+                )
             }
         }
+        val fix = AiPrompt.forFix("（报错）", "（JSON）")
+        assertTrue("修复提示词里没有 id 区间说明", fix.contains("\"1\"") && fix.contains("\"7\""))
     }
 
     @Test
-    fun `整词匹配本身是有效的`() {
-        // 上一条依赖的匹配规则，自己也得被验一次 ——
-        // 否则「整词匹配写错了」会让上一条变成永远为真，而没人发现
-        fun containsDayType(text: String, name: String): Boolean =
-            Regex("(?<![A-Z_])${Regex.escape(name)}(?![A-Z_])").containsMatchIn(text)
-
-        assertTrue("单独的 A 应当匹配", containsDayType("可用：A（有早八）", "A"))
-        assertTrue("列表里的 A 应当匹配", containsDayType("A、B_NORMAL", "A"))
-        assertTrue("B_TRAIN_A 应当能匹配它自己", containsDayType("A、B_TRAIN_A", "B_TRAIN_A"))
-
-        assertTrue(
-            "SATURDAY 里的字母 A 不该被当成日型 A",
-            !containsDayType("SATURDAY", "A")
-        )
-        assertTrue(
-            "B_TRAIN_A 末尾的 A 不该被当成日型 A",
-            !containsDayType("B_TRAIN_A", "A")
-        )
-        assertTrue(
-            "B_TRAIN_A 不该被 B_TRAIN_A 之外的东西误匹配",
-            !containsDayType("B_TRAIN_B", "B_TRAIN_A")
-        )
+    fun `报错修复提示词把 periods 列进了检查项`() {
+        // 检查清单里没有 periods，一个写坏的 periods 会让 AI 反复改不出来
+        val p = AiPrompt.forFix("（报错）", "（JSON）")
+        assertTrue("修复提示词里没提 periods", p.contains("periods"))
     }
 
     // ============================================================
@@ -278,14 +266,6 @@ class FormatTextTest {
             "课表提示词的示例里没有带上当前 periods（AI 是照着示例抄的）",
             p.contains("\"periods\": \"441\"")
         )
-    }
-
-    @Test
-    fun `报错修复提示词把 periods 列进了检查项`() {
-        // 和 dayTypes 同理：检查清单里没有 periods，
-        // 一个写坏的 periods 会让 AI 反复改不出来
-        val p = AiPrompt.forFix("（报错）", "（JSON）")
-        assertTrue("修复提示词里没提 periods", p.contains("periods"))
     }
 
     @Test

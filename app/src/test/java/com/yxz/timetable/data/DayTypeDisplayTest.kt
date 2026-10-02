@@ -17,19 +17,14 @@ import java.time.LocalDate
  * 这没问题 —— A 型日的定义就是「当天第 1-2 节有课」，
  * 「用 A 模板」和「有早八」是同一件事的两种说法。
  *
- * 加了 [DayTypePolicy] 之后，这两件事可以分开了。用户想把工作日
- * 统一成一份作息，写成：
- *
- * ```json
- * "dayTypes": { "enabled": ["A", "SATURDAY", "SUNDAY"], "fallback": "A" }
- * ```
- *
- * 于是周二（当天没课）也用 A 模板 —— 实跑出来界面标着
+ * 加了策略之后，这两件事可以分开了。用户想把工作日统一成一份作息，
+ * （v3 写 `dayTypes` 回落，v5 直接把 `weekdayMap` 全指到 A），于是
+ * 周二（当天没课）也用 A 模板 —— 实跑出来界面标着
  * **「A 型日 · 有早八」**，而那天根本没有早课。
  *
  * 修法是把两件事拆开：
- *   · 用哪套模板 → 问策略（[DayTypePolicy.resolve]）
- *   · 有没有早八 → 问日历（[TimelineEngine.naturalDayType]）
+ *   · 用哪套模板 → 问配置（[TimelineEngine.dayType]）
+ *   · 有没有早八 → 问日历（[TimelineEngine.hasEarlyClass]）
  * 拼起来由 [TimelineEngine.dayTypeDisplay] 负责。
  *
  * ============================================================
@@ -51,10 +46,23 @@ class DayTypeDisplayTest {
     private val fri = LocalDate.of(2026, 9, 25)
     private val sat = LocalDate.of(2026, 9, 26)
 
-    private fun show(date: LocalDate, policy: DayTypePolicy): String =
-        TimelineEngine.dayTypeDisplay(
-            date, TimelineEngine.weekOf(date, termStart), courses, policy
-        )
+    private fun show(
+        date: LocalDate,
+        config: DayTypeConfig,
+        names: Map<DayType, String> = emptyMap()
+    ): String = TimelineEngine.dayTypeDisplay(
+        date, TimelineEngine.weekOf(date, termStart), courses, config, names
+    )
+
+    /** 用户实际用的配置：工作日全映射到 A 型模板，周末走内置 */
+    private val weekdaysAsA = DayTypeConfig(
+        types = DayTypeConfig.DEFAULT.types,
+        weekdayMap = listOf(
+            DayType.A, DayType.A, DayType.A, DayType.A, DayType.A,
+            DayType.SATURDAY, DayType.SUNDAY
+        ),
+        earlyType = DayType.A
+    )
 
     // ============================================================
     //  一、默认配置：行为和以前完全一样（不能修出回归）
@@ -62,25 +70,25 @@ class DayTypeDisplayTest {
 
     @Test
     fun `默认配置下有早八的日子照旧显示有早八`() {
-        assertEquals("A 型日 · 有早八", show(mon, DayTypePolicy.DEFAULT))
-        assertEquals("A 型日 · 有早八", show(wed, DayTypePolicy.DEFAULT))
+        assertEquals("A 型日 · 有早八", show(mon, DayTypeConfig.DEFAULT))
+        assertEquals("A 型日 · 有早八", show(wed, DayTypeConfig.DEFAULT))
     }
 
     @Test
     fun `默认配置下没早八的日子不显示有早八`() {
-        // 默认策略里 B_NORMAL 是启用的，周二走 B 型模板
+        // 默认映射里工作日是 B 型日，周二走 B 型模板
         // （周五全天无课，是休息日，单独测，见下面那条）
-        val s = show(tue, DayTypePolicy.DEFAULT)
+        val s = show(tue, DayTypeConfig.DEFAULT)
         assertFalse("显示成「$s」，不该声称有早八", s.contains("有早八"))
-        assertTrue(show(sat, DayTypePolicy.DEFAULT).startsWith("周六"))
+        assertTrue(show(sat, DayTypeConfig.DEFAULT).startsWith("周六"))
     }
 
     @Test
     fun `无课的工作日显示休息日`() {
         // 第 3 周周五全天没课 → 无课 · 休息日。
-        // 就算策略的 fallback 是 A，也不能把假期说成「A 型日」——
-        // 那天确实按休息模板过，不走任何回落。
-        assertEquals("无课 · 休息日", show(fri, DayTypePolicy.DEFAULT))
+        // 就算映射把工作日全指到 A，也不能把假期说成「A 型日」——
+        // 那天确实按休息模板过，不走任何映射。
+        assertEquals("无课 · 休息日", show(fri, DayTypeConfig.DEFAULT))
         assertEquals("无课 · 休息日", show(fri, weekdaysAsA))
     }
 
@@ -88,14 +96,8 @@ class DayTypeDisplayTest {
     //  二、用户那份配置：工作日全落到 A，但只有真有的才说「有早八」
     // ============================================================
 
-    /** 用户实际用的配置：工作日统一用 A 型模板，周末走内置 */
-    private val weekdaysAsA = DayTypePolicy(
-        enabled = setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY),
-        fallback = DayType.A
-    )
-
     @Test
-    fun `回落到 A 型模板的日子 不能声称有早八`() {
+    fun `映射到 A 型模板的日子 不能声称有早八`() {
         // ★ 这条就是这个文件存在的理由。
         // 修复之前，下面这些全都会显示「A 型日 · 有早八」—— 那是假话。
         val s = show(tue, weekdaysAsA)
@@ -119,32 +121,35 @@ class DayTypeDisplayTest {
     }
 
     // ============================================================
-    //  三、别的策略组合也不能撒谎
+    //  三、别的配置组合也不能撒谎
     // ============================================================
 
     @Test
-    fun `无论什么策略 只要日历没算出 A 就不出现有早八`() {
-        // 穷举：六种日型各当一次 fallback，配上各种 enabled
-        val policies = buildList {
-            add(DayTypePolicy.ALL)
-            add(DayTypePolicy.DEFAULT)
+    fun `无论什么配置 只要日历没算出早八就不出现有早八`() {
+        // 穷举：恒等、默认、工作日全 A，再配上各种映射目标
+        val configs = buildList {
+            add(configFromPolicy(DayTypePolicy.ALL))   // 恒等配置
+            add(DayTypeConfig.DEFAULT)
             add(weekdaysAsA)
-            for (fb in Templates.ALL_TYPES) {
-                add(DayTypePolicy(setOf(DayType.A, DayType.SATURDAY, DayType.SUNDAY), fb))
-                add(DayTypePolicy(setOf(fb, DayType.SATURDAY), fb))
+            for (t in Templates.ALL_TYPES) {
+                add(
+                    DayTypeConfig(
+                        DayTypeConfig.DEFAULT.types,
+                        listOf(t, t, t, t, t, DayType.SATURDAY, DayType.SUNDAY),
+                        DayType.A
+                    )
+                )
             }
         }
 
-        for (p in policies) {
+        for (c in configs) {
             for (d in listOf(mon, tue, wed, fri, sat)) {
-                val natural = TimelineEngine.naturalDayType(
-                    d, TimelineEngine.weekOf(d, termStart), courses
-                )
-                val s = show(d, p)
-                if (natural != DayType.A) {
+                val early = d.dayOfWeek.value <= 5 &&
+                        TimelineEngine.hasEarlyClass(d, TimelineEngine.weekOf(d, termStart), courses)
+                val s = show(d, c)
+                if (!early) {
                     assertFalse(
-                        "策略(${p.enabled.map { it.name }}, fb=${p.fallback.name}) 下 " +
-                                "$d 日历算出的是 $natural（没有早八），却显示「$s」",
+                        "$d 日历上没有早八，却显示「$s」",
                         s.contains("有早八")
                     )
                 } else {
@@ -158,7 +163,7 @@ class DayTypeDisplayTest {
     }
 
     // ============================================================
-    //  四、label 本身不再夹带「有早八」
+    //  四、label 本身不再夹带「有早八」，自定义名优先
     // ============================================================
 
     @Test
@@ -173,5 +178,22 @@ class DayTypeDisplayTest {
                 t.label.contains("有早八")
             )
         }
+    }
+
+    @Test
+    fun `自定义名优先于默认名`() {
+        // v4 起用户可以给日型改名（dayTypeNames 段），显示层必须认它
+        val names = mapOf(DayType.A to "早八日", DayType.REST to "躺平日")
+        assertEquals("早八日 · 有早八", show(mon, DayTypeConfig.DEFAULT, names))
+        // 休息日也认自定义名 —— 改名只影响显示，不改「哪天算休息日」
+        assertEquals("躺平日", show(fri, DayTypeConfig.DEFAULT, names))
+        // 没改过的 id 用默认名
+        assertTrue(show(tue, DayTypeConfig.DEFAULT, names).startsWith("B 型日"))
+        // 空表 / 空串回落到默认
+        assertEquals("A 型日 · 有早八", show(mon, DayTypeConfig.DEFAULT, emptyMap()))
+        assertEquals(
+            "A 型日 · 有早八",
+            show(mon, DayTypeConfig.DEFAULT, mapOf(DayType.A to "  "))
+        )
     }
 }

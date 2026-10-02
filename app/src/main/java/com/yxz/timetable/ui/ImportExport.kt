@@ -15,6 +15,7 @@ import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.Templates
 import com.yxz.timetable.data.TextDecode
 import com.yxz.timetable.data.TimelineEngine
+import com.yxz.timetable.data.dayTypeName
 import java.time.LocalDate
 
 /**
@@ -156,27 +157,44 @@ class ImportExport(
                 }
             }
 
-            // 日型策略要**在模板之后**单独说一句，因为它决定的是
-            // 「上面那些模板里，哪几种真的会被用到」——
+            // 日型配置要**在模板之后**单独说一段（v5）：
+            // 它决定的是「上面那些模板里，哪几种真的会被用到、哪天用哪套」——
             // 不写出来的话，用户会以为导入了几套模板就有几套在生效。
-            val dt = parsed.dayTypes
-            if (dt != null) {
+            val dtc = parsed.dayTypeConfig
+            if (dtc != null) {
                 append('\n')
-                append("启用的日型：")
+                append("日型配置：")
+                // 星期映射按「同一目标归并」念出来，比七个格子逐个念短得多
                 append(
-                    Templates.ALL_TYPES.filter { it in dt.enabled }
-                        .joinToString("、") { it.label }
+                    Templates.ALL_TYPES.filter { it in dtc.types }
+                        .filter { dtc.weekdaysOf(it).isNotEmpty() }
+                        .joinToString("；") { t ->
+                            "${dayTypeName(t)}←" + dtc.weekdaysOf(t)
+                                .joinToString("、") { ScheduleFormat.weekdayCn(it) }
+                        }
                 )
                 append('\n')
-                append("未启用时回落到：")
-                append("「").append(dt.fallback.label).append("」那套模板")
-                append('\n')
-                val dropped = Templates.ALL_TYPES - dt.enabled
-                if (dropped.isNotEmpty()) {
-                    append("（不再使用：")
-                    append(dropped.joinToString("、") { it.label })
-                    append("）")
+                if (dtc.earlyType != null) {
+                    append("有早八（第 1-2 节有课）优先用：").append(dayTypeName(dtc.earlyType))
+                } else {
+                    append("不区分早八 —— 有早八也按星期映射走")
                 }
+                append('\n')
+                val idle = dtc.types.filter { dtc.weekdaysOf(it).isEmpty() && it != dtc.earlyType }
+                if (idle.isNotEmpty()) {
+                    append("闲置不用：").append(idle.joinToString("、") { dayTypeName(it) })
+                    append('\n')
+                }
+            }
+
+            // 自定义日型名（v4）也单独提一句 —— 只改名的文件不发提示，
+            // 用户会以为导入「成功但什么都没发生」。
+            val dtn = parsed.dayTypeNames
+            if (dtn != null) {
+                append('\n')
+                append("自定义日型名 ").append(dtn.size).append(" 个：")
+                append(dtn.entries.joinToString("、") { (t, name) -> "${dayTypeName(t)}→$name" })
+                append('\n')
             }
 
             // 节数信息决定了课表页怎么分行，带着它导入等于换一套网格结构 ——
@@ -195,13 +213,13 @@ class ImportExport(
             //
             // ⚠️ 不能用 store.templates() —— 预览是在导入生效之前弹出来的，
             // 那时候 store 里还是旧数据。这里手动拼出「导完会是什么样」，
-            // 和 doImport 里那两行赋值保持同一个口径。
+            // 和 doImport 里那几行赋值保持同一个口径。
             //
             // 为什么要提醒：课表页的节次列只有一列时间，
             // 如果 A 型日写 08:30、B 型日写 09:00，那一列没法同时说对。
             val effective = TemplateSet(
                 custom = parsed.templates ?: store.templates().custom,
-                policy = parsed.dayTypes ?: store.dayTypePolicy()
+                config = parsed.dayTypeConfig ?: store.dayTypeConfig()
             )
             val conflicts = effective.slotConflicts()
             if (conflicts.isNotEmpty()) {
@@ -228,11 +246,14 @@ class ImportExport(
     }
 
     private fun doImport(parsed: ScheduleFormat.Parsed, replace: Boolean) {
-        // 四段各自独立：**「没写」永远表示「不要动」，而不是「清空」**。
+        // 五段各自独立：**「没写」永远表示「不要动」，而不是「清空」**。
         // 这条规则贯穿整个导入流程，是防止一次误操作毁掉用户数据的关键。
         parsed.term?.let { store.applyTerm(it) }
         parsed.templates?.let { store.saveTemplates(it) }
-        parsed.dayTypes?.let { store.saveDayTypePolicy(it) }
+        // v3/v4 文件的旧 dayTypes 段在解析时已经确定性迁移成了 dayTypeConfig，
+        // 所以这里只需要认新配置 —— 两条来路，一个落点。
+        parsed.dayTypeConfig?.let { store.saveDayTypeConfig(it) }
+        parsed.dayTypeNames?.let { store.saveDayTypeNames(it) }
         parsed.periods?.let { store.periods = it }
 
         val parts = mutableListOf<String>()
@@ -249,6 +270,7 @@ class ImportExport(
         }
 
         parsed.templates?.let { parts += "作息模板 ${it.size} 种" }
+        parsed.dayTypeNames?.let { parts += "自定义日型名 ${it.size} 个" }
 
         // 节次结构只在与默认不同时说 —— 默认结构说「已改为 442」是噪音
         val periods = parsed.periods
@@ -276,7 +298,7 @@ class ImportExport(
                 today = today,
                 termStart = store.termStart,
                 courses = store.courses(),
-                policy = store.dayTypePolicy()
+                config = store.dayTypeConfig()
             )
             showAlert("导入完成", parts.joinToString("，") + "\n\n" + impact.summary(today))
         }

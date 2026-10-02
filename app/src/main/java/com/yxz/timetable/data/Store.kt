@@ -158,7 +158,7 @@ class Store(context: Context) {
             // 超出结构的存储内容会被当作坏数据丢弃（回落到内置模板）
             ScheduleFormat.templatesFromJson(raw, nodeCount)
         }
-        return TemplateSet(custom, dayTypePolicy())
+        return TemplateSet(custom, dayTypeConfig())
     }
 
     fun saveTemplates(map: Map<DayType, List<Block>>) {
@@ -172,12 +172,13 @@ class Store(context: Context) {
     /** 用户是否自定义过模板 */
     val hasCustomTemplates: Boolean get() = templates().isCustomized
 
-    // ---------------- 日型策略 ----------------
+    // ---------------- 日型策略 / 日型配置 ----------------
 
     /**
-     * 这份配置实际启用哪几种日型。
+     * 【已退役】旧「启用/回落」策略（v3/v4 存储键 `day_types`）。
      *
-     * 没设置过就是 [DayTypePolicy.DEFAULT]（A + 没早八的 B + 周末）。
+     * 只剩一个用途：老用户升级后第一次读 [dayTypeConfig] 时，
+     * 把它**确定性迁移**成新配置（见 [configFromPolicy]）。
      */
     fun dayTypePolicy(): DayTypePolicy {
         val raw = sp.getString(KEY_DAY_TYPES, "") ?: ""
@@ -185,17 +186,84 @@ class Store(context: Context) {
         return ScheduleFormat.dayTypesFromJson(raw)
     }
 
-    fun saveDayTypePolicy(policy: DayTypePolicy) {
-        sp.edit().putString(KEY_DAY_TYPES, ScheduleFormat.dayTypesToJson(policy)).apply()
-    }
-
-    fun resetDayTypePolicy() {
-        sp.edit().remove(KEY_DAY_TYPES).apply()
-    }
-
-    /** 用户是否显式设置过日型策略（没设过就是默认那套） */
+    /** 用户是否显式设置过**旧版**日型策略（没设过就是默认那套） */
     val hasCustomDayTypes: Boolean
         get() = !sp.getString(KEY_DAY_TYPES, "").isNullOrBlank()
+
+    /**
+     * 这份配置的日型系统（v5）：哪些日型存在、星期几用哪套、有早八优先用哪套。
+     *
+     * 读取顺序：
+     *   1. `day_type_config` 键（v5 起写入）—— 宽容解析，坏了回默认；
+     *   2. `day_types` 键（v4 及更早）—— 旧策略**确定性迁移**成映射
+     *      （迁移结果与旧程序的判定逐日一致，见 [configFromPolicy]）；
+     *   3. 什么都没有 —— [DayTypeConfig.DEFAULT]。
+     */
+    fun dayTypeConfig(): DayTypeConfig {
+        val raw = sp.getString(KEY_DAY_TYPE_CONFIG, "") ?: ""
+        if (raw.isNotBlank()) return ScheduleFormat.dayTypeConfigFromJson(raw)
+        if (hasCustomDayTypes) return configFromPolicy(dayTypePolicy())
+        return DayTypeConfig.DEFAULT
+    }
+
+    fun saveDayTypeConfig(config: DayTypeConfig) {
+        sp.edit().putString(KEY_DAY_TYPE_CONFIG, ScheduleFormat.dayTypeConfigToJson(config)).apply()
+    }
+
+    /**
+     * 恢复内置日型配置。
+     *
+     * ⚠️ 旧键 `day_types` 要**一起删**：留着它的话，下次读配置又会
+     * 从旧键迁移出一份「自定义」结果，等于这个按钮白按了。
+     */
+    fun resetDayTypeConfig() {
+        sp.edit().remove(KEY_DAY_TYPE_CONFIG).remove(KEY_DAY_TYPES).apply()
+    }
+
+    /** 用户是否自定义过日型配置（只看 v5 新键 —— 旧键的存在性由 [hasCustomDayTypes] 表达） */
+    val hasCustomDayTypeConfig: Boolean
+        get() = !sp.getString(KEY_DAY_TYPE_CONFIG, "").isNullOrBlank()
+
+    // ---------------- 自定义日型名（v4） ----------------
+
+    /**
+     * 用户给日型起的名字，稀疏表：**只有改过名的 id 才有键**。
+     * 显示统一走 [dayTypeName]（自定义优先，没改过用默认名）。
+     *
+     * 读取走宽容版清洗（坏键坏值跳过），存储能手改，改坏了不至于起不来程序。
+     */
+    fun dayTypeNames(): Map<DayType, String> =
+        ScheduleFormat.dayTypeNamesFromJson(sp.getString(KEY_DAY_TYPE_NAMES, null))
+
+    /**
+     * 保存自定义日型名。
+     *
+     * · 与默认名相同的键会被剔除 —— 稀疏存储只记「改过的」，
+     *   不然导出和 hasCustom 判断都得额外排除默认值；
+     * · 空串视为「恢复这个 id 的默认名」，同样剔除。
+     */
+    fun saveDayTypeNames(names: Map<DayType, String>) {
+        val clean = mutableMapOf<DayType, String>()
+        for ((key, value) in names) {
+            val text = value.trim()
+            // 空串 = 恢复默认名；与**默认名**相同的键没有记录价值（对照桌面版口径）
+            if (text.isEmpty() || text == key.label) continue
+            // 超长直接拒绝 —— 调用方（编辑入口）应该已经拦过一轮，这里是最后防线
+            if (text.length > ScheduleFormat.DAY_TYPE_NAME_MAX) {
+                throw IllegalArgumentException("日型名太长（最多 ${ScheduleFormat.DAY_TYPE_NAME_MAX} 字）：$text")
+            }
+            clean[key] = text
+        }
+        sp.edit().putString(KEY_DAY_TYPE_NAMES, ScheduleFormat.dayTypeNamesToJson(clean)).apply()
+    }
+
+    /** 用户是否改过任何日型的名字 */
+    val hasCustomDayTypeNames: Boolean
+        get() = dayTypeNames().isNotEmpty()
+
+    fun resetDayTypeNames() {
+        sp.edit().remove(KEY_DAY_TYPE_NAMES).apply()
+    }
 
     // ---------------- 节数信息 ----------------
 
@@ -294,17 +362,18 @@ class Store(context: Context) {
      * 导出。
      *
      * [includeScheduleConfig] = true 时输出**完整的作息配置**：
-     * 展开后的六套模板 + 日型策略。这样导出的文件是一份能直接编辑的
-     * 完整底稿 —— 想改起床时间，在那 100 多行里找到对应那一行改掉就行，
-     * 不用从零写一套模板。
+     * 展开后的七套模板（含休息日）+ 日型配置 + 自定义日型名。
+     * 这样导出的文件是一份能直接编辑的完整底稿 —— 想改起床时间，在那
+     * 100 多行里找到对应那一行改掉就行，不用从零写一套模板。
      *
-     * ⚠️ **两个东西必须一起导出。** 只带模板不带 `dayTypes` 的话，
-     * 别人导入后拿到的日型和你的不一样（同一份模板，你只启用四种，
-     * 他却六种全开）——**半份配置比没有配置更容易让人困惑。**
+     * ⚠️ **这些东西必须一起导出。** 只带模板不带 `dayTypeConfig` 的话，
+     * 别人导入后拿到的星期映射和你的不一样（同一份模板，你周二走训练日，
+     * 他却按默认映射走 B 型）——**半份配置比没有配置更容易让人困惑。**
+     * 自定义日型名同理：不带 `dayTypeNames`，你改的「力量日」
+     * 在别人那里就叫回「B 型日 · 训练日 力量A」了。
      *
-     * 参数名从 `includeTemplates` 改成了 `includeScheduleConfig`：
-     * 它现在同时管模板和日型，还叫原名就是**名字在说谎**。
-     * 一个名字和实际行为不符的参数，早晚会有人按名字去理解它。
+     * v5 起文件里写 `dayTypeConfig` 段、不再写旧 `dayTypes` 段
+     * （旧段只在给 v3/v4 的兼容输出里出现，见 serialize 的 version 参数）。
      */
     fun exportJson(includeScheduleConfig: Boolean = false): String =
         ScheduleFormat.serialize(
@@ -313,14 +382,16 @@ class Store(context: Context) {
             totalWeeks,
             courses(),
             if (includeScheduleConfig) templates().expanded() else emptyMap(),
-            if (includeScheduleConfig) dayTypePolicy() else null,
-            periods
+            null,
+            periods,
+            if (includeScheduleConfig) dayTypeNames().ifEmpty { null } else null,
+            if (includeScheduleConfig) dayTypeConfig() else null
         )
 
     /**
      * 「复制 JSON」按钮该不该带上作息配置。
      *
-     * 判据是**模板或日型任意一个被改过**。
+     * 判据是**模板、日型配置、自定义名任意一个被改过**。
      *
      * ⚠️ 以前这里只判断 `hasCustomTemplates`，于是有一类配置会丢：
      * 用户导入了一份**只改 dayTypes、没改模板**的文件，此时
@@ -329,9 +400,11 @@ class Store(context: Context) {
      *
      * 这类漏判特别隐蔽：功能没报错，只是一个字段没被带上。
      * **判断「要不要带上某个东西」时，要把所有相关的来源都数一遍。**
+     * （旧 `day_types` 键也在数 —— 它还没迁移成新配置之前，同样代表用户的自定义。）
      */
     val hasCustomScheduleConfig: Boolean
-        get() = hasCustomTemplates || hasCustomDayTypes
+        get() = hasCustomTemplates || hasCustomDayTypeConfig ||
+                hasCustomDayTypeNames || hasCustomDayTypes
 
     /** 导入时一并套用学期设置 */
     fun applyTerm(term: ScheduleFormat.Term) {
@@ -408,8 +481,14 @@ class Store(context: Context) {
         val DEFAULT_TERM_START: LocalDate = LocalDate.of(2026, 9, 7)
         const val DEFAULT_TERM_NAME = "示例大学 2026 级 · 大一上"
 
-        /** 日型策略在 SharedPreferences 里的键 */
+        /** 旧版日型策略（启用/回落）在 SharedPreferences 里的键（v3/v4 遗留，只读不写） */
         private const val KEY_DAY_TYPES = "day_types"
+
+        /** 日型配置（v5：types / weekdayMap / earlyType）在 SharedPreferences 里的键 */
+        private const val KEY_DAY_TYPE_CONFIG = "day_type_config"
+
+        /** 自定义日型名（v4，稀疏表）在 SharedPreferences 里的键 */
+        private const val KEY_DAY_TYPE_NAMES = "day_type_names"
 
         /** 节数信息在 SharedPreferences 里的键 */
         private const val KEY_PERIODS = "periods"

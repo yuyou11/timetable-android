@@ -80,6 +80,16 @@ class DocsExampleTest {
     }
 
     @Test
+    fun `example-full-v5 能被解析且配置是默认那套`() {
+        val p = parseOk("example-full-v5.json")
+        assertEquals("完整示例应当有 19 门课", 19, p.courses?.size)
+        assertEquals("完整示例应当带七套模板（含休息日）", 7, p.templates?.size)
+        assertEquals("v5 示例的日型配置应当是默认那套", DayTypeConfig.DEFAULT, p.dayTypeConfig)
+        // v5 文件不再带旧 dayTypes 段
+        assertEquals(null, p.dayTypes)
+    }
+
+    @Test
     fun `示例文件的版本号不比 App 支持的更新`() {
         // 版本号写高了，用户导入自己仓库里的示例反而会被拒 —— 很荒唐。
         for (name in listOf("example-schedule.json", "example-full.json")) {
