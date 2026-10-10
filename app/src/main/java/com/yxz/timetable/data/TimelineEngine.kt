@@ -237,22 +237,23 @@ object TimelineEngine {
                     )
                 }
             } else {
-                // 固定日程：被课「压」到多少就保留多少
-                var segments = listOf(blk)
-                for (c in courseBlocks) {
-                    segments = segments.flatMap { clip(it, c) }
-                }
-                out += segments
+                // 固定日程：和课撞上就**整块让位** —— 阈值是原块的 100%。
+                //
+                // 这里曾经是「被课压到多少就保留多少」，结果出现过
+                // 「训练 100 分钟」被两节课夹成 15:55-16:00 一条 5 分钟缝
+                // 还照显的自相矛盾条目（标题说 100 分钟、时长写着 5 分）。
+                // 残块再短也留不得：标题、备注都是按完整时长写的，
+                // 砍剩一截之后它们全变成假话。空档交给 assemble 的
+                // 「空档 · 机动」兜底，那才是对这一段的真实描述。
+                if (courseBlocks.none { overlap(it, blk) }) out += blk
             }
         }
 
-        // 没有任何占位格认领的课（周末加课、临时调课等），直接插进来并裁掉冲突
+        // 没有任何占位格认领的课（周末加课、临时调课等）直接插进来；
+        // 和它撞上的非课程块按同一条 100% 规则整块让位（无课占位格同理）
         courseBlocks.forEachIndexed { i, c ->
             if (i !in claimed) {
-                val kept = out.filter { it.isCourse } +
-                        out.filter { !it.isCourse }.flatMap { clip(it, c) }
-                out.clear()
-                out += kept
+                out.retainAll { it.isCourse || !overlap(it, c) }
                 out += c
             }
         }
@@ -260,14 +261,8 @@ object TimelineEngine {
         return assemble(out)
     }
 
-    /** 把一块 [b] 挖掉与 [c] 重叠的部分，返回剩下的碎片（可能是 0、1 或 2 块） */
-    private fun clip(b: Block, c: Block): List<Block> {
-        if (b.end <= c.start || b.start >= c.end) return listOf(b)   // 不重叠，原样返回
-        val parts = mutableListOf<Block>()
-        if (b.start < c.start) parts += b.copy(end = c.start)        // 前一段
-        if (b.end > c.end) parts += b.copy(start = c.end)            // 后一段
-        return parts
-    }
+    /** 两块时间是否有重叠。首尾相接不算 —— 10:05 下课、10:05 开始的块互不侵犯 */
+    private fun overlap(a: Block, b: Block): Boolean = a.start < b.end && b.start < a.end
 
     /**
      * 把一堆可能重叠、可能有空洞的块，整理成一条连续的线。

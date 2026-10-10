@@ -136,8 +136,13 @@ class SlotTimeTest {
         // 修复前：课程按 Slots 摆、固定日程按模板摆，两者错位 →
         // 早读被砍短 + 冒出一块「空档 · 机动」。
         // 现在两边同源，不该再有碎片。
+        //
+        // 只取上午的两门课：晚间军事理论会按「100% 整块让位」规则
+        // （2026-10 起，见 TimelineEngineTest 的 `被课压到的固定日程整块让位`）
+        // 把「下午其余」整块顶掉、留下合法的「空档 · 机动」—— 那是另一条
+        // 规则的事；这里只守「时源对齐」，一旦错位早读照样会被砍短或顶掉。
         val s = set(DayType.A to shiftedA())
-        val ms = TimelineEngine.moments(mon, 3, courses, s)
+        val ms = TimelineEngine.moments(mon, 3, courses.filter { it.startNode <= 4 }, s)
 
         assertEquals(
             "不该出现「空档 · 机动」，实际：" +

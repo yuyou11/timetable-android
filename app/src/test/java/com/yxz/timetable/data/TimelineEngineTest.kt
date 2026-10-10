@@ -422,7 +422,7 @@ class TimelineEngineTest {
         // 这条测试纠正了我自己一开始的错误预期。
         //
         // 我以为「模板里不写带 nodes 的占位格，就不会有课了」。
-        // 实际上不是：课程会作为独立日程**插进时间轴并裁掉冲突的模板格子**。
+        // 实际上不是：课程会作为独立日程**插进时间轴，撞上的模板格子整块让位**。
         //
         // 为什么这个行为是对的？因为模板回答的是「正常情况下这个点干嘛」，
         // 课表回答的是「学校规定这个点必须在哪」—— 后者是硬约束。
@@ -436,8 +436,9 @@ class TimelineEngineTest {
 
         // 08:30-10:05 本该是「我安排的一整天」，被大学英语顶掉了
         assertEquals("大学英语", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
-        // 而空着的时段仍然是自定义内容
-        assertEquals("我安排的一整天", TimelineEngine.currentAt(ms, 12 * 60 + 30)!!.title)
+        // 「我安排的一整天」被当天几门课压过，按 100% 阈值整块让位（2026-10 起，
+        // 不再留残块），空着的时段交给「空档 · 机动」兜底
+        assertEquals("空档 · 机动", TimelineEngine.currentAt(ms, 12 * 60 + 30)!!.title)
         // 时间轴依旧连续
         for (i in 1 until ms.size) assertEquals(ms[i - 1].end, ms[i].start)
     }
@@ -455,6 +456,50 @@ class TimelineEngineTest {
 
         // 周一 1-2 节有大学英语，应该覆盖掉自定义的占位格
         assertEquals("大学英语", TimelineEngine.currentAt(ms, 9 * 60)!!.title)
+    }
+
+    @Test
+    fun `被课压到的固定日程整块让位 不留残块`() {
+        // 阈值 = 原块的 100%：只保留完全没被碰过的块。
+        // 早八课占 08:30-10:05，压住了「训练」的前半 —— 整块消失，
+        // 而不是留一条标题写着「100 分钟」、时长却只剩几十分钟的残块
+        // （真实报障：训练被两节课夹成 5 分钟缝还照显）。
+        val custom = listOf(
+            Block(0, 8 * 60 + 30, "睡觉", "", Kind.SLEEP),
+            Block(8 * 60 + 30, 11 * 60, "训练 100 分钟", "", Kind.TRAIN),
+            Block(11 * 60, 1440, "自由", "", Kind.FREE)
+        )
+        val set = TemplateSet(mapOf(DayType.A to custom))
+        val early = listOf(Course("e1", "大学英语", 1, 1, 2, setOf(3), "X-101"))
+
+        // 先钉住前提：早八 → A 型，用的确实是上面这套自定义模板
+        assertEquals(DayType.A, TimelineEngine.dayType(d(2026, 9, 21), 3, early, set.config))
+
+        val ms = TimelineEngine.moments(d(2026, 9, 21), 3, early, set)
+        assertEquals("大学英语", ms.first { it.isCourse }.title)
+        assertTrue(
+            "被课压过的训练应该整块让位，实际: ${ms.map { it.title }}",
+            ms.none { it.title.startsWith("训练") }
+        )
+        for (i in 1 until ms.size) assertEquals(ms[i - 1].end, ms[i].start)
+    }
+
+    @Test
+    fun `和课首尾相接的固定日程照常保留`() {
+        // 100% 阈值只看「有没有被压掉一部分」：首尾相接不算撞。
+        // 「睡觉」到 08:30 整、早八课 08:30 开始；「自由」10:05 开始，
+        // 恰好是下课那一分钟 —— 两块都原样保留。
+        val custom = listOf(
+            Block(0, 8 * 60 + 30, "睡觉", "", Kind.SLEEP),
+            Block(10 * 60 + 5, 1440, "自由", "", Kind.FREE)
+        )
+        val set = TemplateSet(mapOf(DayType.A to custom))
+        val early = listOf(Course("e1", "大学英语", 1, 1, 2, setOf(3), "X-101"))
+        val ms = TimelineEngine.moments(d(2026, 9, 21), 3, early, set)
+
+        assertTrue(ms.any { it.title == "睡觉" })
+        assertTrue(ms.any { it.title == "自由" })
+        for (i in 1 until ms.size) assertEquals(ms[i - 1].end, ms[i].start)
     }
 
     @Test
