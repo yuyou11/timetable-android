@@ -148,6 +148,40 @@ class WeekFragment : Fragment() {
         binding.tvDayTypeHint.text = dayTypeHint(monday, week, courses, todayDay)
 
         buildGrid(week, courses, todayDay)
+        binding.weekDots.submit(weekDots(week, courses))
+    }
+
+    /**
+     * 近五周点阵预览的数据：**当前浏览的周 ±2 周**，每周一张「7 天 × 节数」占用表。
+     *
+     * 跟着浏览的周走（而不是钉死在真实本周）：翻周时预览也往前挪，
+     * 「下周会怎样」才是这排点阵真正回答的问题。
+     * 学期头尾会自动收窄（第 1 周只画 1-3 周），标签就是周次号。
+     */
+    private fun weekDots(week: Int, courses: List<Course>): List<WeekDotsView.Week> {
+        val rowCount = Periods.rows(store.periods).size
+        return ((week - 2)..(week + 2))
+            .filter { it in 1..store.totalWeeks }
+            .map { w -> WeekDotsView.Week(w, occupancy(w, courses, rowCount), w == week) }
+    }
+
+    /**
+     * 第 [week] 周的占用表：`[星期一..星期日][第 1..N 节]`。
+     *
+     * 判「有课」和课表网格同一条规则（节点区间有重叠就算占用）——
+     * 两处口径不一致的话，点阵亮了下面的格子却是空的，比没这功能还糟。
+     */
+    private fun occupancy(
+        week: Int, courses: List<Course>, rowCount: Int
+    ): Array<BooleanArray> {
+        val grid = Array(7) { BooleanArray(rowCount) }
+        for (c in courses) {
+            if (!c.enabled || week !in c.weeks) continue
+            for (node in c.startNode..c.endNode) {
+                grid[c.dayOfWeek - 1][node - 1] = true
+            }
+        }
+        return grid
     }
 
     /**
