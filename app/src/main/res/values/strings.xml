@@ -36,6 +36,8 @@
 
     <string name="appearance_title">外观</string>
     <string name="theme_title">主题颜色</string>
+    <string name="week_dots_title">课表页周点阵预览</string>
+    <string name="week_dots_desc">课表页周次卡片里的近五周点阵（有课高亮 / 无课灰）。两节连堂的标准课表会自动两课并一课显示。</string>
 
     <string name="lockscreen_title">锁屏显示</string>
     <string name="lockscreen_show">在锁屏上显示通知内容</string>

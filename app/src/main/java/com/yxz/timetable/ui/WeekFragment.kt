@@ -148,6 +148,19 @@ class WeekFragment : Fragment() {
         binding.tvDayTypeHint.text = dayTypeHint(monday, week, courses, todayDay)
 
         buildGrid(week, courses, todayDay)
+        renderWeekDots(week, courses)
+    }
+
+    /**
+     * 周次卡片的近五周点阵。设置里关掉时整个预览收起（GONE），
+     * 卡片回到只有标题行的样子。
+     */
+    private fun renderWeekDots(week: Int, courses: List<Course>) {
+        if (!store.weekDotsEnabled) {
+            binding.weekDots.visibility = View.GONE
+            return
+        }
+        binding.weekDots.visibility = View.VISIBLE
         binding.weekDots.submit(weekDots(week, courses))
     }
 
@@ -157,12 +170,21 @@ class WeekFragment : Fragment() {
      * 跟着浏览的周走（而不是钉死在真实本周）：翻周时预览也往前挪，
      * 「下周会怎样」才是这排点阵真正回答的问题。
      * 学期头尾会自动收窄（第 1 周只画 1-3 周），标签就是周次号。
+     *
+     * 「两课并一课」的标准课表（每门课都是 1-2、3-4 这种奇数起点的两节连堂）
+     * 会把点阵两行并一行 —— 一门连堂课亮一个点，而不是一竖条两个点。
+     * 识别和合并都在 [Periods]（纯逻辑，有测试盯着）。
      */
     private fun weekDots(week: Int, courses: List<Course>): List<WeekDotsView.Week> {
         val rowCount = Periods.rows(store.periods).size
+        val paired = Periods.isPairedSchedule(courses)
         return ((week - 2)..(week + 2))
             .filter { it in 1..store.totalWeeks }
-            .map { w -> WeekDotsView.Week(w, occupancy(w, courses, rowCount), w == week) }
+            .map { w ->
+                var grid = occupancy(w, courses, rowCount)
+                if (paired) grid = Periods.mergePairs(grid)
+                WeekDotsView.Week(w, grid, w == week)
+            }
     }
 
     /**

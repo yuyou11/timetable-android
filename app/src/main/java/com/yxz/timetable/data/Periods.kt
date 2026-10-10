@@ -46,4 +46,37 @@ object Periods {
         val digits = ScheduleFormat.normalizePeriods(periods) ?: ScheduleFormat.DEFAULT_PERIODS
         return (1..ScheduleFormat.nodeCount(digits)).map { Row(it) }
     }
+
+    /**
+     * 是否是「两课并一课」的标准课表：**每门在用的课都恰好是两节连堂、
+     * 且起点是奇数**（1-2、3-4、5-6…）—— 大学最常见的排法，两小节并成一大节。
+     *
+     * 任何一门课破坏这个形状（单节、三节连排、2-3 这种偶数起点的连堂），
+     * 就不算「标准」—— 显示上退回「一节一行」，宁可密一点也不并错。
+     * 停掉的课（enabled = false）不参与判定：它不显示，不该改变显示形状。
+     *
+     * 空课表不算：没有课就谈不上「并一课」，按一节一行显示。
+     */
+    fun isPairedSchedule(courses: List<Course>): Boolean {
+        val active = courses.filter { it.enabled }
+        return active.isNotEmpty() && active.all {
+            it.startNode % 2 == 1 && it.endNode == it.startNode + 1
+        }
+    }
+
+    /**
+     * 把占用表每两小节并成一行（1-2、3-4、5-6…）——
+     * 「两课并一课」点阵的行结构。两格里任一有课，合并格就算有课。
+     *
+     * 尾巴上凑不成对的那一小节（节数为奇数时的最后一节）直接丢掉：
+     * 能通过 [isPairedSchedule] 的课表永远不会用到它 ——
+     * 用到它的课要么是单节、要么是偶数起点，都会被判定拦下。
+     */
+    fun mergePairs(occupancy: Array<BooleanArray>): Array<BooleanArray> =
+        Array(occupancy.size) { day ->
+            val periods = occupancy[day]
+            BooleanArray(periods.size / 2) { pair ->
+                periods[pair * 2] || periods[pair * 2 + 1]
+            }
+        }
 }

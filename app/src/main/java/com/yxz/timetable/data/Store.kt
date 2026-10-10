@@ -337,6 +337,18 @@ class Store(context: Context) {
         get() = sp.getBoolean("lockscreen_visible", true)
         set(v) = sp.edit().putBoolean("lockscreen_visible", v).apply()
 
+    // ---------------- 课表页显示 ----------------
+
+    /**
+     * 课表页周次卡片里的「近五周点阵预览」开关。
+     *
+     * 默认开。关掉后卡片只剩标题行 —— 有人就是想要干净的一行，
+     * 预览是增值信息，不该强迫所有人看。
+     */
+    var weekDotsEnabled: Boolean
+        get() = sp.getBoolean("week_dots_enabled", true)
+        set(v) = sp.edit().putBoolean("week_dots_enabled", v).apply()
+
     // ---------------- 主题配色 ----------------
 
     /**

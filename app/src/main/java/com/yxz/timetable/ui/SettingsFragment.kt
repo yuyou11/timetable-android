@@ -163,6 +163,14 @@ class SettingsFragment : Fragment() {
             refresh()
         }
 
+        // 周点阵预览开关：先设好状态再挂监听，不会自己触发自己，
+        // 也就不需要 swLockscreen 那套 suppress 防抖（那套是给 refresh() 复位用的，
+        // 这个开关不进 refresh —— 它是纯偏好，没有「系统状态变了要复核」这回事）
+        binding.swWeekDots.isChecked = store.weekDotsEnabled
+        binding.swWeekDots.setOnCheckedChangeListener { _, checked ->
+            store.weekDotsEnabled = checked
+        }
+
         binding.btnRemindMinus.setOnClickListener { changeRemindLead(-1) }
         binding.btnRemindPlus.setOnClickListener { changeRemindLead(+1) }
 
