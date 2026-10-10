@@ -2,8 +2,13 @@ package com.yxz.timetable.ui
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
 import com.yxz.timetable.data.Course
@@ -116,9 +122,16 @@ class WeekFragment : Fragment() {
     // ==================================================================
 
     private fun render() {
-        val thisWeek = store.weekOf(LocalDate.now())
+        val today = LocalDate.now()
+        val thisWeek = store.weekOf(today)
         val week = (thisWeek + weekOffset).coerceIn(1, store.totalWeeks)
         val courses = store.courses()
+
+        // 「今天」只存在于本周 —— 翻到别周后那一周里没有今天，
+        // 再去高亮星期几就成了假信息，所以只在 week == thisWeek 时给值。
+        // week 已被 coerce 进 1..totalWeeks，学期外的 thisWeek 自然对不上，
+        // 不会把学期外的「今天」错标到第 1 周或最后一周上。
+        val todayDay = if (week == thisWeek) today.dayOfWeek.value else null
 
         val monday = store.termStart.plusDays(((week - 1) * 7).toLong())
         val sunday = monday.plusDays(6)
@@ -132,12 +145,40 @@ class WeekFragment : Fragment() {
         // 七条挤在一行会换行，而中文是「任意位置都能断」的 —— 断在「早八」中间
         // 就会变成「早」/「八」两行，看着像乱码。周末单独一行还能顺带把
         // 「这周上不上课」和「周末」在视觉上分开。
-        binding.tvDayTypeHint.text =
-            WEEKDAY_DAYS.joinToString("　") { dayTypeLabel(it, monday, week, courses) } +
-                    "\n" +
-                    WEEKEND_DAYS.joinToString("　") { dayTypeLabel(it, monday, week, courses) }
+        binding.tvDayTypeHint.text = dayTypeHint(monday, week, courses, todayDay)
 
-        buildGrid(week, courses)
+        buildGrid(week, courses, todayDay)
+    }
+
+    /**
+     * 日型提示的完整文本：工作日一行、周末一行，今天那条用强调色加粗。
+     *
+     * 这行标签和网格的七列只是**顺序上**一一对应，位置并不真的对齐
+     * （文本是按字排的，列是按权重分的）—— 光看提示行数不出「三是哪一列」。
+     * 把今天那条染成强调色，提示行和网格的高亮列就对上号了。
+     */
+    private fun dayTypeHint(
+        monday: LocalDate, week: Int, courses: List<Course>, todayDay: Int?
+    ): CharSequence {
+        val ssb = SpannableStringBuilder()
+        for ((i, d) in WEEK_DAYS.withIndex()) {
+            when {
+                i == 0 -> Unit
+                d == WEEKEND_DAYS.first -> ssb.append("\n")
+                else -> ssb.append("　")
+            }
+            val start = ssb.length
+            ssb.append(dayTypeLabel(d, monday, week, courses))
+            if (d == todayDay) {
+                val accent = ForegroundColorSpan(requireContext().accentColor())
+                ssb.setSpan(accent, start, ssb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                ssb.setSpan(
+                    StyleSpan(Typeface.BOLD), start, ssb.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+        return ssb
     }
 
     /**
@@ -210,7 +251,7 @@ class WeekFragment : Fragment() {
     //  行天然对齐。
     // ==================================================================
 
-    private fun buildGrid(week: Int, courses: List<Course>) {
+    private fun buildGrid(week: Int, courses: List<Course>, todayDay: Int?) {
         val ctx = requireContext()
         val container = binding.gridContainer
         container.removeAllViews()
@@ -219,7 +260,9 @@ class WeekFragment : Fragment() {
         val header = makeRow(ctx, HEADER_HEIGHT_DP)
         header.addView(makeLabelCell("节次", TIME_WEIGHT, 11f))
         for (d in WEEK_DAYS) {
-            header.addView(makeLabelCell(weekdayCn(d).removePrefix("周"), 1f, 11f))
+            header.addView(
+                makeLabelCell(weekdayCn(d).removePrefix("周"), 1f, 11f, d == todayDay)
+            )
         }
         container.addView(header)
 
@@ -244,7 +287,7 @@ class WeekFragment : Fragment() {
         }
         body.addView(timeColumn(ctx, rows, templateSet))
         for (day in WEEK_DAYS) {
-            body.addView(dayColumn(ctx, rows, day, week, courses))
+            body.addView(dayColumn(ctx, rows, day, week, courses, day == todayDay))
         }
         container.addView(body)
     }
@@ -318,9 +361,15 @@ class WeekFragment : Fragment() {
      *
      * 相邻两行的命中如果是同一门课（名称、教室、周次完全一致），合并成一格 ——
      * 有的学校课不成对，一门课在数据里是按小节拆开的两条记录，显示时拼回一整块。
+     *
+     * today 为真时整列垫一层强调色淡底（[todayColumnBg]）—— 底色打在**列**身上
+     * 而不是逐格打：格子之间有 2dp 间隙（坑 2），逐格打底会把这一列变成
+     * 一节一节的虚线；整列一条竖带才像「这一列」。空格子是透明的，淡底正好
+     * 从下面透出来；有课的格子自带实底（bg_cell_course），压在淡底上边框依然清晰。
      */
     private fun dayColumn(
-        ctx: Context, rows: List<Periods.Row>, day: Int, week: Int, courses: List<Course>
+        ctx: Context, rows: List<Periods.Row>, day: Int, week: Int, courses: List<Course>,
+        today: Boolean
     ): View {
         val hits = rows.map { r ->
             courses.firstOrNull { c ->
@@ -334,6 +383,7 @@ class WeekFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
+            if (today) background = todayColumnBg(ctx)
             var i = 0
             while (i < rows.size) {
                 val hit = hits[i]
@@ -490,15 +540,44 @@ class WeekFragment : Fragment() {
         }
     }
 
-    private fun makeLabelCell(label: String, weight: Float, size: Float): TextView =
+    /**
+     * 表头的一格。highlight 是今天那一格：字染强调色，再垫和下面课列
+     * 同款的淡底（[todayColumnBg]）—— 表头和课列之间隔着一条分隔线，
+     * 两截淡底对不齐也没关系，「今天的竖带从表头开始」这个意思传到了就行。
+     */
+    private fun makeLabelCell(
+        label: String, weight: Float, size: Float, highlight: Boolean = false
+    ): TextView =
         TextView(requireContext()).apply {
             layoutParams = cellParams(weight)
             gravity = Gravity.CENTER
             text = label
             textSize = size
             setTypeface(null, Typeface.BOLD)
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            setTextColor(
+                if (highlight) requireContext().accentColor()
+                else ContextCompat.getColor(requireContext(), R.color.text_secondary)
+            )
+            if (highlight) background = todayColumnBg(requireContext())
             includeFontPadding = false
+        }
+
+    /**
+     * 今天那一列的淡底：强调色压到 12% 透明度的圆角竖带。
+     *
+     * 为什么是代码现画、而不是像 bg_cell_course 那样写个 XML shape？
+     * XML shape 的颜色只能引用**具名色值**，而「强调色带透明度」有
+     * 蓝/绿 × 日/夜四种组合，写 XML 要为四种各备一份，漏一份就是
+     * 静默错色。这里从当前主题的 [accentColor] 现场压透明度，四合一。
+     *
+     * 透明度定在 12%（0x1E）而不是用 accentSoftColor 全量：全量的浅底
+     * 就是课程格子的填充色，垫在整列上会让课程格子「消失」在底色里
+     * （只剩描边）；淡到 12% 才是「背景」，格子压在上面依然看得出层次。
+     */
+    private fun todayColumnBg(ctx: Context): GradientDrawable =
+        GradientDrawable().apply {
+            cornerRadius = ctx.dp(8).toFloat()
+            setColor(ColorUtils.setAlphaComponent(ctx.accentColor(), 0x1E))
         }
 
     /**
