@@ -387,6 +387,127 @@ class Store(context: Context) {
      * v5 起文件里写 `dayTypeConfig` 段、不再写旧 `dayTypes` 段
      * （旧段只在给 v3/v4 的兼容输出里出现，见 serialize 的 version 参数）。
      */
+    // ---------------- 闹钟 ----------------
+
+    /**
+     * 默认铃声（URI 字符串，空 = 系统默认闹钟铃声）。每个闹钟可以单独覆盖它。
+     *
+     * ⚠️ 铃声是**由 App 自己播放**的，不走通知渠道。原因：Android 的通知渠道
+     * 一旦创建，声音就固定了，代码再也改不了（以用户的选择为准）。
+     * 想「设置里换声音」就只能自己放音 —— 这也是正经闹钟应用的做法。
+     */
+    var alarmSoundUri: String
+        get() = sp.getString("alarm_sound", "") ?: ""
+        set(v) = sp.edit().putString("alarm_sound", v).apply()
+
+    /** 贪睡中的闹钟 id（空 = 没在贪睡） */
+    var snoozeAlarmId: String
+        get() = sp.getString("alarm_snooze_id", "") ?: ""
+        set(v) = sp.edit().putString("alarm_snooze_id", v).apply()
+
+    /** 贪睡到什么时候（epoch 毫秒，0 = 没在贪睡） */
+    var snoozeAlarmUntil: Long
+        get() = sp.getLong("alarm_snooze_until", 0L)
+        set(v) = sp.edit().putLong("alarm_snooze_until", v).apply()
+
+    /** 去重键「日期|闹钟id」—— 同一次响铃不因为进程被杀重新走一遍而响第二遍 */
+    var lastAlarmKey: String
+        get() = sp.getString("last_alarm_key", "") ?: ""
+        set(v) = sp.edit().putString("last_alarm_key", v).apply()
+
+    fun alarms(): MutableList<Alarm> {
+        val raw = sp.getString("alarms", "") ?: ""
+        if (raw.isBlank()) return mutableListOf()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { fromAlarmJson(arr.getJSONObject(it)) }.toMutableList()
+        }.getOrElse { mutableListOf() }
+    }
+
+    fun saveAlarms(list: List<Alarm>) {
+        val arr = JSONArray()
+        for (a in list) arr.put(toAlarmJson(a))
+        sp.edit().putString("alarms", arr.toString()).apply()
+    }
+
+    /**
+     * 下一个闹钟编号。用「现有最大号 +1」而不是「条数 +1」——
+     * 后者在删掉中间一个之后会和现有 id 撞上，而闹钟是靠 id 定位的。
+     */
+    fun nextAlarmId(): String {
+        val max = alarms().mapNotNull { it.id.removePrefix("a").toIntOrNull() }.maxOrNull() ?: 0
+        return "a%03d".format(max + 1)
+    }
+
+    /** 用户手动加的放假 / 补班日（覆盖内置表，见 [HolidayTable]） */
+    fun customHolidays(): MutableList<HolidayDay> {
+        val raw = sp.getString("custom_holidays", "") ?: ""
+        if (raw.isBlank()) return mutableListOf()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map {
+                val o = arr.getJSONObject(it)
+                HolidayDay(
+                    name = o.optString("name", ""),
+                    date = LocalDate.parse(o.getString("date")),
+                    offDay = o.optBoolean("off", true)
+                )
+            }.toMutableList()
+        }.getOrElse { mutableListOf() }
+    }
+
+    fun saveCustomHolidays(list: List<HolidayDay>) {
+        val arr = JSONArray()
+        for (d in list) {
+            arr.put(
+                JSONObject().apply {
+                    put("name", d.name)
+                    put("date", d.date.toString())
+                    put("off", d.offDay)
+                }
+            )
+        }
+        sp.edit().putString("custom_holidays", arr.toString()).apply()
+    }
+
+    /** 生效中的节假日表 = 内置那份 + 用户手动那份 */
+    fun holidayTable(): HolidayTable = HolidayTable(customHolidays())
+
+    private fun toAlarmJson(a: Alarm): JSONObject = JSONObject().apply {
+        put("id", a.id)
+        put("h", a.hour)
+        put("m", a.minute)
+        put("days", JSONArray(a.days.sorted()))
+        put("enabled", a.enabled)
+        put("label", a.label)
+        put("sound", a.soundUri)
+        put("skipHolidays", a.skipHolidays)
+        put("source", a.source.name)
+        put("courseId", a.courseId)
+        put("lead", a.leadMinutes)
+        put("snooze", a.snoozeMinutes)
+    }
+
+    private fun fromAlarmJson(o: JSONObject): Alarm {
+        val arr = o.optJSONArray("days")
+        val days = (0 until (arr?.length() ?: 0)).map { arr!!.getInt(it) }.toSet()
+        return Alarm(
+            id = o.getString("id"),
+            hour = o.optInt("h", 7),
+            minute = o.optInt("m", 0),
+            days = days,
+            enabled = o.optBoolean("enabled", true),
+            label = o.optString("label", ""),
+            soundUri = o.optString("sound", ""),
+            skipHolidays = o.optBoolean("skipHolidays", true),
+            source = runCatching { AlarmSource.valueOf(o.optString("source", "MANUAL")) }
+                .getOrDefault(AlarmSource.MANUAL),
+            courseId = o.optString("courseId", ""),
+            leadMinutes = o.optInt("lead", 0),
+            snoozeMinutes = o.optInt("snooze", Alarms.MIN_SNOOZE_MINUTES)
+        )
+    }
+
     fun exportJson(includeScheduleConfig: Boolean = false): String =
         ScheduleFormat.serialize(
             termName,
@@ -463,6 +584,12 @@ class Store(context: Context) {
     private fun renumber(list: List<Course>): MutableList<Course> =
         list.mapIndexed { i, c -> c.copy(id = "c%03d".format(i + 1)) }.toMutableList()
 
+    /**
+     * ⚠️ 这里曾经漏过 `teacher`：格式层（[ScheduleFormat]）加了字段，
+     * Store 自己那份 JSON 没跟上 —— 导入的文件里老师读得进来，
+     * 但 App 一存一读就没了。**同一个数据有两个序列化实现，就要有两处同步**，
+     * 所以现在有一条测试盯着「Course 的字段数 = 这里的键数」（StoreCourseJsonTest）。
+     */
     private fun toJson(c: Course): JSONObject = JSONObject().apply {
         put("id", c.id)
         put("name", c.name)
@@ -471,6 +598,7 @@ class Store(context: Context) {
         put("en", c.endNode)
         put("weeks", JSONArray(c.weeks.sorted()))
         put("place", c.place)
+        put("teacher", c.teacher)
         put("enabled", c.enabled)
     }
 
@@ -485,6 +613,7 @@ class Store(context: Context) {
             endNode = o.getInt("en"),
             weeks = weeks,
             place = o.optString("place", ""),
+            teacher = o.optString("teacher", ""),
             enabled = o.optBoolean("enabled", true)
         )
     }

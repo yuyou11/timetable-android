@@ -2,21 +2,30 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.text.InputType
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.doOnLayout
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Alarm
+import com.yxz.timetable.data.AlarmSource
+import com.yxz.timetable.data.Alarms
 import com.yxz.timetable.data.Block
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.SlotCourse
 import com.yxz.timetable.data.Slots
+import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.databinding.DialogSlotCoursesBinding
 import com.yxz.timetable.databinding.ItemCourseCardBinding
+import com.yxz.timetable.notify.AlarmScheduler
 import kotlin.math.roundToInt
 
 /**
@@ -96,15 +105,17 @@ object SlotCoursesCard {
             }
         }
 
+        val store = Store(ctx)
+        val alarms = store.alarms()
         val cards = if (items.isEmpty()) {
             listOf(selfStudyCard(day, nodes, selfStudy, set))
         } else {
-            items.map { courseCard(it, set, currentWeek) }
+            items.map { courseCard(it, set, currentWeek, alarms) }
         }
 
         for ((i, card) in cards.withIndex()) {
             val row = ItemCourseCardBinding.inflate(inflater, binding.list, false)
-            bindItem(row, card)
+            bindItem(row, card, store)
             // 最后一张不留外边距：卡片底边和面板底边的间距才是同一个
             if (i == cards.lastIndex) {
                 (row.root.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin = 0
@@ -161,11 +172,21 @@ object SlotCoursesCard {
         val teacher: String?,
         val weeksText: String,
         val badge: String?,
-        val badgeDim: Boolean = false
+        val badgeDim: Boolean = false,
+        /** 课程 id —— 非空时这张卡才能设闹钟（自习卡没有课可绑，是空的） */
+        val courseId: String = "",
+        /** 这门课已经设过的课前提醒提前量；null = 还没设 */
+        val alarmLead: Int? = null
     )
 
-    private fun courseCard(item: SlotCourse, set: TemplateSet, currentWeek: Boolean): Card {
+    private fun courseCard(
+        item: SlotCourse, set: TemplateSet, currentWeek: Boolean, alarms: List<Alarm>
+    ): Card {
         val c = item.course
+        // 同一门课只留一个课程闹钟，所以按 courseId 找就够
+        val existing = alarms.firstOrNull {
+            it.source == AlarmSource.COURSE && it.courseId == c.id
+        }
         return Card(
             name = c.name,
             whenText = "${weekdayCn(c.dayOfWeek)} · ${nodeLabel(item.fromNode, item.toNode)}",
@@ -180,7 +201,9 @@ object SlotCoursesCard {
                     if (currentWeek) "本周" else "第 ${item.activeInWeek} 周"
                 else -> null
             },
-            badgeDim = !c.enabled
+            badgeDim = !c.enabled,
+            courseId = c.id,
+            alarmLead = existing?.leadMinutes
         )
     }
 
@@ -210,7 +233,7 @@ object SlotCoursesCard {
     }
 
     /** 空教室 / 空老师写「未注明」而不是留白 —— 空白分不清「没有」和「没加载出来」 */
-    private fun bindItem(row: ItemCourseCardBinding, card: Card) {
+    private fun bindItem(row: ItemCourseCardBinding, card: Card, store: Store) {
         row.tvName.text = card.name
 
         if (card.badge == null) {
@@ -239,6 +262,82 @@ object SlotCoursesCard {
         }
 
         row.tvWeeks.text = card.weeksText
+        bindAlarmButton(row, card, store)
+    }
+
+    /**
+     * 卡片底部的「设置闹钟」。
+     *
+     * 五档提前量（1 / 5 / 10 / 20 / 自定义）—— 这是从你的实际用法倒推的：
+     * 早八要提前 20 分钟（洗漱 + 走到教室），临时小测提前 1 分钟就够。
+     * 选完立刻写进闹钟列表并重排，用户回到闹钟页就能看到它。
+     */
+    private fun bindAlarmButton(row: ItemCourseCardBinding, card: Card, store: Store) {
+        if (card.courseId.isEmpty()) {
+            row.btnAlarm.visibility = View.GONE
+            return
+        }
+        row.btnAlarm.visibility = View.VISIBLE
+        row.btnAlarm.text = card.alarmLead
+            ?.let { "已设闹钟 · 课前 $it 分钟（点这里改）" }
+            ?: "设置闹钟"
+
+        row.btnAlarm.setOnClickListener { v ->
+            val ctx = v.context
+            val leads = listOf(1, 5, 10, 20)
+            val options = leads.map { "课前 $it 分钟" } + "自定义…"
+            AlertDialog.Builder(ctx)
+                .setTitle("${card.name}：提前多久提醒")
+                .setItems(options.toTypedArray()) { _, which ->
+                    if (which < leads.size) {
+                        applyCourseAlarm(ctx, store, card.courseId, leads[which], row)
+                    } else {
+                        askCustomLead(ctx) { m ->
+                            applyCourseAlarm(ctx, store, card.courseId, m, row)
+                        }
+                    }
+                }
+                .show()
+        }
+    }
+
+    private fun askCustomLead(ctx: Context, onOk: (Int) -> Unit) {
+        val input = EditText(ctx).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            hint = "提前多少分钟（0–120）"
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("自定义提前量")
+            .setView(input)
+            .setPositiveButton("确定") { _, _ ->
+                input.text.toString().toIntOrNull()?.let { onOk(it.coerceIn(0, 120)) }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * 落一个课程闹钟。
+     *
+     * **同一门课只留一个**：再设一次是改提前量，不是多出一个闹钟。
+     * 存完必须重排 —— 不排的话用户回到闹钟页看到「下次：…」还停在旧时刻。
+     */
+    private fun applyCourseAlarm(
+        ctx: Context, store: Store, courseId: String, lead: Int, row: ItemCourseCardBinding
+    ) {
+        val list = store.alarms()
+        val at = list.indexOfFirst { it.source == AlarmSource.COURSE && it.courseId == courseId }
+        if (at >= 0) {
+            list[at] = list[at].copy(leadMinutes = lead, enabled = true)
+        } else {
+            list.add(Alarms.forCourse(store.nextAlarmId(), courseId, lead))
+        }
+        store.saveAlarms(list)
+        AlarmScheduler.scheduleAlarms(ctx)
+        row.btnAlarm.text = "已设闹钟 · 课前 $lead 分钟（点这里改）"
+        Toast.makeText(
+            ctx, "已加入闹钟页：课前 $lead 分钟（只在这门课真的上的那几周响）", Toast.LENGTH_LONG
+        ).show()
     }
 
     /** 第 1-2 节 / 第 3 节 */

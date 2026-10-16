@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Holidays
 import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Store
@@ -193,11 +194,52 @@ class SettingsFragment : Fragment() {
     //  刷新
     // ==================================================================
 
-    /** 原来是一个 120 行的大方法，按「屏幕上的三个区块」拆开，各自独立刷新 */
+    /** 闹钟默认铃声：系统铃声选择器 */
+    private val pickAlarmSound = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = SoundPicker.uriFromResult(result.resultCode, result.data)
+        if (uri != null) {
+            store.alarmSoundUri = uri
+            SoundPicker.play(requireContext(), uri)   // 选完立刻试听，省得再找地方试
+            refreshAlarm()
+        }
+    }
+
+    /** 原来是一个 120 行的大方法，按「屏幕上的几个区块」拆开，各自独立刷新 */
     private fun refresh() {
         refreshPermissions()
         refreshTerm()
+        refreshAlarm()
         refreshData()
+    }
+
+    /**
+     * 闹钟那两块：默认铃声 + 放假/补班日。
+     *
+     * 铃声设置放在这里（而不是闹钟页）是因为它是**全局默认值** ——
+     * 闹钟页那一栏管的是「每个闹钟自己用什么」，两处职责不同。
+     */
+    private fun refreshAlarm() {
+        val ctx = requireContext()
+
+        binding.tvAlarmSound.text =
+            "当前：${SoundPicker.nameOf(ctx, store.alarmSoundUri)}（点文字试听）"
+        binding.rowAlarmSound.setOnClickListener { SoundPicker.play(ctx, store.alarmSoundUri) }
+        binding.btnAlarmSound.setOnClickListener {
+            pickAlarmSound.launch(SoundPicker.intent(store.alarmSoundUri))
+        }
+
+        val custom = store.customHolidays()
+        binding.tvHolidayStatus.text = if (custom.isEmpty()) {
+            "内置 ${Holidays.COVERED_YEARS.sorted().joinToString("、")} 年安排（放假与补班），" +
+                    "可手动补几天"
+        } else {
+            "内置之外手动补了 ${custom.size} 天，优先于内置"
+        }
+        binding.rowHolidays.setOnClickListener {
+            HolidayEditor(ctx, store) { refreshAlarm() }.show()
+        }
     }
 
     private fun refreshPermissions() {

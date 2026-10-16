@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.yxz.timetable.MainActivity
+import com.yxz.timetable.data.Alarms
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TimelineEngine
 import java.time.Instant
@@ -145,6 +147,98 @@ object AlarmScheduler {
         // 兜底：正常永远不会走到这里。万一数据异常，6 小时后再试一次，
         // 而不是让闹钟链彻底断掉 —— 一个断掉的闹钟链意味着 App 从此再不更新。
         return nowMillis + 6 * 60 * 60 * 1000L
+    }
+
+    // ==================================================================
+    //  用户闹钟：**另一条链**
+    //
+    //  为什么不在上面那条链里算？那条算的是「通知什么时候该改一下」，
+    //  这条算的是「什么时候该把人叫醒」。叫醒必须用 setAlarmClock ——
+    //  系统级闹钟语义：Doze 豁免、锁屏显示、状态栏挂闹钟图标、系统知道
+    //  「这台手机下一个闹钟是几点」。混进上面那条链就全丢了。
+    //
+    //  两条链各排一个系统闹钟，互不干扰：上面那条在「关闭常驻」时会被取消，
+    //  而**用户的闹钟不该跟着一起没**。代价是常驻两个 pending alarm，
+    //  唤醒次数按各自的时刻走（见 Alarms 的说明）。
+    // ==================================================================
+
+    private const val ALARM_REQUEST_CODE = 2002
+
+    /** 重新排「下一个用户闹钟」。闹钟增删改、开机、时区变化时都要调 */
+    fun scheduleAlarms(ctx: Context) {
+        val store = Store(ctx)
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pi = alarmPendingIntent(ctx)
+        val now = System.currentTimeMillis()
+
+        // 贪睡优先：刚按过贪睡，下一次就该是贪睡到点的那一刻
+        val snoozeAt = store.snoozeAlarmUntil
+        if (snoozeAt > now) {
+            if (!setAlarmClock(am, ctx, snoozeAt, pi)) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, snoozeAt, pi)
+            }
+            return
+        }
+
+        val next = Alarms.nextFire(
+            alarms = store.alarms(),
+            from = LocalDateTime.now(),
+            courses = store.courses(),
+            templates = store.templates(),
+            holidays = store.holidayTable(),
+            weekOf = store::weekOf
+        )
+        if (next == null) {
+            am.cancel(pi)
+            return
+        }
+
+        val at = next.at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (!setAlarmClock(am, ctx, at, pi)) {
+            // 没有精确闹钟权限（Android 12+ 用户能在系统设置里关掉）：
+            // 退化成「大致准时」。至少不会静默不响 —— 那才是真的误事。
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        }
+    }
+
+    fun cancelAlarms(ctx: Context) {
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.cancel(alarmPendingIntent(ctx))
+    }
+
+    /**
+     * 排一个系统级闹钟。[showIntent] 是「锁屏上点闹钟图标时打开谁」。
+     * 精确闹钟权限被撤掉时返回 false，由调用方退化处理。
+     */
+    private fun setAlarmClock(
+        am: AlarmManager, ctx: Context, triggerAt: Long, pi: PendingIntent
+    ): Boolean {
+        if (!canExact(am)) return false
+        return runCatching {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showIntent(ctx)), pi)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun alarmPendingIntent(ctx: Context): PendingIntent {
+        val i = Intent(ctx, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_ALARM
+            setPackage(ctx.packageName)
+        }
+        return PendingIntent.getBroadcast(
+            ctx, ALARM_REQUEST_CODE, i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun showIntent(ctx: Context): PendingIntent {
+        val i = Intent(ctx, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            ctx, ALARM_REQUEST_CODE + 1, i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun pendingIntent(ctx: Context): PendingIntent {

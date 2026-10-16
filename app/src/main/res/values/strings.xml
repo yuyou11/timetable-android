@@ -4,7 +4,18 @@
 
     <string name="tab_today">今天</string>
     <string name="tab_week">课表</string>
+    <string name="tab_alarm">闹钟</string>
     <string name="tab_settings">设置</string>
+
+    <!-- 闹钟页 -->
+    <string name="alarm_add">＋ 新建闹钟</string>
+    <string name="alarm_set">设置闹钟</string>
+    <string name="alarm_section_title">闹钟</string>
+    <string name="alarm_sound_title">默认铃声</string>
+    <string name="alarm_sound_change">更换</string>
+    <string name="alarm_holiday_title">放假 / 补班日</string>
+    <string name="alarm_holiday_manage">管理 ›</string>
+    <string name="alarm_empty">还没有闹钟。\n点下面的「新建闹钟」，或者在课表页点一格，用卡片上的「设置闹钟」给某门课单独设一个。</string>
 
     <string name="now_label">此刻</string>
     <string name="next_label">接着</string>

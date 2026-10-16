@@ -175,4 +175,19 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <!-- 「设置闹钟」：给这门课单独设一个课前提醒（只在这门课真的上的那几周才响）。
+         自习卡没有课可绑，这一行会由 SlotCoursesCard 收起来 -->
+    <TextView
+        android:id="@+id/btnAlarm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_prompt_box"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:paddingVertical="9dp"
+        android:text="@string/alarm_set"
+        android:textColor="?attr/accentColor"
+        android:textSize="13sp" />
+
 </LinearLayout>

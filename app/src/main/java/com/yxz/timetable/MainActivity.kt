@@ -14,6 +14,7 @@ import com.yxz.timetable.databinding.ActivityMainBinding
 import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
 import com.yxz.timetable.ui.AppTheme
+import com.yxz.timetable.ui.AlarmFragment
 import com.yxz.timetable.ui.SettingsFragment
 import com.yxz.timetable.ui.TodayFragment
 import com.yxz.timetable.ui.WeekFragment
@@ -58,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {
                 R.id.nav_week -> WeekFragment()
+                R.id.nav_alarm -> AlarmFragment()
                 R.id.nav_settings -> SettingsFragment()
                 else -> TodayFragment()
             }

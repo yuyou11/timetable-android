@@ -36,6 +36,13 @@ class BootReceiver : BroadcastReceiver() {
         if (action !in interesting) return
 
         val store = Store(context)
+
+        // 闹钟那条链**不受常驻开关影响**：用户设的闹钟是他自己的事，
+        // 关掉「通知栏常驻」不该把他的起床闹钟也一起关掉。
+        // （要关闹钟，去闹钟页逐个关，或者关掉那一个的开关。）
+        AlarmScheduler.scheduleAlarms(context)
+        AlarmRinger.ensureChannel(context)
+
         if (!store.enabled) return
 
         Notifier.update(context)
