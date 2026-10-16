@@ -22,7 +22,7 @@
 | 今日时间线（开始时间、结束时间、时长） | 今日页底部 |
 | 周课表网格，**周一到周日七列**（点有课的格子，弹出详情卡看时间/教室/周次） | 课表页 |
 | **周次点阵预览**（近五周 × 节数的小点阵，有课高亮；设置页可关） | 课表页周次卡片 |
-| **点格子看全学期**：这一格全学期都上过哪些课，一门课一张卡（时间 / 教室 / 老师 / 周次，标出本周那门） | 课表页 |
+| **点格子看全学期**（**空格子也能点**）：这一格全学期都上过哪些课，一门课一张卡（时间 / 教室 / 老师 / 周次，标出本周那门）；整学期都没课的格子给的是一张「自习卡」 | 课表页 |
 | 课表 + 学期 + **作息模板**的导入导出 | 设置 → 数据 |
 | **用 AI 生成数据**（含可直接复制的提示词） | 设置 → 数据 → 用 AI 生成 |
 | **主题颜色**（蓝 / 绿两套，跟随深色模式） | 设置 → 外观 |
@@ -402,19 +402,19 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 31 个 .kt / 约 8.1k 行
+app/src/main/java/com/yxz/timetable/          共 31 个 .kt / 约 8.3k 行
 ├── MainActivity.kt              三个页面的容器（底部导航 + Fragment 切换）
 ├── data/                        数据层（14 个）
 │   ├── ScheduleFormat.kt        ★ 1565 行 数据格式标准 v5：解析、校验、生成、错误信息
 │   ├── Store.kt                  509 行 本地存储（设置 / 课程 / 模板 / 日型名）
-│   ├── Templates.kt              384 行 七套内置模板（含休息日）+ TemplateSet（运行时可替换）
+│   ├── Templates.kt              399 行 七套内置模板（含休息日）+ TemplateSet（含按日型查占位格）
 │   ├── TimelineEngine.kt        ★ 326 行 核心：把模板和课表合成一条时间轴
 │   ├── AiPrompt.kt               301 行 三段 AI 提示词（课表 / 模板 / 报错修复）
 │   ├── TextDecode.kt             190 行 导入文本容错（BOM / 全角 / 粘贴杂字符）
 │   ├── FormatDocs.kt             185 行 格式说明与示例 JSON 的文本（供界面展示与复制）
 │   ├── DayTypePolicy.kt          177 行 日型配置（v5：types / weekdayMap / earlyType + 旧格式迁移）
 │   ├── TemplateImpact.kt         128 行 「导入模板后何时生效」的判定
-│   ├── SlotCourses.kt           ★ 88 行 按「星期 + 节次」聚合全学期的课（点格子弹卡片的数据源）
+│   ├── SlotCourses.kt           ★ 110 行 按「星期 + 节次」聚合全学期的课；空格子的自习卡也在这里定
 │   ├── Slots.kt                   84 行 第 1-10 节作息表（节次时间的唯一来源）
 │   ├── Periods.kt                 83 行 periods（如 "442" / "445"）：网格行展开与晚课外推
 │   ├── BuiltinCourses.kt          78 行 内置课表（含周次、单双周、任课老师）
@@ -427,12 +427,12 @@ app/src/main/java/com/yxz/timetable/          共 31 个 .kt / 约 8.1k 行
 │   ├── BootReceiver.kt            45 行 重启 / 改时间 / 换时区后重建闹钟
 │   └── AlarmReceiver.kt           39 行 闹钟到点时被唤醒
 └── ui/                          界面（10 个）
-    ├── WeekFragment.kt           705 行 周课表网格 + 当前日高亮 + 周次卡片点阵
+    ├── WeekFragment.kt           733 行 周课表网格 + 当前日高亮 + 周次卡片点阵（空格子可点）
     ├── SettingsFragment.kt       647 行 设置、权限自检、导入导出、AI 向导入口
     ├── ImportExport.kt           395 行 导入导出流程（预览、替换 / 合并、剪贴板）
     ├── TodayFragment.kt          351 行 今日时间线 + 次日预告 + 一键设闹钟
     ├── GenerateGuideActivity.kt  251 行 「用 AI 生成数据」向导页
-    ├── SlotCoursesCard.kt        229 行 点一格弹出的「这一格全学期的课」面板（一门一张卡）
+    ├── SlotCoursesCard.kt        315 行 点一格弹出的面板（一门一张卡；整学期没课时显示自习卡）
     ├── PermissionGuide.kt        209 行 权限 / 电池 / 自启动引导（含直接跳到通知渠道页）
     ├── WeekDotsView.kt           127 行 自绘周次点阵（近五周 × 节数，有课高亮）
     ├── AppTheme.kt                91 行 主题配色（蓝 / 绿，跟随深色模式）
@@ -449,27 +449,27 @@ app/src/main/res/                共 35 个资源文件
 ├── values-night/  colors.xml（深色模式配色覆盖）
 └── mipmap-anydpi-v26/  ic_launcher.xml、ic_launcher_round.xml（自适应图标）
 
-app/src/test/java/com/yxz/timetable/          共 15 个测试类 / 333 个 @Test，全跑在电脑 JVM 上
-├── data/   13 个类 / 319 个
+app/src/test/java/com/yxz/timetable/          共 15 个测试类 / 340 个 @Test，全跑在电脑 JVM 上
+├── data/   13 个类 / 326 个
 │   ├── ScheduleFormatTest.kt       114  格式解析、校验、生成、往返一致、字段顺序
 │   ├── DayTypePolicyTest.kt         47  日型三规则 + v4 迁移逐日一致
 │   ├── TimelineEngineTest.kt        42  时间轴拼接与裁剪、整学期 133 天不变量
 │   ├── FormatTextTest.kt            16  界面/文档里的格式文本不与真实格式脱节
 │   ├── TextDecodeTest.kt            16  导入解码容错
-│   ├── SlotCoursesTest.kt           15  按格聚合：跨周次、多条记录合并、停课仍在列
+│   ├── SlotCoursesTest.kt           19  按格聚合：跨周次、多条记录合并、停课仍在列、自习卡
 │   ├── AiPromptTest.kt              14  三段提示词的内容与占位
 │   ├── PeriodsTest.kt               12  periods 展开与外推
 │   ├── SlotTimeTest.kt              11  节次时间只有一个来源
 │   ├── TemplateImpactTest.kt        11  模板导入后的生效时机
 │   ├── DayTypeDisplayTest.kt         9  界面日型标签不说假话
-│   ├── TemplatePlaceholderTest.kt    7  内置模板占位格对齐 Slots
+│   ├── TemplatePlaceholderTest.kt   10  内置模板占位格对齐 Slots + 按日型查占位格
 │   └── DocsExampleTest.kt            5  docs/ 示例文件永远可解析
 └── ui/     2 个类 / 14 个
     ├── AppThemeTest.kt              12  主题配色取值
     └── TimelineRowLayoutTest.kt      2  时间轴行布局结构（地点单独一行）
 ```
 
-共 **333 个单元测试**（15 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
+共 **340 个单元测试**（15 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
 
 ### 测试覆盖了什么
 
@@ -480,7 +480,7 @@ app/src/test/java/com/yxz/timetable/          共 15 个测试类 / 333 个 @Tes
 | `data/ScheduleFormatTest` | 114 | 周次语法的全部写法 + 全部错误路径（超范围、颠倒、多余逗号、步长非数字）；「格式化 → 再解析」往返一致；解析错误信息是否指明「第几门课、哪个字段、该改成什么」；冲突检测（周次重叠报警告、**不重叠不报警告**）；内置课表导出再导入完全一致；课程名含引号/反斜杠的转义；导出字段顺序固定 |
 | `data/DayTypePolicyTest` | 47 | 日型判定的三条规则（休息日 → 早八层 → 星期映射，含"停课自动退化"）；恒等配置必须与 v4 旧规则逐日一致（迁移金测试） |
 | `data/TimelineEngineTest` | 42 | 周次计算（第 1 / 2 / 17 周的起始日）；课表覆盖模板、连堂合并、单双周切换、仅某周上的课；**整学期 19 周 × 7 天 = 133 天，每天的时间轴必须首尾相接、无空洞、无重叠**；人为构造的"跨午餐的怪课"，验证裁剪逻辑不会错乱 |
-| `data/SlotCoursesTest` | 15 | 「点一格 → 这一格全学期的课」：命中判据是**区间重叠**（不是起点相等）、同一格跨周次的多门课、同一门课被拆成多条记录时合并、停课的课仍然列出、排序稳定 |
+| `data/SlotCoursesTest` | 19 | 「点一格 → 这一格全学期的课」：命中判据是**区间重叠**（不是起点相等）、同一格跨周次的多门课、同一门课被拆成多条记录时合并、停课的课仍然列出、排序稳定 |
 | `data/FormatTextTest` | 16 | 所有「用户会照着做」的格式文本，不会和真实格式脱节 |
 | `data/TextDecodeTest` | 16 | 导入文本的容错（BOM、全角、粘贴带进来的杂字符） |
 | `data/AiPromptTest` | 14 | 三段 AI 提示词的内容与占位（学期信息必须填对） |
@@ -488,7 +488,7 @@ app/src/test/java/com/yxz/timetable/          共 15 个测试类 / 333 个 @Tes
 | `data/SlotTimeTest` | 11 | 「节次时间」只有一个来源，别处不许再写死一份 |
 | `data/TemplateImpactTest` | 11 | 「导入作息模板后，什么时候能看到变化」 |
 | `data/DayTypeDisplayTest` | 9 | 界面上的日型标签**不说假话** |
-| `data/TemplatePlaceholderTest` | 7 | 内置模板的占位格时刻对齐内置作息表 `Slots`，且该有的都要有 |
+| `data/TemplatePlaceholderTest` | 10 | 内置模板的占位格时刻对齐内置作息表 `Slots`、该有的都要有；按**日型**查覆盖某节次的占位格（自习卡的文案来源，周末/休息日如实返回 null） |
 | `data/DocsExampleTest` | 5 | `docs/` 里那两份示例文件必须永远能被 App 解析成功 |
 | `ui/AppThemeTest` | 12 | 主题配色的取值（蓝 / 绿两套） |
 | `ui/TimelineRowLayoutTest` | 2 | 时间轴行的布局结构：**地点必须在标题下方单独一行** |

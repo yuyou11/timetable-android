@@ -341,6 +341,21 @@ data class TemplateSet(
     fun slotEnd(node: Int): Int = slotEnds[node] ?: Slots.end(node)
 
     /**
+     * 覆盖第 [node] 节的**占位格**（模板里标了 `nodes` 的那一格），没有就返回 null。
+     *
+     * 用来回答「这一格没课时，这段时间本来安排的是什么」—— 课表页的自习卡
+     * 就是从这里取文案的，和今日页、通知栏同一个来源，
+     * 不会出现「课表页说自习、通知栏说空档」这种自相矛盾。
+     *
+     * 注意必须**按日型取**：同一节次在不同日型下备注可能不同
+     * （A 型第 7-8 节是「自习 / 轻松跑」，B 型训练日是「自习」）。
+     * 周六 / 周日 / 休息日的模板里本来就没有课表格子，这里如实返回 null，
+     * 由调用方退回内置作息时刻。
+     */
+    fun blockAt(type: DayType, node: Int): Block? =
+        of(type).firstOrNull { it.nodes?.contains(node) == true }
+
+    /**
      * 各种日型对同一个节次段的时刻是否一致。
      *
      * 课表页只有一列节次时间，如果 A 型日写 08:30、B 型日写 09:00，

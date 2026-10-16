@@ -25,6 +25,7 @@ import com.yxz.timetable.data.DayType
 import com.yxz.timetable.data.Periods
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.SlotCourses
+import com.yxz.timetable.data.selfStudySlot
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
@@ -460,12 +461,48 @@ class WeekFragment : Fragment() {
                 // 详情卡要的节次范围是**合并块实际占的行** —— 一门课拆成
                 // 「1-2」「3-4」两条记录时显示上拼成了一整块，弹卡里也得写
                 // 「第 1-4 节」，而不是第一条记录自带的「第 1-2 节」。
+                // 空格子也有范围（就它自己那一行）—— 空格子同样能点：
+                // 「这一格别的周有没有课」是个真问题，而答案不在这张网格上。
                 val nodeRange =
-                    if (hit == null) null else rows[i].node..rows[i + span - 1].node
+                    if (hit == null) rows[i].node..rows[i].node
+                    else rows[i].node..rows[i + span - 1].node
                 addView(makeCourseCell(ctx, set, hit, span, nodeRange, day, week, courses))
                 i += span
             }
         }
+    }
+
+    /**
+     * 点一格：弹出「这一格全学期都有什么课」面板。
+     *
+     * 有课的格子和空格子走的是同一条路 —— 区别只在 [SlotCourses.at] 返回空表时，
+     * 会额外带上当天生效日型模板里的占位格，面板据此渲染一张自习卡。
+     * 点一格回答的从来不是「这一周这一格是什么课」（那已经写在格子里了），
+     * 而是「这一格全学期都上过什么课」。
+     */
+    private fun openSlotPanel(
+        anchor: View, day: Int, nodes: IntRange, week: Int, courses: List<Course>,
+        set: TemplateSet
+    ) {
+        detailCard?.dismiss()
+        val items = SlotCourses.at(day, nodes, courses, week)
+        // 自习卡的日期要用「正在浏览的那一周」的日期算日型，不能用今天 ——
+        // 翻到第 3 周还按今天的日型取模板，显示的备注就是另一天的事了
+        val monday = store.termStart.plusDays(((week - 1) * 7).toLong())
+        detailCard = SlotCoursesCard.show(
+            anchor = anchor,
+            day = day,
+            nodes = nodes,
+            items = items,
+            set = set,
+            viewedWeek = week,
+            currentWeek = isCurrentWeek(week),
+            selfStudy = if (items.isEmpty()) {
+                selfStudySlot(monday.plusDays((day - 1).toLong()), week, nodes.first, courses, set)
+            } else {
+                null
+            }
+        )
     }
 
     /** 显示上算「同一门课」：同一条记录，或名称 / 教室 / 周次完全一致的相邻记录 */
@@ -547,13 +584,18 @@ class WeekFragment : Fragment() {
      * **限制行数的时候，要按「一行能放几个字」算，而不是随手定个 2。**
      */
     private fun makeCourseCell(
-        ctx: Context, set: TemplateSet, hit: Course?, span: Int, nodeRange: IntRange?,
+        ctx: Context, set: TemplateSet, hit: Course?, span: Int, nodeRange: IntRange,
         day: Int, week: Int, courses: List<Course>
     ): View {
-        if (hit == null || nodeRange == null) {
+        if (hit == null) {
             // 空格子真正留白，不打「—」占位：
-            // 大多数格子是空的，全打上横杠会非常吵，反而看不清哪里有课
-            return TextView(ctx).apply { layoutParams = fixedParams(ROW_HEIGHT_DP) }
+            // 大多数格子是空的，全打上横杠会非常吵，反而看不清哪里有课。
+            // 但它**可点**（视觉上依然什么都没有）：这一格在别的周有课时点开是那份清单，
+            // 整学期都没课时点开是一张自习卡。
+            return TextView(ctx).apply {
+                layoutParams = fixedParams(ROW_HEIGHT_DP)
+                setOnClickListener { openSlotPanel(this, day, nodeRange, week, courses, set) }
+            }
         }
 
         val accent = ctx.accentColor()
@@ -598,21 +640,7 @@ class WeekFragment : Fragment() {
                 })
             }
 
-            setOnClickListener {
-                detailCard?.dismiss()
-                // 点一格回答的不是「这一周这一格是什么课」（那已经写在格子里了），
-                // 而是「这一格全学期都上过什么课」—— 同一格在不同周次上可能是
-                // 不同的课，甚至连节次范围都不一样。
-                detailCard = SlotCoursesCard.show(
-                    anchor = this,
-                    day = day,
-                    nodes = nodeRange,
-                    items = SlotCourses.at(day, nodeRange, courses, week),
-                    set = set,
-                    viewedWeek = week,
-                    currentWeek = isCurrentWeek(week)
-                )
-            }
+            setOnClickListener { openSlotPanel(this, day, nodeRange, week, courses, set) }
         }
     }
 

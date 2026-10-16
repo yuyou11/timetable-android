@@ -10,6 +10,7 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import androidx.core.view.doOnLayout
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Block
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.SlotCourse
 import com.yxz.timetable.data.Slots
@@ -25,6 +26,14 @@ import kotlin.math.roundToInt
  * 真正答不上来的是「第 9 周以后这一格换成什么课了」「这学期这门课一共上几周」——
  * 这些要跨周次看，而格子一次只能显示一周。
  * 所以点开的应该是一份**清单**：这一格全学期出现过几门课，各自什么时间、在哪、谁教。
+ *
+ * ## 空格子也能点
+ *
+ * 课表上的空格子有两种意思：「这一周这一格没课」和「整学期这一格都没课」。
+ * 前者点开能看到别的周在这格上排了什么课；后者点开是一张**自习卡**——
+ * 格子里什么都没有，但这一段时间是真实存在的，它按作息模板过。
+ * 两种情况下格子本身都不加任何标记（大多数格子是空的，打满符号会很吵），
+ * 只是变得可点。
  *
  * ## 动画：从哪来，回哪去
  *
@@ -56,9 +65,10 @@ object SlotCoursesCard {
      * @param anchor      被点的课表格子 —— 动画从它身上冒出来
      * @param day         星期几（1–7）
      * @param nodes       被点那**格**占的节次范围
-     * @param items       这一格全学期的课，已排好序（见 SlotCourses.at）
+     * @param items       这一格全学期的课，已排好序（见 SlotCourses.at）；空表示整学期都没课
      * @param viewedWeek  正在浏览的教学周
      * @param currentWeek 正在浏览的是不是真实本周（决定徽标写「本周」还是「第 N 周」）
+     * @param selfStudy   [items] 为空时用的模板占位格（可能也为 null，见 selfStudyCard）
      */
     fun show(
         anchor: View,
@@ -67,23 +77,36 @@ object SlotCoursesCard {
         items: List<SlotCourse>,
         set: TemplateSet,
         viewedWeek: Int,
-        currentWeek: Boolean
+        currentWeek: Boolean,
+        selfStudy: Block? = null
     ): Dialog {
         val ctx = anchor.context
         val inflater = LayoutInflater.from(ctx)
         val binding = DialogSlotCoursesBinding.inflate(inflater)
 
         binding.tvTitle.text = "${weekdayCn(day)} · ${nodeLabel(nodes.first, nodes.last)}"
-        val activeCount = items.count { it.activeInWeek != null }
-        binding.tvSubtitle.text = "全学期 ${items.size} 门课 · " +
-                if (activeCount == 0) "第 $viewedWeek 教学周这一格没课"
-                else "第 $viewedWeek 教学周有 $activeCount 门"
+        binding.tvSubtitle.text = if (items.isEmpty()) {
+            "全学期都没有课 · 这一格按作息模板安排"
+        } else {
+            val activeCount = items.count { it.activeInWeek != null }
+            "全学期 ${items.size} 门课 · " + if (activeCount == 0) {
+                "第 $viewedWeek 教学周这一格没课"
+            } else {
+                "第 $viewedWeek 教学周有 $activeCount 门"
+            }
+        }
 
-        for ((i, item) in items.withIndex()) {
+        val cards = if (items.isEmpty()) {
+            listOf(selfStudyCard(day, nodes, selfStudy, set))
+        } else {
+            items.map { courseCard(it, set, currentWeek) }
+        }
+
+        for ((i, card) in cards.withIndex()) {
             val row = ItemCourseCardBinding.inflate(inflater, binding.list, false)
-            bindItem(row, item, set, currentWeek)
+            bindItem(row, card)
             // 最后一张不留外边距：卡片底边和面板底边的间距才是同一个
-            if (i == items.lastIndex) {
+            if (i == cards.lastIndex) {
                 (row.root.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin = 0
             }
             binding.list.addView(row.root)
@@ -123,36 +146,99 @@ object SlotCoursesCard {
     }
 
     /**
-     * 填一张卡。
+     * 一张卡的全部文案。课程卡和自习卡**共用同一个渲染路径** ——
+     * 两份布局迟早会长歪，而这里两者本来就只有内容不同。
      *
-     * 空教室 / 空老师都写「未注明」而不是留白 —— 空白分不清「没有」和「没加载出来」。
+     * @param place    null 表示这一行不显示（自习卡没有教室，与其写「未注明」不如不写）
+     * @param teacher  同上
+     * @param badge    null 表示不显示徽标
      */
-    private fun bindItem(
-        row: ItemCourseCardBinding, item: SlotCourse, set: TemplateSet, currentWeek: Boolean
-    ) {
-        val c = item.course
-        row.tvName.text = c.name
+    private class Card(
+        val name: String,
+        val whenText: String,
+        val timeText: String,
+        val place: String?,
+        val teacher: String?,
+        val weeksText: String,
+        val badge: String?,
+        val badgeDim: Boolean = false
+    )
 
-        when {
-            !c.enabled -> {
-                row.tvBadge.text = "已停课"
-                row.tvBadge.alpha = 0.6f
-                row.tvBadge.visibility = View.VISIBLE
-            }
-            item.activeInWeek != null -> {
-                row.tvBadge.text = if (currentWeek) "本周" else "第 ${item.activeInWeek} 周"
-                row.tvBadge.alpha = 1f
-                row.tvBadge.visibility = View.VISIBLE
-            }
-            else -> row.tvBadge.visibility = View.GONE
+    private fun courseCard(item: SlotCourse, set: TemplateSet, currentWeek: Boolean): Card {
+        val c = item.course
+        return Card(
+            name = c.name,
+            whenText = "${weekdayCn(c.dayOfWeek)} · ${nodeLabel(item.fromNode, item.toNode)}",
+            timeText = "${Slots.fmt(set.slotStart(item.fromNode))} – " +
+                    Slots.fmt(set.slotEnd(item.toNode)),
+            place = c.place.ifBlank { "未注明" },
+            teacher = c.teacher.ifBlank { "未注明" },
+            weeksText = formatWeeks(c.weeks),
+            badge = when {
+                !c.enabled -> "已停课"
+                item.activeInWeek != null ->
+                    if (currentWeek) "本周" else "第 ${item.activeInWeek} 周"
+                else -> null
+            },
+            badgeDim = !c.enabled
+        )
+    }
+
+    /**
+     * 整学期都没课时的那张**自习卡**。
+     *
+     * 文案来自 [block]：当天实际生效的日型模板里、覆盖这一节的那个占位格 ——
+     * 它的备注就是这张卡的名字（「自习」「自习 / 轻松跑」「晚自习」…），
+     * 和今日页、通知栏同源，所以三处说的必然是同一件事。
+     *
+     * [block] 为 null 时（周六周日、无课休息日的模板里没有课表格子）退回
+     * 「自习」+ 内置作息时刻：宁可用一个通用名字，也不要留一张空卡。
+     */
+    private fun selfStudyCard(day: Int, nodes: IntRange, block: Block?, set: TemplateSet): Card {
+        val start = block?.start ?: set.slotStart(nodes.first)
+        val end = block?.end ?: set.slotEnd(nodes.last)
+        return Card(
+            name = block?.note?.takeIf { it.isNotBlank() } ?: "自习",
+            whenText = "${weekdayCn(day)} · ${nodeLabel(nodes.first, nodes.last)}",
+            timeText = "${Slots.fmt(start)} – ${Slots.fmt(end)}",
+            place = block?.place?.takeIf { it.isNotBlank() },
+            teacher = null,
+            weeksText = "全学期都没有课",
+            badge = "无课",
+            badgeDim = true
+        )
+    }
+
+    /** 空教室 / 空老师写「未注明」而不是留白 —— 空白分不清「没有」和「没加载出来」 */
+    private fun bindItem(row: ItemCourseCardBinding, card: Card) {
+        row.tvName.text = card.name
+
+        if (card.badge == null) {
+            row.tvBadge.visibility = View.GONE
+        } else {
+            row.tvBadge.text = card.badge
+            row.tvBadge.alpha = if (card.badgeDim) 0.6f else 1f
+            row.tvBadge.visibility = View.VISIBLE
         }
 
-        row.tvWhen.text = "${weekdayCn(c.dayOfWeek)} · ${nodeLabel(item.fromNode, item.toNode)}"
-        row.tvTime.text =
-            "${Slots.fmt(set.slotStart(item.fromNode))} – ${Slots.fmt(set.slotEnd(item.toNode))}"
-        row.tvPlace.text = c.place.ifBlank { "未注明" }
-        row.tvTeacher.text = c.teacher.ifBlank { "未注明" }
-        row.tvWeeks.text = formatWeeks(c.weeks)
+        row.tvWhen.text = card.whenText
+        row.tvTime.text = card.timeText
+
+        if (card.place == null) {
+            row.rowPlace.visibility = View.GONE
+        } else {
+            row.tvPlace.text = card.place
+            row.rowPlace.visibility = View.VISIBLE
+        }
+
+        if (card.teacher == null) {
+            row.rowTeacher.visibility = View.GONE
+        } else {
+            row.tvTeacher.text = card.teacher
+            row.rowTeacher.visibility = View.VISIBLE
+        }
+
+        row.tvWeeks.text = card.weeksText
     }
 
     /** 第 1-2 节 / 第 3 节 */

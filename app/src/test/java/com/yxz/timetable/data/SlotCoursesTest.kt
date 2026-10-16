@@ -1,9 +1,11 @@
 package com.yxz.timetable.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * 「点课表一格 → 这一格全学期都有什么课」的测试。
@@ -171,5 +173,42 @@ class SlotCoursesTest {
         val hit = SlotCourses.at(4, 7..8, BuiltinCourses.LIST, viewedWeek = 9)
         assertEquals(listOf("数据结构", "程序设计基础"), hit.map { it.course.name }.sorted())
         assertEquals(9, hit.first { it.course.name == "数据结构" }.activeInWeek)
+    }
+
+    // ---------- 五、整学期没课时的那张自习卡 ----------
+
+    /** 2026-09-07 是第 1 周周一（内置示例的 term.startDate） */
+    private val monday = LocalDate.of(2026, 9, 7)
+
+    @Test
+    fun `工作日有课但这一格没课时取到的是当天日型的占位格`() {
+        // 周一第 1-2 节有课 → 那天是 A 型日（有早八）→ 第 7-8 节的占位格就是它
+        val courses = listOf(c("1", "大学英语", 1, 1, 2, setOf(2)))
+        val b = selfStudySlot(monday, 2, 7, courses, TemplateSet.BUILTIN)
+        assertNotNull("有课的工作日应当取到占位格", b)
+        assertEquals(15 * 60 + 55, b!!.start)
+        assertEquals(17 * 60 + 30, b.end)
+        assertTrue("备注应当是自习那一类", b.note.contains("自习"))
+    }
+
+    @Test
+    fun `全天没课的工作日按休息日走 取不到占位格`() {
+        // 引擎第一条规则：工作日全天无课 → 休息日 → 那套模板里没有课表格子。
+        // 返回 null 不是出错，而是「这天不按课表过」的真实答案，界面会退回「自习」
+        assertNull(selfStudySlot(monday, 2, 7, emptyList(), TemplateSet.BUILTIN))
+    }
+
+    @Test
+    fun `周六也没有占位格`() {
+        assertNull(selfStudySlot(monday.plusDays(5), 2, 7, emptyList(), TemplateSet.BUILTIN))
+    }
+
+    @Test
+    fun `自习卡的兜底时刻就是节次时间的同一个来源`() {
+        // 拿不到占位格时界面用 set.slotStart/slotEnd 兜底 —— 和课表左边那列
+        // 节次时间同源，不会出现「自习卡写着 15:55、边上那列写着别的」
+        val set = TemplateSet.BUILTIN
+        assertEquals(Slots.start(7), set.slotStart(7))
+        assertEquals(Slots.end(8), set.slotEnd(8))
     }
 }

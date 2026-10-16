@@ -1,5 +1,7 @@
 package com.yxz.timetable.data
 
+import java.time.LocalDate
+
 /**
  * 「这一格（星期 X 第 m–n 节）在全学期都上过哪些课」里的一条结果。
  *
@@ -85,3 +87,23 @@ object SlotCourses {
             )
     }
 }
+
+/**
+ * 这一格「整学期都没课」时，应该显示什么。
+ *
+ * 取**当天实际生效的日型**模板里覆盖这一节的那个占位格：
+ * 日期 + 周次 + 课表一起交给 [TimelineEngine.dayType] 判日型，
+ * 拿到日型再取它的占位格 —— 和今日页、通知栏同一条链路，
+ * 所以课表页弹出来的「自习 / 轻松跑」和通知栏里那行字必然一致。
+ *
+ * 返回 null 表示连占位格都没有（周六、周日、无课休息日的模板里本来就没有
+ * 课表格子），界面会退回「自习」+ 内置作息时刻（[TemplateSet.slotStart] /
+ * [TemplateSet.slotEnd] 自带这个兜底）。
+ */
+fun selfStudySlot(
+    date: LocalDate,
+    week: Int,
+    node: Int,
+    courses: List<Course>,
+    set: TemplateSet
+): Block? = set.blockAt(TimelineEngine.dayType(date, week, courses, set.config), node)

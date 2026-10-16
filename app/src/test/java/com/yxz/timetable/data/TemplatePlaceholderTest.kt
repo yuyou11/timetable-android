@@ -1,6 +1,7 @@
 package com.yxz.timetable.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -205,5 +206,38 @@ class TemplatePlaceholderTest {
         assertEquals("应当检测出 1 处不对齐", 1, bad.size)
         assertTrue("报错要说清哪个节次", bad[0].contains("第 1-2 节"))
         assertTrue("报错要给出正确值", bad[0].contains("08:30-10:05"))
+    }
+
+    // ---------- blockAt：自习卡的文案来源 ----------
+
+    @Test
+    fun `blockAt 能按日型取到覆盖某节次的占位格`() {
+        // A 型第 7-8 节的备注是「自习 / 轻松跑」—— 课表页的自习卡文案就取这里
+        val b = TemplateSet.BUILTIN.blockAt(DayType.A, 7)!!
+        assertEquals(7, b.nodes!!.first)
+        assertEquals(15 * 60 + 55, b.start)
+        assertEquals(17 * 60 + 30, b.end)
+        assertTrue("备注应当是自习那一类", b.note.contains("自习"))
+    }
+
+    @Test
+    fun `同一节次在不同日型下的占位格备注可以不同`() {
+        // A 型写「自习 / 轻松跑」，训练日只写「自习」——
+        // 所以取占位格**必须按日型取**，不能拿第一种日型的凑数
+        val a = TemplateSet.BUILTIN.blockAt(DayType.A, 7)!!
+        val train = TemplateSet.BUILTIN.blockAt(DayType.B_TRAIN_A, 7)!!
+        assertTrue(
+            "两种日型同一节次的备注应当不同（实际：'${a.note}' / '${train.note}'）",
+            a.note != train.note
+        )
+    }
+
+    @Test
+    fun `周六周末和休息日的模板里没有课表格子`() {
+        // 这三套模板一个占位格都没有 → 自习卡退回「自习」+ 内置作息时刻。
+        // 返回 null 是如实回答，不是出错。
+        for (t in listOf(DayType.SATURDAY, DayType.SUNDAY, DayType.REST)) {
+            assertNull("${t.label} 不该有占位格", TemplateSet.BUILTIN.blockAt(t, 7))
+        }
     }
 }
