@@ -37,7 +37,16 @@ data class Alarm(
     val source: AlarmSource = AlarmSource.MANUAL,
     val courseId: String = "",
     val leadMinutes: Int = 0,
-    val snoozeMinutes: Int = 10
+    val snoozeMinutes: Int = 10,
+    /**
+     * 「只响一次」的那一天（只在 [days] 为空、且是手建闹钟时有效）。
+     *
+     * 把七个星期**全部取消勾选**，意思就是「不重复，只响一次」—— 这是闹钟的
+     * 常规语义（`daySummary` 里也一直写着「不重复」）。存下来的那一刻就把
+     * 「下一次那个时刻」算成具体日期固定住；日期一过自然就不响了，
+     * 真响过之后接收器还会把它关掉，免得第二天同一时刻又响。
+     */
+    val onceDate: LocalDate? = null
 ) {
     val timeText: String get() = "%02d:%02d".format(hour, minute)
 }
@@ -109,7 +118,14 @@ object Alarms {
         if (!alarm.enabled) return null
         return when (alarm.source) {
             AlarmSource.MANUAL -> {
-                if (!manualDateMatches(alarm, date, holidays)) return null
+                if (alarm.days.isEmpty()) {
+                    // 只响一次：日期是固定的那一个，过了就不再响。
+                    // **不套节假日判断** —— 用户明确指定了「就这一次、就这个点」，
+                    // 静默跳过等于让他误了飞机；要跳过节假日就别用只响一次。
+                    if (alarm.onceDate != date) return null
+                } else if (!manualDateMatches(alarm, date, holidays)) {
+                    return null
+                }
                 alarm.hour * 60 + alarm.minute
             }
 
@@ -205,6 +221,21 @@ object Alarms {
             )
             m != null && minute >= m && minute < m + windowMinutes
         }
+    }
+
+    /** 只响一次的闹钟：手建 + 七天的勾全取消 */
+    fun isOneShot(a: Alarm): Boolean =
+        a.source == AlarmSource.MANUAL && a.days.isEmpty()
+
+    /**
+     * 「只响一次」定在哪一天：今天这个点还没过就是今天，已经过了就是明天。
+     *
+     * 存的时候算一次、固定下来（写进 [Alarm.onceDate]），而不是每次排程时现算 ——
+     * 现算的话「每次排程都把明天挪成新的明天」，那就成了每天响一次。
+     */
+    fun oneShotDate(hour: Int, minute: Int, now: LocalDateTime): LocalDate {
+        val today = now.toLocalDate()
+        return if (today.atTime(hour, minute).isAfter(now)) today else today.plusDays(1)
     }
 
     /** 列表里显示的名字：有备注用备注，课程闹钟显示「课程名 · 课前 N 分钟」 */

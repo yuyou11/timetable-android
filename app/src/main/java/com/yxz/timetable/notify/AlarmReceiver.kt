@@ -66,7 +66,23 @@ class AlarmReceiver : BroadcastReceiver() {
             )
         }
 
-        if (due.isNotEmpty()) AlarmRinger.ring(context, due)
+        if (due.isNotEmpty()) {
+            AlarmRinger.ring(context, due)
+            // 「只响一次」的闹钟响过就关掉 —— 它是按日期固定的，不关的话
+            // 明天同一时刻还会再响一次（那就成了每天响）
+            val oneShots = due.filter { Alarms.isOneShot(it) }.map { it.id }.toSet()
+            if (oneShots.isNotEmpty()) {
+                val list = store.alarms()
+                var changed = false
+                for (i in list.indices) {
+                    if (list[i].id in oneShots && list[i].enabled) {
+                        list[i] = list[i].copy(enabled = false)
+                        changed = true
+                    }
+                }
+                if (changed) store.saveAlarms(list)
+            }
+        }
 
         // 这一步不能漏：排下一次。漏了的话闹钟只响这一次，之后永远不响
         AlarmScheduler.scheduleAlarms(context)

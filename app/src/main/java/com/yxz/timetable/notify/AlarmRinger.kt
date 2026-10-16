@@ -152,6 +152,7 @@ object AlarmRinger {
         val text = due.joinToString("、") { a ->
             "${a.timeText} ${Alarms.describe(a, courses)}"
         }
+        val ringScreen = ringScreen(ctx)
         val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
             .setColor(0xFFEF5350.toInt())
@@ -161,12 +162,27 @@ object AlarmRinger {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
+            // 不设成 ongoing：**划掉通知也算一种「停」**，由 deleteIntent 接管。
+            // 响铃这种"正在发生的坏事"，出口能多一条就多一条。
+            .setOngoing(false)
             .setAutoCancel(false)
-            .setContentIntent(openApp(ctx))
+            .setContentIntent(ringScreen)
+            // 锁屏 / 息屏时直接把响铃界面拉起来（拿不到权限就退化成横幅通知）
+            .setFullScreenIntent(ringScreen, true)
+            .setDeleteIntent(action(ctx, ACTION_STOP, 54))
             .addAction(0, "停止", action(ctx, ACTION_STOP, 51))
             .addAction(0, "贪睡 $snoozeMinutes 分钟", action(ctx, ACTION_SNOOZE, 52))
         runCatching { NotificationManagerCompat.from(ctx).notify(NOTIF_ID, builder.build()) }
+    }
+
+    /** 响铃界面（点通知、或锁屏直接弹出）—— 那里一定有「停止」和「贪睡」两个大按钮 */
+    private fun ringScreen(ctx: Context): PendingIntent {
+        val i = Intent(ctx, AlarmRingActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            ctx, 55, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun action(ctx: Context, action: String, code: Int): PendingIntent {
@@ -176,15 +192,6 @@ object AlarmRinger {
         }
         return PendingIntent.getBroadcast(
             ctx, code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun openApp(ctx: Context): PendingIntent {
-        val i = Intent(ctx, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            ctx, 53, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
 

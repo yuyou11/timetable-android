@@ -219,6 +219,63 @@ class AlarmsTest {
         )
     }
 
+    // ---------- 六、只响一次（七天的勾全取消） ----------
+
+    @Test
+    fun `七天全不选就是只响一次`() {
+        val now = LocalDateTime.of(2026, 11, 18, 20, 0)
+        val a = Alarm(
+            id = "a1", hour = 7, minute = 0, days = emptySet(),
+            onceDate = Alarms.oneShotDate(7, 0, now)
+        )
+        assertTrue(Alarms.isOneShot(a))
+        assertEquals("晚上 8 点设的，明天早上 7 点响", LocalDate.of(2026, 11, 19), a.onceDate)
+        assertEquals(7 * 60, fire(a, LocalDate.of(2026, 11, 19)))
+        assertNull("过了那一天就不再响", fire(a, LocalDate.of(2026, 11, 20)))
+        assertNull("前一天也不该响", fire(a, LocalDate.of(2026, 11, 18)))
+    }
+
+    @Test
+    fun `只响一次的日期 今天这个点还没过就是今天`() {
+        val now = LocalDateTime.of(2026, 11, 18, 6, 0)
+        assertEquals(LocalDate.of(2026, 11, 18), Alarms.oneShotDate(7, 0, now))
+        assertEquals(LocalDate.of(2026, 11, 19), Alarms.oneShotDate(5, 0, now))
+        assertEquals("正好等于此刻算明天，免得刚存下就立刻响", LocalDate.of(2026, 11, 19), Alarms.oneShotDate(6, 0, now))
+    }
+
+    @Test
+    fun `只响一次不受节假日跳过影响`() {
+        // 用户明确指定了「就这一次、就这个点」——静默跳过等于让他误事
+        val now = LocalDateTime.of(2026, 9, 30, 22, 0)
+        val a = Alarm(
+            id = "a1", hour = 7, minute = 0, days = emptySet(),
+            onceDate = Alarms.oneShotDate(7, 0, now)     // 落在 10/1 国庆
+        )
+        assertEquals(LocalDate.of(2026, 10, 1), a.onceDate)
+        assertEquals(7 * 60, fire(a, LocalDate.of(2026, 10, 1)))
+    }
+
+    @Test
+    fun `只响一次的闹钟只被 nextFire 找到一次`() {
+        val a = Alarm(
+            id = "a1", hour = 7, minute = 0, days = emptySet(),
+            onceDate = LocalDate.of(2026, 11, 19)
+        )
+        val first = Alarms.nextFire(
+            listOf(a), LocalDateTime.of(2026, 11, 18, 20, 0),
+            courses, templates, holidays, ::weekOf
+        )!!
+        assertEquals(LocalDate.of(2026, 11, 19), first.date)
+        // 响过之后接收器会把它关掉；关掉之后 nextFire 就找不到它了
+        val off = a.copy(enabled = false)
+        assertNull(
+            Alarms.nextFire(
+                listOf(off), LocalDateTime.of(2026, 11, 19, 8, 0),
+                courses, templates, holidays, ::weekOf
+            )
+        )
+    }
+
     // ---------- 五、文案与辅助 ----------
 
     @Test

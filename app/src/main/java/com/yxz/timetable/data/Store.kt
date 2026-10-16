@@ -486,6 +486,7 @@ class Store(context: Context) {
         put("courseId", a.courseId)
         put("lead", a.leadMinutes)
         put("snooze", a.snoozeMinutes)
+        put("once", a.onceDate?.toString() ?: "")
     }
 
     private fun fromAlarmJson(o: JSONObject): Alarm {
@@ -504,7 +505,9 @@ class Store(context: Context) {
                 .getOrDefault(AlarmSource.MANUAL),
             courseId = o.optString("courseId", ""),
             leadMinutes = o.optInt("lead", 0),
-            snoozeMinutes = o.optInt("snooze", Alarms.MIN_SNOOZE_MINUTES)
+            snoozeMinutes = o.optInt("snooze", Alarms.MIN_SNOOZE_MINUTES),
+            onceDate = o.optString("once", "").takeIf { it.isNotBlank() }
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         )
     }
 

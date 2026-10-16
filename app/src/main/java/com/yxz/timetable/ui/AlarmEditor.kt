@@ -22,6 +22,7 @@ import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.databinding.DialogAlarmEditBinding
 import com.yxz.timetable.notify.AlarmScheduler
+import java.time.LocalDateTime
 
 /**
  * 新建 / 编辑一个闹钟。
@@ -131,7 +132,10 @@ class AlarmEditor(
         for ((label, set) in listOf(
             "工作日" to Alarms.WORKDAYS,
             "周末" to Alarms.WEEKEND,
-            "每天" to EVERY_DAY
+            "每天" to EVERY_DAY,
+            // 七天全取消 = 不重复、只响一次。这是闹钟的常规语义，
+            // 而原来保存时被一句「至少选一天」拦住了 —— 文案和逻辑不一致，是 bug
+            "只响一次" to emptySet()
         )) {
             val c = chip(label, days == set, weight = 1f) { days.clear(); days += set; refreshDays() }
             presetChips += set to c
@@ -147,6 +151,28 @@ class AlarmEditor(
     private fun refreshDays() {
         for ((d, chip) in dayChips) styleChip(chip, d in days)
         for ((set, chip) in presetChips) styleChip(chip, days == set)
+        oneShotHint()
+    }
+
+    /**
+     * 七天一个都没选时，把「只响一次」的具体时刻写在对话框顶部。
+     *
+     * 用户取消掉最后一个勾时最想知道的是「那它到底什么时候响」——
+     * 不写出来的话，一个勾都不选的对话框看着像没设置好。
+     */
+    private fun oneShotHint() {
+        if (isCourse) return               // 这一行课程闹钟用来写「绑定课程：xxx」
+        if (days.isNotEmpty()) {
+            binding.tvTarget.visibility = View.GONE
+            return
+        }
+        val at = Alarms.oneShotDate(
+            binding.timePicker.hour, binding.timePicker.minute, LocalDateTime.now()
+        )
+        binding.tvTarget.visibility = View.VISIBLE
+        binding.tvTarget.text = "只响一次：${at.monthValue} 月 ${at.dayOfMonth} 日" +
+                "（${weekdayCn(at.dayOfWeek.value)}）" +
+                "%02d:%02d".format(binding.timePicker.hour, binding.timePicker.minute)
     }
 
     private fun setupLead() {
@@ -224,10 +250,6 @@ class AlarmEditor(
     // ------------------------------------------------------------------
 
     private fun save(d: AlertDialog) {
-        if (!isCourse && days.isEmpty()) {
-            Toast.makeText(ctx, "至少选一天", Toast.LENGTH_SHORT).show()
-            return
-        }
         val built = if (isCourse) {
             val base = existing ?: Alarms.forCourse(store.nextAlarmId(), "", lead)
             base.copy(
@@ -237,11 +259,19 @@ class AlarmEditor(
                 snoozeMinutes = snooze
             )
         } else {
+            val hour = binding.timePicker.hour
+            val minute = binding.timePicker.minute
             Alarm(
                 id = existing?.id ?: store.nextAlarmId(),
-                hour = binding.timePicker.hour,
-                minute = binding.timePicker.minute,
+                hour = hour,
+                minute = minute,
                 days = days.toSet(),
+                // 七天全不选 = 只响一次：把「下一次那个时刻」算成具体日期固定下来
+                onceDate = if (days.isEmpty()) {
+                    Alarms.oneShotDate(hour, minute, LocalDateTime.now())
+                } else {
+                    null
+                },
                 enabled = existing?.enabled ?: true,
                 label = binding.etLabel.text.toString().trim(),
                 soundUri = sound,

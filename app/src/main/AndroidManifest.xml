@@ -17,6 +17,11 @@
     <!-- 申请加入电池优化白名单，减少被系统冻结的概率 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- 闹钟响时在**锁屏上直接弹出**「停止 / 贪睡」界面（闹钟类应用的标准用法）。
+         拿不到这个权限也不会没有停止入口：通知上的两个按钮、划掉通知、
+         以及 3 分钟自动停都还在，见 AlarmRinger 的说明。 -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <!--
       Android 11 起有「软件包可见性」限制：App 默认看不见别的应用。
       想用系统时钟的「设置闹钟」能力（AlarmClock.ACTION_SET_ALARM），
@@ -60,6 +65,18 @@
             android:exported="false"
             android:label="@string/guide_title"
             android:parentActivityName=".MainActivity" />
+
+        <!-- 闹钟响铃时的全屏界面：响了一定要有个能关掉它的地方。
+             showWhenLocked + turnScreenOn：锁屏上直接亮屏弹出；
+             不进最近任务、singleTask 避免重复叠开。 -->
+        <activity
+            android:name=".notify.AlarmRingActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Timetable" />
 
         <!-- 闹钟到点时的入口。exported=false：只有系统（通过 PendingIntent）能触发它 -->
         <receiver

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  响铃全屏界面。
+
+  只有两件事要在这个屏幕上做对：
+    1. 「现在几点、是哪个闹钟」一眼可见（叫醒你的时候没人在看小字）
+    2. 「停止」必须是屏幕上最大、最显眼的那个东西 —— 半梦半醒时不该找按钮
+
+  所以时刻用 60sp、停止按钮占满宽度且用实底强调色，贪睡做成次要样式。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/app_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingHorizontal="28dp"
+    android:paddingVertical="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:includeFontPadding="false"
+        android:text="⏰"
+        android:textSize="34sp" />
+
+    <TextView
+        android:id="@+id/tvTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:includeFontPadding="false"
+        android:textColor="?attr/accentColor"
+        android:textSize="60sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:text="正在响铃 · 3 分钟后会自动停"
+        android:textColor="@color/text_secondary"
+        android:textSize="12.5sp" />
+
+    <Button
+        android:id="@+id/btnStop"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginTop="34dp"
+        android:backgroundTint="?attr/accentColor"
+        android:text="停 止"
+        android:textColor="#FFFFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnSnooze"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="?attr/accentSoftColor"
+        android:text="贪睡"
+        android:textColor="?attr/accentColor"
+        android:textSize="16sp" />
+</LinearLayout>

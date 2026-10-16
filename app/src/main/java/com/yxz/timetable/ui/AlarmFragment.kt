@@ -176,7 +176,13 @@ class AlarmFragment : Fragment() {
 
     private fun sub(a: Alarm): String = when (a.source) {
         AlarmSource.MANUAL -> buildString {
-            append(Alarms.daySummary(a.days))
+            if (Alarms.isOneShot(a)) {
+                // 只响一次：说清是哪一天，否则列表上只看得出「不重复」
+                append("只响一次")
+                a.onceDate?.let { append(" · ${it.monthValue} 月 ${it.dayOfMonth} 日") }
+            } else {
+                append(Alarms.daySummary(a.days))
+            }
             if (a.label.isNotBlank()) append(" · ${a.label}")
             if (!a.skipHolidays) append(" · 不看节假日")
         }

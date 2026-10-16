@@ -23,7 +23,7 @@
 | 周课表网格，**周一到周日七列**（点有课的格子，弹出详情卡看时间/教室/周次） | 课表页 |
 | **周次点阵预览**（近五周 × 节数的小点阵，有课高亮；设置页可关） | 课表页周次卡片 |
 | **点格子看全学期**（**空格子也能点**）：这一格全学期都上过哪些课，一门课一张卡（时间 / 教室 / 老师 / 周次，标出本周那门）；整学期都没课的格子给的是一张「自习卡」 | 课表页 |
-| **闹钟页**：上半自绘时钟，下半闹钟列表；新建 / 编辑 / 删除，指定周几（周一–周五全选显示成「工作日」） | 闹钟页 |
+| **闹钟页**：上半自绘时钟，下半闹钟列表；新建 / 编辑 / 删除，指定周几（周一–周五全选显示成「工作日」，**七天全不选 = 只响一次**） | 闹钟页 |
 | **课程卡片上的「设置闹钟」**：1 / 5 / 10 / 20 / 自定义五档提前量，**只在这门课真的上的那几周才响** | 课表页 → 点格子 → 卡片底部 |
 | **智能识别节假日**（默认开，每个闹钟可关）：法定放假日不响、补班日按工作日响 | 闹钟编辑页 |
 | **换铃声**：系统铃声选择器，可试听；每个闹钟还能单独覆盖 | 设置 → 闹钟；或闹钟编辑页 |
@@ -407,7 +407,9 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 - **闹钟在 Doze 下大约每 9 分钟才放行一次**。两个闹钟落在 9 分钟内时，第二个会被
   系统推迟 —— 所以贪睡下限是 10 分钟（设 5 分钟会被推到 10 分钟后才响）。
 - **响铃期间进程被杀，声音会中断**（通知仍在）。要绝对可靠就得挂前台服务，那意味着
-  响铃期间常驻一条「App 正在运行」的通知，和「空闲期进程根本不存在」的设计冲突。
+  响铃期间常驻一条「App 正在运行」的通知，和「空闲期进程不存在」的设计冲突。
+  所以响铃准备了**四条停止路径**：全屏响铃界面、通知上的停止 / 贪睡按钮、
+  划掉通知、3 分钟自动停 —— 任何一条活着，声音就停得下来。
 - **闹钟不受「关闭常驻」影响**：那个开关管的是通知栏常驻。要关闹钟，去闹钟页逐个关。
 - **节假日表只覆盖已发布通知的年份**（现在内置 2026）。2027 年的安排要到 2026 年
   11 月才发布，那之前闹钟页会提示「只按周末判断」，也可以在设置里手动补几天。
@@ -417,15 +419,15 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 39 个 .kt / 约 10.3k 行
+app/src/main/java/com/yxz/timetable/          共 40 个 .kt / 约 10.5k 行
 ├── MainActivity.kt              四个页面的容器（底部导航 + Fragment 切换）
 ├── data/                        数据层（16 个）
 │   ├── ScheduleFormat.kt        ★ 1565 行 数据格式标准 v5：解析、校验、生成、错误信息
-│   ├── Store.kt                  620 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日）
+│   ├── Store.kt                  641 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日）
 │   ├── Templates.kt              399 行 七套内置模板（含休息日）+ TemplateSet（含按日型查占位格）
 │   ├── TimelineEngine.kt        ★ 326 行 核心：把模板和课表合成一条时间轴
 │   ├── AiPrompt.kt               301 行 三段 AI 提示词（课表 / 模板 / 报错修复）
-│   ├── Alarms.kt                ★ 242 行 闹钟纯逻辑：周几、工作日、节假日、课程闹钟、下次触发
+│   ├── Alarms.kt                ★ 273 行 闹钟纯逻辑：周几、工作日、节假日、只响一次、课程闹钟、下次触发
 │   ├── TextDecode.kt             190 行 导入文本容错（BOM / 全角 / 粘贴杂字符）
 │   ├── FormatDocs.kt             185 行 格式说明与示例 JSON 的文本（供界面展示与复制）
 │   ├── DayTypePolicy.kt          177 行 日型配置（v5：types / weekdayMap / earlyType + 旧格式迁移）
@@ -436,12 +438,13 @@ app/src/main/java/com/yxz/timetable/          共 39 个 .kt / 约 10.3k 行
 │   ├── Periods.kt                 83 行 periods（如 "442" / "445"）：网格行展开与晚课外推
 │   ├── BuiltinCourses.kt          78 行 内置课表（含周次、单双周、任课老师）
 │   └── Models.kt                  68 行 Block / Course / Moment / Alarm 数据结构
-├── notify/                      通知与闹钟（7 个）
+├── notify/                      通知与闹钟（8 个）
 │   ├── Notifier.kt               299 行 常驻通知（含系统倒计时技巧）
 │   ├── AlarmScheduler.kt        ★ 255 行 核心：两条链 —— 通知刷新点 + 用户闹钟（setAlarmClock）
-│   ├── AlarmRinger.kt           ★ 213 行 响铃：自己放音、自动停、通知带停止 / 贪睡
+│   ├── AlarmRinger.kt           ★ 220 行 响铃：自己放音、自动停、通知带停止 / 贪睡 / 划掉也算停
 │   ├── ReminderNotifier.kt       156 行 课前提醒（会响的独立渠道）
-│   ├── AlarmReceiver.kt           94 行 到点入口（通知链 + 闹钟链）
+│   ├── AlarmReceiver.kt          110 行 到点入口（通知链 + 闹钟链；只响一次的响过就关掉）
+│   ├── AlarmRingActivity.kt     ★ 93 行 响铃全屏界面（锁屏弹出，大按钮「停止 / 贪睡」）
 │   ├── ActionReceiver.kt          74 行 通知栏按钮（暂停 / 关闭 / 停止闹钟 / 贪睡）
 │   └── BootReceiver.kt            48 行 重启 / 改时间 / 换时区后重建两条链
 └── ui/                          界面（15 个）
@@ -450,9 +453,9 @@ app/src/main/java/com/yxz/timetable/          共 39 个 .kt / 约 10.3k 行
     ├── ImportExport.kt           395 行 导入导出流程（预览、替换 / 合并、剪贴板）
     ├── TodayFragment.kt          351 行 今日时间线 + 次日预告 + 一键设闹钟
     ├── SlotCoursesCard.kt        404 行 点一格弹出的面板（一门一张卡；含「设置闹钟」五档提前量）
-    ├── AlarmEditor.kt            319 行 新建 / 编辑闹钟（周几、工作日预设、铃声、节假日开关）
+    ├── AlarmEditor.kt            373 行 新建 / 编辑闹钟（周几、工作日 / 只响一次预设、铃声、节假日开关）
     ├── GenerateGuideActivity.kt  251 行 「用 AI 生成数据」向导页
-    ├── AlarmFragment.kt          246 行 闹钟页（时钟 + 列表 + 新建，代码生成行）
+    ├── AlarmFragment.kt          252 行 闹钟页（时钟 + 列表 + 新建，代码生成行）
     ├── PermissionGuide.kt        209 行 权限 / 电池 / 自启动引导（含直接跳到通知渠道页）
     ├── HolidayEditor.kt          177 行 手动维护放假 / 补班日
     ├── ClockView.kt              141 行 自绘时钟（只在页面可见时每秒重画）
@@ -461,8 +464,9 @@ app/src/main/java/com/yxz/timetable/          共 39 个 .kt / 约 10.3k 行
     ├── SoundPicker.kt             81 行 铃声选择与试听（系统铃声选择器）
     └── UiUtil.kt                  45 行 界面小工具
 
-app/src/main/res/                共 38 个资源文件
-├── layout/    11 个 activity_main、fragment_{today,week,alarm,settings}、activity_generate_guide、
+app/src/main/res/                共 39 个资源文件
+├── layout/    12 个 activity_main、fragment_{today,week,alarm,settings}、activity_alarm_ring（响铃界面）、
+│                  activity_generate_guide、
 │                  item_timeline、item_course_check、item_course_card、dialog_slot_courses、
 │                  dialog_alarm_edit
 ├── drawable/  16 个 bg_* 8（卡片 / 格子 / 导航 / 主题色块…）+ ic_* 8（四个 tab / 箭头 / 通知 / 图标前景）
@@ -472,12 +476,12 @@ app/src/main/res/                共 38 个资源文件
 ├── values-night/  colors.xml（深色模式配色覆盖）
 └── mipmap-anydpi-v26/  ic_launcher.xml、ic_launcher_round.xml（自适应图标）
 
-app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 376 个 @Test，全跑在电脑 JVM 上
-├── data/   16 个类 / 362 条
+app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 380 个 @Test，全跑在电脑 JVM 上
+├── data/   16 个类 / 366 条
 │   ├── ScheduleFormatTest.kt       114  格式解析、校验、生成、往返一致、字段顺序、teacher
 │   ├── DayTypePolicyTest.kt         47  日型三规则 + v4 迁移逐日一致
 │   ├── TimelineEngineTest.kt        42  时间轴拼接与裁剪、整学期 133 天不变量
-│   ├── AlarmsTest.kt                22  周几 / 节假日 / 补班日 / 课程闹钟只在有课周次响 / 下次触发
+│   ├── AlarmsTest.kt                26  周几 / 节假日 / 补班日 / 只响一次 / 课程闹钟只在有课周次响
 │   ├── FormatTextTest.kt            16  界面/文档里的格式文本不与真实格式脱节
 │   ├── TextDecodeTest.kt            16  导入解码容错
 │   ├── SlotCoursesTest.kt           19  按格聚合：跨周次、多条记录合并、停课仍在列、自习卡
@@ -495,7 +499,7 @@ app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 376 个 @Tes
     └── TimelineRowLayoutTest.kt      2  时间轴行布局结构（地点单独一行）
 ```
 
-共 **376 个单元测试**（18 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
+共 **380 个单元测试**（18 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
 
 ### 测试覆盖了什么
 
