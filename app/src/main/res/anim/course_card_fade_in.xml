@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 课程详情卡的窗口淡入：连背景压暗一起渐显。
+     卡片自己的「从格子放大冒出来」在代码里做（CourseDetailCard），
+     这里只做透明度，两套动作才不会打架。 -->
+<alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="180"
+    android:fromAlpha="0"
+    android:toAlpha="1" />

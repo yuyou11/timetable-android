@@ -85,7 +85,8 @@ object AiPrompt {
       "dayOfWeek": 1,
       "nodes": [1, 2],
       "weeks": "2-4,6-17",
-      "place": "教一-101"
+      "place": "教一-101",
+      "teacher": "王雅琴"
     }
   ]
 }
@@ -114,6 +115,9 @@ object AiPrompt {
               连堂课写成 [1, 2]，**不要**拆成两条记录
 - weeks       上课周次，字符串，写法见下
 - place       教室，字符串；没有就整个省略这个字段
+- teacher     任课老师，字符串；没有就整个省略这个字段。
+              材料里（课表截图 / Excel 表格）通常写着老师名字，看到了就填上，
+              一个字都不要自己编
 - enabled     false 表示这门课停开，一般不用写
 
 ## weeks 周次写法

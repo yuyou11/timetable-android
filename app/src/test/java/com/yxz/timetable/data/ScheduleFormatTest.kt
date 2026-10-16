@@ -442,6 +442,26 @@ class ScheduleFormatTest {
     }
 
     @Test
+    fun `老师会被导出并且能读回来`() {
+        val json = ScheduleFormat.serialize(
+            "x", LocalDate.of(2026, 9, 7), 19,
+            listOf(Course("1", "高数", 1, 1, 2, setOf(1), "教一-203", "李振华"))
+        )
+        assertTrue(json, json.contains("\"teacher\": \"李振华\""))
+        assertEquals("李振华", coursesOf(json)[0].teacher)
+    }
+
+    @Test
+    fun `没写老师时导出里不会多出 teacher 字段`() {
+        // 可选字段的默认值不写出来，文件才干净、也才好和别的版本对比
+        val json = ScheduleFormat.serialize(
+            "x", LocalDate.of(2026, 9, 7), 19,
+            listOf(Course("1", "高数", 1, 1, 2, setOf(1), "教一-203"))
+        )
+        assertFalse(json, json.contains("teacher"))
+    }
+
+    @Test
     fun `停课状态会被导出并且能读回来`() {
         val courses = BuiltinCourses.LIST.map {
             if (it.name == "军事理论") it.copy(enabled = false) else it
@@ -455,7 +475,10 @@ class ScheduleFormatTest {
 
     /** 比较课程内容，忽略 id —— id 是 App 内部生成的，不属于标准的一部分 */
     private fun signature(c: Course) =
-        listOf(c.name, c.dayOfWeek, c.startNode, c.endNode, c.weeks.sorted(), c.place, c.enabled)
+        listOf(
+            c.name, c.dayOfWeek, c.startNode, c.endNode, c.weeks.sorted(),
+            c.place, c.teacher, c.enabled
+        )
 
     // ============================================================
     //  五、作息模板（v2 新增）

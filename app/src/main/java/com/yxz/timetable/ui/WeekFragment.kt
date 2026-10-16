@@ -1,5 +1,6 @@
 package com.yxz.timetable.ui
 
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -15,7 +16,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
@@ -24,6 +24,7 @@ import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.DayType
 import com.yxz.timetable.data.Periods
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
+import com.yxz.timetable.data.SlotCourses
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
@@ -91,6 +92,9 @@ class WeekFragment : Fragment() {
     private lateinit var store: Store
     private var weekOffset = 0     // 相对当前周的偏移，可正可负
 
+    /** 正在展示的课程详情卡。页面销毁时必须关掉，否则它的窗口挂在 Activity 上会泄漏 */
+    private var detailCard: Dialog? = null
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -114,6 +118,8 @@ class WeekFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        detailCard?.dismiss()
+        detailCard = null
         _binding = null
     }
 
@@ -343,7 +349,7 @@ class WeekFragment : Fragment() {
         }
         body.addView(timeColumn(ctx, rows, templateSet))
         for (day in WEEK_DAYS) {
-            body.addView(dayColumn(ctx, rows, day, week, courses, day == todayDay))
+            body.addView(dayColumn(ctx, rows, day, week, courses, day == todayDay, templateSet))
         }
         container.addView(body)
     }
@@ -425,7 +431,7 @@ class WeekFragment : Fragment() {
      */
     private fun dayColumn(
         ctx: Context, rows: List<Periods.Row>, day: Int, week: Int, courses: List<Course>,
-        today: Boolean
+        today: Boolean, set: TemplateSet
     ): View {
         val hits = rows.map { r ->
             courses.firstOrNull { c ->
@@ -451,14 +457,12 @@ class WeekFragment : Fragment() {
                         span++
                     }
                 }
-                val spanText = hit?.let {
-                    if (it.endNode > it.startNode) {
-                        "第 ${it.startNode}-${it.endNode} 节"
-                    } else {
-                        "第 ${it.startNode} 节"
-                    }
-                }
-                addView(makeCourseCell(ctx, day, hit, span, spanText))
+                // 详情卡要的节次范围是**合并块实际占的行** —— 一门课拆成
+                // 「1-2」「3-4」两条记录时显示上拼成了一整块，弹卡里也得写
+                // 「第 1-4 节」，而不是第一条记录自带的「第 1-2 节」。
+                val nodeRange =
+                    if (hit == null) null else rows[i].node..rows[i + span - 1].node
+                addView(makeCourseCell(ctx, set, hit, span, nodeRange, day, week, courses))
                 i += span
             }
         }
@@ -467,6 +471,15 @@ class WeekFragment : Fragment() {
     /** 显示上算「同一门课」：同一条记录，或名称 / 教室 / 周次完全一致的相邻记录 */
     private fun sameCourseVisual(a: Course, b: Course): Boolean =
         a === b || (a.name == b.name && a.place == b.place && a.weeks == b.weeks)
+
+    /**
+     * 正在浏览的周是不是「真实的本周」。
+     *
+     * 卡片上的徽标写「本周」还是「第 9 周」全看这个 ——
+     * 翻到别的周还写「本周」，那就是一句假信息。
+     */
+    private fun isCurrentWeek(week: Int): Boolean =
+        week == store.weekOf(LocalDate.now())
 
     /**
      * 一行。**高度写死**是这个网格能对齐的关键 ——
@@ -530,13 +543,14 @@ class WeekFragment : Fragment() {
      * 2 行 = 6 个字，「中国近现代史纲要」这 8 个字就要被截断；
      * 3 行给到 9 个字，常见课名都能完整显示 —— 这只对合并格成立
      * （连堂课占的行多，空间是合并回来的）；单行格只能保课名和教室各一行，
-     * 放不下的部分交给省略号，点开弹的 Toast 里有全名。
+     * 放不下的部分交给省略号，点开弹的详情卡里有全名。
      * **限制行数的时候，要按「一行能放几个字」算，而不是随手定个 2。**
      */
     private fun makeCourseCell(
-        ctx: Context, day: Int, hit: Course?, span: Int, spanText: String?
+        ctx: Context, set: TemplateSet, hit: Course?, span: Int, nodeRange: IntRange?,
+        day: Int, week: Int, courses: List<Course>
     ): View {
-        if (hit == null) {
+        if (hit == null || nodeRange == null) {
             // 空格子真正留白，不打「—」占位：
             // 大多数格子是空的，全打上横杠会非常吵，反而看不清哪里有课
             return TextView(ctx).apply { layoutParams = fixedParams(ROW_HEIGHT_DP) }
@@ -585,13 +599,19 @@ class WeekFragment : Fragment() {
             }
 
             setOnClickListener {
-                Toast.makeText(
-                    ctx,
-                    "${hit.name}\n${weekdayCn(day)} $spanText\n" +
-                            "教室：${hit.place.ifBlank { "未注明" }}\n" +
-                            "周次：${formatWeeks(hit.weeks)}",
-                    Toast.LENGTH_LONG
-                ).show()
+                detailCard?.dismiss()
+                // 点一格回答的不是「这一周这一格是什么课」（那已经写在格子里了），
+                // 而是「这一格全学期都上过什么课」—— 同一格在不同周次上可能是
+                // 不同的课，甚至连节次范围都不一样。
+                detailCard = SlotCoursesCard.show(
+                    anchor = this,
+                    day = day,
+                    nodes = nodeRange,
+                    items = SlotCourses.at(day, nodeRange, courses, week),
+                    set = set,
+                    viewedWeek = week,
+                    currentWeek = isCurrentWeek(week)
+                )
             }
         }
     }
@@ -635,28 +655,6 @@ class WeekFragment : Fragment() {
             cornerRadius = ctx.dp(8).toFloat()
             setColor(ColorUtils.setAlphaComponent(ctx.accentColor(), 0x1E))
         }
-
-    /**
-     * 把 {2,3,4,6,7,...,17} 压成「2-4, 6-17 周」。
-     * 连着的数字合成区间，跳号处断开 —— 这就是课表上那种写法的来源。
-     */
-    private fun formatWeeks(weeks: Set<Int>): String {
-        if (weeks.isEmpty()) return "—"
-        val sorted = weeks.sorted()
-        val parts = mutableListOf<String>()
-        var from = sorted.first()
-        var prev = from
-        for (w in sorted.drop(1)) {
-            if (w == prev + 1) {
-                prev = w
-            } else {
-                parts += if (from == prev) "$from" else "$from-$prev"
-                from = w; prev = w
-            }
-        }
-        parts += if (from == prev) "$from" else "$from-$prev"
-        return parts.joinToString(", ") + " 周"
-    }
 
     private companion object {
 

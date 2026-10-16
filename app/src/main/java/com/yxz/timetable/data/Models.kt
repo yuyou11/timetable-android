@@ -41,6 +41,14 @@ data class Course(
     val endNode: Int,            // 结束节次
     val weeks: Set<Int>,         // 上课的教学周次集合
     val place: String = "",
+    /**
+     * 任课老师。对应格式里可选的 `teacher` 字段，老文件没有就是空串。
+     *
+     * 它**不参与任何计算** —— 时间轴、日型判定、周次点阵都不看它，
+     * 只出现在课程卡片上。所以加这个字段不用动引擎，也不影响与电脑版互通：
+     * 不认识它的旧版本读到这一行只是当作没看见（它只出现在导出里）。
+     */
+    val teacher: String = "",
     val enabled: Boolean = true  // 放假 / 停课时可以单独关掉某一门
 )
 

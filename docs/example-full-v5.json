@@ -17,133 +17,152 @@
       "dayOfWeek": 1,
       "nodes": [1, 2],
       "weeks": "2-4,6-17",
-      "place": "教一-101"
+      "place": "教一-101",
+      "teacher": "王雅琴"
     },
     {
       "name": "高等数学",
       "dayOfWeek": 1,
       "nodes": [3, 4],
       "weeks": "2-4,6-17",
-      "place": "教一-203"
+      "place": "教一-203",
+      "teacher": "李振华"
     },
     {
       "name": "中国近现代史纲要",
       "dayOfWeek": 1,
       "nodes": [5, 6],
       "weeks": "15-17",
-      "place": "教二-105"
+      "place": "教二-105",
+      "teacher": "周文渊"
     },
     {
       "name": "军事理论",
       "dayOfWeek": 1,
       "nodes": [7, 8],
       "weeks": "2-4,6-14",
-      "place": "教二-311"
+      "place": "教二-311",
+      "teacher": "赵国强"
     },
     {
       "name": "程序设计基础",
       "dayOfWeek": 2,
       "nodes": [3, 4],
       "weeks": "2-7,9-17",
-      "place": "实验楼-201"
+      "place": "实验楼-201",
+      "teacher": "陈思远"
     },
     {
       "name": "大学物理实验",
       "dayOfWeek": 2,
       "nodes": [5, 6],
       "weeks": "4",
-      "place": "实验楼-305"
+      "place": "实验楼-305",
+      "teacher": "吴敏"
     },
     {
       "name": "思想道德与法治",
       "dayOfWeek": 2,
       "nodes": [7, 8],
       "weeks": "2-7,9-17",
-      "place": "教一-108"
+      "place": "教一-108",
+      "teacher": "郑海燕"
     },
     {
       "name": "高等数学",
       "dayOfWeek": 3,
       "nodes": [1, 2],
       "weeks": "2-7,9-17",
-      "place": "教一-203"
+      "place": "教一-203",
+      "teacher": "李振华"
     },
     {
       "name": "形势与政策",
       "dayOfWeek": 3,
       "nodes": [3, 4],
       "weeks": "5-7,9",
-      "place": "教二-220"
+      "place": "教二-220",
+      "teacher": "孙立"
     },
     {
       "name": "中国近现代史纲要",
       "dayOfWeek": 3,
       "nodes": [7, 8],
       "weeks": "13-17",
-      "place": "教二-105"
+      "place": "教二-105",
+      "teacher": "周文渊"
     },
     {
       "name": "人工智能导论",
       "dayOfWeek": 3,
       "nodes": [9, 10],
       "weeks": "3-7,9-11",
-      "place": "教三-401"
+      "place": "教三-401",
+      "teacher": "林浩然"
     },
     {
       "name": "大学物理",
       "dayOfWeek": 4,
       "nodes": [3, 4],
       "weeks": "2-3,5-17",
-      "place": "教二-108"
+      "place": "教二-108",
+      "teacher": "何静"
     },
     {
       "name": "大学生职业生涯规划",
       "dayOfWeek": 4,
       "nodes": [5, 6],
       "weeks": "3-9/2",
-      "place": "教一-215"
+      "place": "教一-215",
+      "teacher": "高见"
     },
     {
       "name": "数据结构",
       "dayOfWeek": 4,
       "nodes": [7, 8],
       "weeks": "3-17/2",
-      "place": "实验楼-201"
+      "place": "实验楼-201",
+      "teacher": "徐丹"
     },
     {
       "name": "程序设计基础",
       "dayOfWeek": 4,
       "nodes": [7, 8],
       "weeks": "2",
-      "place": "实验楼-201"
+      "place": "实验楼-201",
+      "teacher": "陈思远"
     },
     {
       "name": "高等数学",
       "dayOfWeek": 5,
       "nodes": [3, 4],
       "weeks": "2,5-16",
-      "place": "教一-203"
+      "place": "教一-203",
+      "teacher": "李振华"
     },
     {
       "name": "思想道德与法治",
       "dayOfWeek": 5,
       "nodes": [5, 6],
       "weeks": "2,5-12",
-      "place": "教一-108"
+      "place": "教一-108",
+      "teacher": "郑海燕"
     },
     {
       "name": "大学体育",
       "dayOfWeek": 5,
       "nodes": [7, 8],
       "weeks": "2,5-16",
-      "place": "操场 / 体育馆"
+      "place": "操场 / 体育馆",
+      "teacher": "马强"
     },
     {
       "name": "音乐鉴赏",
       "dayOfWeek": 5,
       "nodes": [9, 10],
       "weeks": "5-12",
-      "place": "教三-102"
+      "place": "教三-102",
+      "teacher": "白露"
     }
   ],
   "templates": {

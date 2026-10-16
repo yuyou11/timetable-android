@@ -97,6 +97,7 @@ internal object FormatDocs {
                    第 11-14 节按晚课节奏外推）
         weeks      周次，写法见下
         place      教室（可选）
+        teacher    任课老师（可选）
         enabled    false 表示先停掉这门课（可选）
 
         【weeks 周次写法】
@@ -153,7 +154,8 @@ internal object FormatDocs {
       "dayOfWeek": 1,
       "nodes": [1, 2],
       "weeks": "2-4,6-17",
-      "place": "教一-101"
+      "place": "教一-101",
+      "teacher": "王雅琴"
     },
     {
       "name": "数据结构",

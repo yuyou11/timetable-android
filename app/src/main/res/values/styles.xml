@@ -85,4 +85,16 @@
         <item name="android:textColor">?attr/accentColor</item>
     </style>
 
+    <!--
+      课程详情卡（弹卡）的窗口动画：只要淡入淡出。
+
+      「从被点的格子放大冒出来」是卡片自己用 ViewPropertyAnimator 做的
+      （见 CourseDetailCard），窗口动画若再带平移或缩放，两套动作会叠加出
+      奇怪的轨迹 —— 窗口这一层只管透明度，连背景压暗一起渐显 / 渐隐。
+    -->
+    <style name="CourseCardWindowAnim">
+        <item name="android:windowEnterAnimation">@anim/course_card_fade_in</item>
+        <item name="android:windowExitAnimation">@anim/course_card_fade_out</item>
+    </style>
+
 </resources>

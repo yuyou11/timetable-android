@@ -993,6 +993,7 @@ object ScheduleFormat {
             endNode = endNode,
             weeks = weeks,
             place = obj.optString("place", "").trim(),
+            teacher = obj.optString("teacher", "").trim(),
             enabled = obj.optBoolean("enabled", true)
         )
     }
@@ -1207,6 +1208,11 @@ object ScheduleFormat {
             sb.append("      \"weeks\": \"").append(Weeks.format(c.weeks)).append('"')
             if (c.place.isNotBlank()) {
                 sb.append(",\n      \"place\": \"").append(escape(c.place)).append('"')
+            }
+            // teacher 紧跟 place：两项都是「教室 / 老师」这类可有可无的说明，
+            // 排在必填字段之后、开关字段（enabled）之前，顺序固定下来便于比对
+            if (c.teacher.isNotBlank()) {
+                sb.append(",\n      \"teacher\": \"").append(escape(c.teacher)).append('"')
             }
             // 默认值不写出来，文件更干净；解析时缺省即 true
             if (!c.enabled) {

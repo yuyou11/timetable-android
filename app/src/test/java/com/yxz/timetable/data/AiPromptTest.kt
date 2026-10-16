@@ -65,7 +65,7 @@ class AiPromptTest {
     fun `课表提示词提到了全部必需字段`() {
         val required = listOf(
             "format", "version", "term", "courses",
-            "name", "dayOfWeek", "nodes", "weeks", "place", "enabled",
+            "name", "dayOfWeek", "nodes", "weeks", "place", "teacher", "enabled",
             "startDate", "totalWeeks"
         )
         for (field in required) {
