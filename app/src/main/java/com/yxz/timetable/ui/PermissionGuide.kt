@@ -43,6 +43,23 @@ class PermissionGuide(private val fragment: Fragment) {
     }
 
     /**
+     * 「全屏通知」权限（Android 14 起）。
+     *
+     * 没有它，闹钟响时**不会在锁屏上自动弹出响铃界面**，只会变成一条横幅通知 ——
+     * 点一下照样进响铃界面（停止 / 贪睡都在），只是多一次点击。
+     * 所以这一项不是「必须开」，而是「开了更省事」，状态文案也照这个口径写。
+     */
+    fun openFullScreenIntentSettings() {
+        if (Build.VERSION.SDK_INT < 34) {          // UPSIDE_DOWN_CAKE
+            toast("当前系统版本无需此权限")
+            return
+        }
+        val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+            .setData(Uri.parse("package:${ctx.packageName}"))
+        launch(intent) { openAppDetails() }
+    }
+
+    /**
      * 申请加入电池优化白名单。
      *
      * 这个 Action 在部分厂商 ROM（尤其荣耀/华为/小米）上会被拦掉，

@@ -34,8 +34,8 @@ android {
         //
         // 只改 versionName 不改 versionCode 是个很常见的坑：
         // 装上去看着是「新版本」，但系统层面新旧关系没变。
-        versionCode = 24
-        versionName = "1.13.2"
+        versionCode = 25
+        versionName = "1.13.3"
         resourceConfigurations += listOf("zh", "en")
     }
 

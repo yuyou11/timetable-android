@@ -1,6 +1,8 @@
 package com.yxz.timetable.ui
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -18,6 +20,7 @@ import com.yxz.timetable.data.Alarms
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.databinding.FragmentAlarmBinding
+import com.yxz.timetable.notify.AlarmRinger
 import com.yxz.timetable.notify.AlarmScheduler
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -41,6 +44,15 @@ class AlarmFragment : Fragment() {
 
     private lateinit var store: Store
     private var editor: AlarmEditor? = null
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** 响铃期间每秒看一眼（在别处停了就收起那一条），不响时完全不跑 */
+    private val ringWatcher = object : Runnable {
+        override fun run() {
+            renderRinging()
+        }
+    }
 
     /** 铃声选择器的回调：结果送回当前开着的那个编辑对话框 */
     private val soundPick = registerForActivityResult(
@@ -69,8 +81,14 @@ class AlarmFragment : Fragment() {
         AlarmScheduler.scheduleAlarms(requireContext())
     }
 
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(ringWatcher)   // 页面不在前台就别轮询了
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        handler.removeCallbacks(ringWatcher)
         SoundPicker.stop()
         editor = null
         _binding = null
@@ -87,6 +105,54 @@ class AlarmFragment : Fragment() {
         binding.tvEmpty.visibility = if (alarms.isEmpty()) View.VISIBLE else View.GONE
         binding.tvNext.text = nextText(alarms)
         holidayHint()
+        renderRinging()
+    }
+
+    /**
+     * 「正在响铃」那一条：**只要进程里还在响就显示**，附带停止与贪睡。
+     *
+     * 这是「声音关不掉」那个 bug 的最后一道保险。响铃的四条出口里，
+     * 通知那条可能被系统权限挡掉、全屏界面在亮屏时不会抢前台 ——
+     * 但只要你打开 App，这一条一定在，一定停得掉。
+     *
+     * 每秒看一眼：在别处（通知按钮 / 响铃界面）停掉了，这一条要跟着消失。
+     */
+    private fun renderRinging() {
+        val ringing = AlarmRinger.isRinging()
+        binding.rowRinging.visibility = if (ringing) View.VISIBLE else View.GONE
+        if (!ringing) {
+            handler.removeCallbacks(ringWatcher)
+            return
+        }
+
+        val id = AlarmRinger.currentIds().firstOrNull()
+        val alarm = store.alarms().firstOrNull { it.id == id }
+        binding.tvRinging.text = "⏰ 正在响铃：" +
+                (alarm?.let { Alarms.describe(it, store.courses()) } ?: "")
+        binding.btnRingSnooze.text = "贪睡 ${AlarmRinger.currentSnoozeMinutes()} 分钟"
+        binding.btnRingStop.setOnClickListener {
+            AlarmRinger.stop(requireContext())
+            renderRinging()
+            render()
+        }
+        binding.btnRingSnooze.setOnClickListener { snoozeFromApp() }
+
+        handler.removeCallbacks(ringWatcher)
+        handler.postDelayed(ringWatcher, 1000L)
+    }
+
+    /** 和通知按钮、响铃界面走同一套贪睡逻辑：记下贪睡哪个、到几点，然后重排 */
+    private fun snoozeFromApp() {
+        val ctx = requireContext()
+        AlarmRinger.currentIds().firstOrNull()?.let { target ->
+            store.snoozeAlarmId = target
+            store.snoozeAlarmUntil = System.currentTimeMillis() +
+                    AlarmRinger.currentSnoozeMinutes() * 60_000L
+            AlarmScheduler.scheduleAlarms(ctx)
+        }
+        AlarmRinger.stop(ctx)
+        renderRinging()
+        render()
     }
 
     /** 页面顶上那句「下次响铃」—— 整个页面最重要的一条信息 */

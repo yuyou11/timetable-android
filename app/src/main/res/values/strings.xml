@@ -15,6 +15,10 @@
     <string name="alarm_sound_change">更换</string>
     <string name="alarm_holiday_title">放假 / 补班日</string>
     <string name="alarm_holiday_manage">管理 ›</string>
+    <string name="alarm_fullscreen_title">全屏响铃</string>
+    <string name="alarm_ringing">⏰ 正在响铃</string>
+    <string name="alarm_ring_stop">停止</string>
+    <string name="alarm_ring_snooze">贪睡</string>
     <string name="alarm_empty">还没有闹钟。\n点下面的「新建闹钟」，或者在课表页点一格，用卡片上的「设置闹钟」给某门课单独设一个。</string>
 
     <string name="now_label">此刻</string>

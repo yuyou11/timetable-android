@@ -1,9 +1,11 @@
 package com.yxz.timetable.ui
 
 import android.app.AlertDialog
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -240,6 +242,20 @@ class SettingsFragment : Fragment() {
         binding.rowHolidays.setOnClickListener {
             HolidayEditor(ctx, store) { refreshAlarm() }.show()
         }
+
+        // 全屏响铃（Android 14+）。没开也能用，只是响铃时变成横幅 —— 文案照这个口径写
+        val fullScreenOk = if (Build.VERSION.SDK_INT >= 34) {
+            (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .canUseFullScreenIntent()
+        } else {
+            true
+        }
+        setPerm(
+            binding.tvRingStatus, binding.btnRingFullScreen, fullScreenOk,
+            "已允许 · 响铃时锁屏直接弹出响铃界面（大按钮停止 / 贪睡）",
+            "未允许 · 响铃只会弹一条横幅通知（点一下照样进响铃界面）"
+        )
+        binding.btnRingFullScreen.setOnClickListener { guide.openFullScreenIntentSettings() }
     }
 
     private fun refreshPermissions() {

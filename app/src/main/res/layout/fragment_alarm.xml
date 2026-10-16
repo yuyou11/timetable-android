@@ -21,6 +21,61 @@
         android:paddingTop="10dp"
         android:paddingBottom="18dp">
 
+        <!-- 正在响铃：只要进程里还在响，这一条就冒出来。
+             它是「声音关不掉」那个 bug 的最后一道保险 —— 通知被系统挡掉时，
+             用户打开 App 也能一眼看到「停止」。不响的时候整条 GONE，不占地方 -->
+        <LinearLayout
+            android:id="@+id/rowRinging"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvRinging"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/alarm_ringing"
+                android:textColor="?attr/accentColor"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnRingSnooze"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_duration_chip"
+                android:includeFontPadding="false"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:text="@string/alarm_ring_snooze"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/btnRingStop"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_duration_chip"
+                android:includeFontPadding="false"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="6dp"
+                android:text="@string/alarm_ring_stop"
+                android:textColor="?attr/accentColor"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
         <com.yxz.timetable.ui.ClockView
             android:id="@+id/clock"
             android:layout_width="match_parent"
