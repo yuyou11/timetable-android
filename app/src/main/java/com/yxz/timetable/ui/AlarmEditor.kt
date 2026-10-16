@@ -124,7 +124,7 @@ class AlarmEditor(
     private fun setupDays() {
         if (isCourse) return
         for (d in 1..7) {
-            val chip = chip(weekdayCn(d).removePrefix("周"), d in days) { toggleDay(d) }
+            val chip = chip(weekdayCn(d).removePrefix("周"), d in days, weight = 1f) { toggleDay(d) }
             dayChips[d] = chip
             binding.dayRow.addView(chip)
         }
@@ -133,7 +133,7 @@ class AlarmEditor(
             "周末" to Alarms.WEEKEND,
             "每天" to EVERY_DAY
         )) {
-            val c = chip(label, days == set) { days.clear(); days += set; refreshDays() }
+            val c = chip(label, days == set, weight = 1f) { days.clear(); days += set; refreshDays() }
             presetChips += set to c
             binding.presetRow.addView(c)
         }
@@ -152,11 +152,11 @@ class AlarmEditor(
     private fun setupLead() {
         if (!isCourse) return
         for (m in LEAD_PRESETS) {
-            val chip = chip("$m 分钟", lead == m) { lead = m; refreshLead() }
+            val chip = chip("$m 分钟", lead == m, weight = 1f) { lead = m; refreshLead() }
             leadChips[m] = chip
             binding.leadRow.addView(chip)
         }
-        val custom = chip("自定义", lead !in LEAD_PRESETS) { askCustomLead() }
+        val custom = chip("自定义", lead !in LEAD_PRESETS, weight = 1f) { askCustomLead() }
         leadChips[-1] = custom
         binding.leadRow.addView(custom)
     }
@@ -209,7 +209,7 @@ class AlarmEditor(
 
     private fun setupSnooze() {
         for (m in SNOOZE_OPTIONS) {
-            val chip = chip("$m 分钟", snooze == m) { snooze = m; refreshSnooze() }
+            val chip = chip("$m 分钟", snooze == m, weight = 1f) { snooze = m; refreshSnooze() }
             snoozeChips[m] = chip
             binding.snoozeRow.addView(chip)
         }
@@ -279,16 +279,40 @@ class AlarmEditor(
     //  小工具：chips
     // ------------------------------------------------------------------
 
-    private fun chip(text: String, selected: Boolean, onClick: () -> Unit): TextView =
+    /**
+     * 一行里的一个 chip。
+     *
+     * [weight] > 0 时**按权重平分这一行的宽度**，而不是各自 wrap_content。
+     * 这不是审美问题：wrap_content 的 chip 在放不下时不会换行，只会被挤出屏幕 ——
+     * 第一版周一到周日七个 chip 就是这样，第 7 个「日」直接看不见；
+     * 贪睡那行的「30 分钟」也被挤成了两行（换行还会把整行高度顶起来）。
+     *
+     * 按权重分就永远不会溢出：屏幕再窄也只是七个各占 1/7、字号小一点。
+     */
+    private fun chip(
+        text: String, selected: Boolean, weight: Float = 0f, onClick: () -> Unit
+    ): TextView =
         TextView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(6) }
+            val gap = dp(if (weight > 0f) 4 else 6)
+            layoutParams = if (weight > 0f) {
+                // 宽度给 0 + weight：宽度由权重分配，而不是由文字长度决定
+                LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, weight
+                ).apply { marginEnd = gap }
+            } else {
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = gap }
+            }
             gravity = Gravity.CENTER
             setText(text)
-            textSize = 13f
+            textSize = if (weight > 0f) 12.5f else 13f
             includeFontPadding = false
-            setPadding(dp(11), dp(6), dp(11), dp(6))
+            // 宁可挤窄、宁可省略，也不许换行 —— 换行会把整行高度顶起来，看着像坏了
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            val h = dp(if (weight > 0f) 6 else 11)
+            setPadding(h, dp(6), h, dp(6))
             styleChip(this, selected)
             setOnClickListener { onClick() }
         }

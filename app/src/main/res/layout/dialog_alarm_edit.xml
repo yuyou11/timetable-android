@@ -86,10 +86,11 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <!-- 标签 wrap_content、取值占满剩余宽度：系统铃声的名字可能很长
+                 （「Bright Morning Glory」），wrap_content 的取值会把右边的「更换」顶出屏幕 -->
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:includeFontPadding="false"
                 android:text="铃声"
                 android:textColor="@color/text_secondary"
@@ -97,9 +98,13 @@
 
             <TextView
                 android:id="@+id/tvSound"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
                 android:includeFontPadding="false"
+                android:maxLines="1"
                 android:textColor="?attr/accentColor"
                 android:textSize="13sp" />
 
