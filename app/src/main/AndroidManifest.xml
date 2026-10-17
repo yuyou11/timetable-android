@@ -66,18 +66,6 @@
             android:label="@string/guide_title"
             android:parentActivityName=".MainActivity" />
 
-        <!-- 闹钟响铃时的全屏界面：响了一定要有个能关掉它的地方。
-             showWhenLocked + turnScreenOn：锁屏上直接亮屏弹出；
-             不进最近任务、singleTask 避免重复叠开。 -->
-        <activity
-            android:name=".notify.AlarmRingActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@style/Theme.Timetable" />
-
         <!-- 闹钟到点时的入口。exported=false：只有系统（通过 PendingIntent）能触发它 -->
         <receiver
             android:name=".notify.AlarmReceiver"

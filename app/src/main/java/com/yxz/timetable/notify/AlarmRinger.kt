@@ -152,7 +152,7 @@ object AlarmRinger {
         val text = due.joinToString("、") { a ->
             "${a.timeText} ${Alarms.describe(a, courses)}"
         }
-        val ringScreen = ringScreen(ctx)
+        val alarmWindow = alarmWindow(ctx)
         val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
             .setColor(0xFFEF5350.toInt())
@@ -166,24 +166,28 @@ object AlarmRinger {
             // 响铃这种"正在发生的坏事"，出口能多一条就多一条。
             .setOngoing(false)
             .setAutoCancel(false)
-            .setContentIntent(ringScreen)
-            // 锁屏 / 息屏时直接把响铃界面拉起来（拿不到权限就退化成横幅通知）
-            .setFullScreenIntent(ringScreen, true)
+            .setContentIntent(alarmWindow)
+            // 锁屏 / 息屏时**直接把 App 窗口拉起来并停在闹钟页**（见 MainActivity）。
+            // 亮屏且用户正在用手机时，系统会按设计降级成横幅通知 —— 那是系统行为，
+            // 不是这里能决定的。
+            .setFullScreenIntent(alarmWindow, true)
             .setDeleteIntent(action(ctx, ACTION_STOP, 54))
             .addAction(0, "停止", action(ctx, ACTION_STOP, 51))
             .addAction(0, "贪睡 $snoozeMinutes 分钟", action(ctx, ACTION_SNOOZE, 52))
         runCatching { NotificationManagerCompat.from(ctx).notify(NOTIF_ID, builder.build()) }
     }
 
-    /** 响铃界面（点通知、或锁屏直接弹出）—— 那里一定有「停止」和「贪睡」两个大按钮 */
-    private fun ringScreen(ctx: Context): PendingIntent {
-        val i = Intent(ctx, AlarmRingActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            ctx, 55, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
+    /**
+     * 响铃时要拉起的窗口：**App 自己的窗口，直接停在闹钟页**。
+     *
+     * 点通知进的是这里，锁屏自动弹出的也是这里 —— 一个入口，不会出现
+     * 「通知点进去是一个界面、自动弹出是另一个界面」这种分裂。
+     * 闹钟页顶部那条「正在响铃 · 停止」由 AlarmFragment 负责显示。
+     */
+    private fun alarmWindow(ctx: Context): PendingIntent = PendingIntent.getActivity(
+        ctx, 55, MainActivity.alarmIntent(ctx),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
 
     private fun action(ctx: Context, action: String, code: Int): PendingIntent {
         val i = Intent(ctx, ActionReceiver::class.java).apply {

@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.yxz.timetable.MainActivity
 import com.yxz.timetable.R
 import com.yxz.timetable.data.Alarm
 import com.yxz.timetable.data.AlarmSource
@@ -132,6 +133,7 @@ class AlarmFragment : Fragment() {
         binding.btnRingSnooze.text = "贪睡 ${AlarmRinger.currentSnoozeMinutes()} 分钟"
         binding.btnRingStop.setOnClickListener {
             AlarmRinger.stop(requireContext())
+            MainActivity.clearKeepScreenOn(requireActivity())   // 不响了就别再让屏幕亮着
             renderRinging()
             render()
         }
@@ -151,6 +153,7 @@ class AlarmFragment : Fragment() {
             AlarmScheduler.scheduleAlarms(ctx)
         }
         AlarmRinger.stop(ctx)
+        MainActivity.clearKeepScreenOn(requireActivity())
         renderRinging()
         render()
     }

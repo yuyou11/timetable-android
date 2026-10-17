@@ -23,7 +23,7 @@
 | 周课表网格，**周一到周日七列**（点有课的格子，弹出详情卡看时间/教室/周次） | 课表页 |
 | **周次点阵预览**（近五周 × 节数的小点阵，有课高亮；设置页可关） | 课表页周次卡片 |
 | **点格子看全学期**（**空格子也能点**）：这一格全学期都上过哪些课，一门课一张卡（时间 / 教室 / 老师 / 周次，标出本周那门）；整学期都没课的格子给的是一张「自习卡」 | 课表页 |
-| **闹钟页**：上半自绘时钟，下半闹钟列表；新建 / 编辑 / 删除，指定周几（周一–周五全选显示成「工作日」，**七天全不选 = 只响一次**）；响铃时顶部出现「正在响铃 · 停止 / 贪睡」 | 闹钟页 |
+| **闹钟页**：上半自绘时钟，下半闹钟列表；新建 / 编辑 / 删除，指定周几（周一–周五全选显示成「工作日」，**七天全不选 = 只响一次**）；**响铃时直接弹出 App 窗口并停在闹钟页**（顶部一条「正在响铃 · 停止 / 贪睡」） | 闹钟页 |
 | **课程卡片上的「设置闹钟」**：1 / 5 / 10 / 20 / 自定义五档提前量，**只在这门课真的上的那几周才响** | 课表页 → 点格子 → 卡片底部 |
 | **智能识别节假日**（默认开，每个闹钟可关）：法定放假日不响、补班日按工作日响 | 闹钟编辑页 |
 | **换铃声**：系统铃声选择器，可试听；每个闹钟还能单独覆盖 | 设置 → 闹钟；或闹钟编辑页 |
@@ -408,9 +408,12 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
   系统推迟 —— 所以贪睡下限是 10 分钟（设 5 分钟会被推到 10 分钟后才响）。
 - **响铃期间进程被杀，声音会中断**（通知仍在）。要绝对可靠就得挂前台服务，那意味着
   响铃期间常驻一条「App 正在运行」的通知，和「空闲期进程不存在」的设计冲突。
-  所以响铃准备了**五条停止路径**：全屏响铃界面、通知上的停止 / 贪睡按钮、
-  划掉通知、闹钟页顶部的「正在响铃 · 停止」（只要打开 App 就一定在）、
+  所以响铃准备了**五条停止路径**：响铃时弹出的 App 窗口（顶上就是「停止」大按钮）、
+  通知上的停止 / 贪睡按钮、划掉通知、自己打开 App 后的同一条停止卡片、
   以及 3 分钟自动停 —— 任何一条活着，声音就停得下来。
+- **亮屏且正在用手机时，系统不会让窗口抢前台**：这是 Android 的既定行为，
+  此时响铃会降级成一条横幅通知（带「停止 / 贪睡」，点一下进 App 的闹钟页）。
+  想看到自动弹窗，需要在**熄屏 / 锁屏**状态下响铃。
 - **闹钟不受「关闭常驻」影响**：那个开关管的是通知栏常驻。要关闹钟，去闹钟页逐个关。
 - **节假日表只覆盖已发布通知的年份**（现在内置 2026）。2027 年的安排要到 2026 年
   11 月才发布，那之前闹钟页会提示「只按周末判断」，也可以在设置里手动补几天。
@@ -420,8 +423,8 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 40 个 .kt / 约 10.6k 行
-├── MainActivity.kt              四个页面的容器（底部导航 + Fragment 切换）
+app/src/main/java/com/yxz/timetable/          共 39 个 .kt / 约 10.6k 行
+├── MainActivity.kt            215 行 四个页面的容器；闹钟响时由它弹出窗口并停在闹钟页
 ├── data/                        数据层（16 个）
 │   ├── ScheduleFormat.kt        ★ 1565 行 数据格式标准 v5：解析、校验、生成、错误信息
 │   ├── Store.kt                  641 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日）
@@ -439,13 +442,12 @@ app/src/main/java/com/yxz/timetable/          共 40 个 .kt / 约 10.6k 行
 │   ├── Periods.kt                 83 行 periods（如 "442" / "445"）：网格行展开与晚课外推
 │   ├── BuiltinCourses.kt          78 行 内置课表（含周次、单双周、任课老师）
 │   └── Models.kt                  68 行 Block / Course / Moment / Alarm 数据结构
-├── notify/                      通知与闹钟（8 个）
+├── notify/                      通知与闹钟（7 个）
 │   ├── Notifier.kt               299 行 常驻通知（含系统倒计时技巧）
 │   ├── AlarmScheduler.kt        ★ 255 行 核心：两条链 —— 通知刷新点 + 用户闹钟（setAlarmClock）
-│   ├── AlarmRinger.kt           ★ 220 行 响铃：自己放音、自动停、通知带停止 / 贪睡 / 划掉也算停
+│   ├── AlarmRinger.kt           ★ 224 行 响铃：自己放音、自动停、通知带停止 / 贪睡；响时拉起 App 窗口
 │   ├── ReminderNotifier.kt       156 行 课前提醒（会响的独立渠道）
 │   ├── AlarmReceiver.kt          110 行 到点入口（通知链 + 闹钟链；只响一次的响过就关掉）
-│   ├── AlarmRingActivity.kt     ★ 93 行 响铃全屏界面（锁屏弹出，大按钮「停止 / 贪睡」）
 │   ├── ActionReceiver.kt          74 行 通知栏按钮（暂停 / 关闭 / 停止闹钟 / 贪睡）
 │   └── BootReceiver.kt            48 行 重启 / 改时间 / 换时区后重建两条链
 └── ui/                          界面（15 个）
@@ -456,7 +458,7 @@ app/src/main/java/com/yxz/timetable/          共 40 个 .kt / 约 10.6k 行
     ├── SlotCoursesCard.kt        404 行 点一格弹出的面板（一门一张卡；含「设置闹钟」五档提前量）
     ├── AlarmEditor.kt            373 行 新建 / 编辑闹钟（周几、工作日 / 只响一次预设、铃声、节假日开关）
     ├── GenerateGuideActivity.kt  251 行 「用 AI 生成数据」向导页
-    ├── AlarmFragment.kt          318 行 闹钟页（时钟 + 列表 + 新建；响铃时顶部出现停止条）
+    ├── AlarmFragment.kt          321 行 闹钟页（时钟 + 列表 + 新建；响铃时顶部一条停止卡片）
     ├── PermissionGuide.kt        226 行 权限 / 电池 / 自启动 / 全屏通知引导（含直达通知渠道页）
     ├── HolidayEditor.kt          177 行 手动维护放假 / 补班日
     ├── ClockView.kt              141 行 自绘时钟（只在页面可见时每秒重画）
@@ -465,9 +467,8 @@ app/src/main/java/com/yxz/timetable/          共 40 个 .kt / 约 10.6k 行
     ├── SoundPicker.kt             81 行 铃声选择与试听（系统铃声选择器）
     └── UiUtil.kt                  45 行 界面小工具
 
-app/src/main/res/                共 39 个资源文件
-├── layout/    12 个 activity_main、fragment_{today,week,alarm,settings}、activity_alarm_ring（响铃界面）、
-│                  activity_generate_guide、
+app/src/main/res/                共 38 个资源文件
+├── layout/    11 个 activity_main、fragment_{today,week,alarm,settings}、activity_generate_guide、
 │                  item_timeline、item_course_check、item_course_card、dialog_slot_courses、
 │                  dialog_alarm_edit
 ├── drawable/  16 个 bg_* 8（卡片 / 格子 / 导航 / 主题色块…）+ ic_* 8（四个 tab / 箭头 / 通知 / 图标前景）

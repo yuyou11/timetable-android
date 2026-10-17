@@ -1,9 +1,11 @@
 package com.yxz.timetable
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -53,6 +55,13 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 是不是被闹钟拉起来的？是的话这次要:停在闹钟页 + 锁屏上也能显示 + 屏幕别灭
+        val fromAlarm = intent?.getBooleanExtra(EXTRA_FROM_ALARM, false) == true
+        if (fromAlarm) {
+            showOverLockScreen()
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
         // 渠道要尽早建好：一旦用户从通知栏点进设置改了重要性，这个渠道就固定下来了
         Notifier.ensureChannel(this)
 
@@ -73,12 +82,47 @@ class MainActivity : AppCompatActivity() {
         // 旋转时系统会自动恢复原来的 Fragment，这时再设一次 selectedItemId
         // 会导致 Fragment 被创建两遍。
         if (savedInstanceState == null) {
-            binding.bottomNav.selectedItemId = R.id.nav_today
+            binding.bottomNav.selectedItemId = if (fromAlarm) R.id.nav_alarm else R.id.nav_today
         }
 
         askNotificationPermission()
 
         if (savedInstanceState == null) askFirstLaunch()
+    }
+
+    /**
+     * 响应第二次「闹钟拉起」（App 已经在运行时，系统不再新建实例而是送进这里）。
+     *
+     * 少了这个方法会出现一个很别扭的情况：App 正在后台（比如停在课表页），
+     * 闹钟响了、窗口被拉到前台，但停在课表页 —— 用户看不到停止按钮。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_FROM_ALARM, false)) {
+            showOverLockScreen()
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            binding.bottomNav.selectedItemId = R.id.nav_alarm
+        }
+    }
+
+    /**
+     * 锁屏上也要能看到并操作（闹钟响时被拉起来的这一次才算）。
+     *
+     * 不用在 Manifest 上全局加 showWhenLocked：那会让 App **任何时候**都能盖住
+     * 锁屏，包括用户自己正常打开的时候 —— 权限该按需给，不按身份给。
+     */
+    private fun showOverLockScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
     }
 
     /**
@@ -136,5 +180,35 @@ class MainActivity : AppCompatActivity() {
             this, Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) requestNotification.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    companion object {
+        /**
+         * 「这次是被闹钟拉起来的」。
+         *
+         * 带上它有三个后果：停在闹钟页、锁屏上也能显示、响铃期间屏幕不灭。
+         * 之所以用一个 extra 而不是专门的 Activity：**响铃时要弹的本来就是
+         * 用户平时的 App 窗口**，用户在那里既能看到是哪个闹钟、也能顺手改它，
+         * 不必再维护第二套界面。
+         */
+        const val EXTRA_FROM_ALARM = "com.yxz.timetable.extra.FROM_ALARM"
+
+        /**
+         * 闹钟响时用来拉起窗口的 Intent。
+         *
+         * FLAG_ACTIVITY_CLEAR_TOP：App 已经在跑就直接把原来那个实例拉到前台
+         * （走 onNewIntent），而不是再叠一个新的。配合 Manifest 里的
+         * launchMode="singleTop"，反复响铃也不会堆出一摞窗口。
+         */
+        fun alarmIntent(ctx: android.content.Context): Intent =
+            Intent(ctx, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_FROM_ALARM, true)
+            }
+
+        /** 响铃结束后收掉「屏幕别灭」的标记（见 AlarmFragment 的停止 / 贪睡） */
+        fun clearKeepScreenOn(activity: android.app.Activity) {
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 }
