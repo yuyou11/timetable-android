@@ -1,24 +1,81 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标的前景层。画布固定 108x108，但**只有中间约 66x66 是安全区** ——
-  不同厂商会把图标裁成圆形、方形、水滴形，安全区以外随时可能被切掉。
-  所以这里用 group 把 24x24 的图形放大 2 倍后平移到正中间。
+  自适应图标的前景层：一只白描的座钟（钟壳 + 表盘 + 钟摆 + 底座）。
+
+  画布固定 108x108，但真正显示出来的只有中间 72x72（外面一圈是出血，
+  各家厂商还要再按圆形 / squircle / 方形裁一刀）。所以图形必须收在
+  以 (54,54) 为心、直径 66 的圆里 —— 这一版最远的点（底座两角）到圆心
+  32.7，还留着 0.3 的余量。
+
+  整只钟在画布上纵向居中：拱顶外沿 y=28.4，底座下沿 y=78.8，
+  中线 53.6，和 54 基本对齐 —— 偏心会让人一眼觉得图标「没摆正」，
+  哪怕每个元素本身都没问题。
+
+  线宽 3.2 / 表盘半径 10.6 是照 48dp 的实际显示尺寸定的：
+  再细，缩到 dock 上就剩一根头发丝；再粗，表盘和指针糊成一团。
+
+  颜色只有一个白色，底色来自 @color/ic_launcher_bg（#1565C0）。
+  monochrome 层复用同一份路径：系统只看 alpha，所以这里既没有渐变、
+  也没有第二种颜色 —— 主题图标才不会糊。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:scaleX="2"
-        android:scaleY="2"
-        android:translateX="30"
-        android:translateY="30">
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M11.99,2C6.47,2 2,6.48 2,12s4.47,10 9.99,10C17.52,22 22,17.52 22,12S17.52,2 11.99,2zM12,20c-4.42,0 -8,-3.58 -8,-8s3.58,-8 8,-8 8,3.58 8,8 -3.58,8 -8,8z" />
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M12.5,7H11v6l5.25,3.15 0.75,-1.23 -4.5,-2.67z" />
-    </group>
+
+    <!--
+      钟壳：两条直边 + 上半圆弧 + 底边。
+      拱顶用 A20.5,20.5 画正好半个圆（起点到终点距离 41 = 2r），
+      弧和直边相切，接缝处不会打出尖角。Z 把底边也描上。
+    -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M33.5,76.5 L33.5,50.5 A20.5,20.5 0 0 1 74.5,50.5 L74.5,76.5 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 底座：比钟壳粗一档，等于给这只钟加一条落地的线 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M33.5,76.5 L74.5,76.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="4.6"
+        android:strokeLineCap="round" />
+
+    <!-- 表盘：两个半圆拼成正圆。单条弧直接回到起点，有些渲染器会漏画 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M43.4,48.5 A10.6,10.6 0 0 1 64.6,48.5 A10.6,10.6 0 0 1 43.4,48.5 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineJoin="round" />
+
+    <!-- 指针：12 点 + 3 点。这个姿势在小尺寸下最容易被认成「钟」；
+         换成 10:10 缩到 36dp 就成一个钩子了 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,48.5 L54,41.9 M54,48.5 L61.6,48.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round" />
+
+    <!-- 指针轴心 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52.3,48.5 A1.7,1.7 0 0 1 55.7,48.5 A1.7,1.7 0 0 1 52.3,48.5 Z" />
+
+    <!-- 钟摆：杆 + 实心摆锤。摆锤用实心而不是圆环 —— 36dp 上圆环会糊成一个灰点 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,60.5 L54,67.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M51,69.6 A3,3 0 0 1 57,69.6 A3,3 0 0 1 51,69.6 Z" />
 </vector>
