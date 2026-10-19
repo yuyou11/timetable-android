@@ -130,6 +130,15 @@ object Alarms {
     /** 贪睡下限。见 [Alarm.snoozeMinutes] 的说明（Doze 的 9 分钟限速） */
     const val MIN_SNOOZE_MINUTES = 10
 
+    /**
+     * 「明天几点起床」那条一次性闹钟的名字。
+     *
+     * 它同时是**身份**：同一天只留一条起床闹钟（见 [withWakeOnce]），
+     * 靠的就是这个 label —— 用「是不是只响一次、日期是不是明天」来认的话，
+     * 会把用户自己建的那条（「赶飞机」）也当成起床闹钟换掉。
+     */
+    const val WAKE_LABEL = "起床"
+
     /** 往后找多少天。两周足够跨过任何一个「这周没课、下周才上」的间隔 */
     const val LOOKAHEAD_DAYS = 14
 
@@ -457,4 +466,85 @@ object Alarms {
             momentKind = kind,
             momentDayType = dayType
         )
+
+    /**
+     * 「明天几点起床」建成一条**一次性**闹钟。
+     *
+     * ## 为什么不绑「起床」那一格（[AlarmSource.MOMENT]）
+     *
+     * 按格子响的闹钟认的是格子的**起点**，而起床是「睡觉」那一格的**终点**：
+     * 绑「睡觉」会在 00:00 叫人；绑「起床、洗漱」又得指望模板里正好有那么一格、
+     * 而且名字没被改过 —— 用户导入一份自己的模板，这条闹钟就静默失效，
+     * 比压根没设更糟（他以为有保险）。
+     *
+     * 所以这里**当场把「明天几点」算清楚再存下来**。代价是它不跟模板走
+     * （改了模板要重新点一次），换来的是不依赖任何一格叫什么名字。
+     *
+     * @param wakeMinute  明天几点起床，距 00:00 的分钟数
+     * @param leadMinutes 提前量。减完不能早于 0 点 —— 返回负数会算出一个
+     *                    「昨天」的时刻，那比不响更难查（见 [fireMinuteOfDay]）
+     */
+    fun forWakeOnce(
+        id: String,
+        date: LocalDate,
+        wakeMinute: Int,
+        leadMinutes: Int = 0
+    ): Alarm {
+        val at = (wakeMinute - leadMinutes).coerceIn(0, 24 * 60 - 1)
+        return Alarm(
+            id = id,
+            hour = at / 60,
+            minute = at % 60,
+            // 七天的勾全取消 = 只响一次，日期由 [onceDate] 钉住
+            days = emptySet(),
+            label = WAKE_LABEL,
+            source = AlarmSource.MANUAL,
+            onceDate = date
+        )
+    }
+
+    /** 这一天是不是已经有一条「起床」闹钟了（不管是不是开着） */
+    fun findWakeOnce(alarms: List<Alarm>, date: LocalDate): Alarm? =
+        alarms.firstOrNull { isWakeOnceFor(it, date) }
+
+    /**
+     * 起床闹钟的认法：只响一次 + 名字是 [WAKE_LABEL] + 日期正是那一天。
+     *
+     * 三个条件缺一不可。只看「只响一次 + 日期」会把用户自己建的
+     * 「明天 09:00 赶飞机」当起床闹钟覆盖掉；只看名字则会把昨天那条也算进来。
+     */
+    private fun isWakeOnceFor(a: Alarm, date: LocalDate): Boolean =
+        isOneShot(a) && a.label == WAKE_LABEL && a.onceDate == date
+
+    /**
+     * 建 / 改「明天起床」那一条：**同一天只留一条**。
+     *
+     * 再点一次是改提前量，不是多出一个闹钟 —— 和课程闹钟同一条规矩
+     * （见 CourseAlarm）。用户已经在闹钟页改过的铃声、贪睡时长都留着，
+     * 只换时刻、清掉「跳过下一次」、并把开关重新打开。
+     *
+     * @param newId 只在真要新建时才调用 —— 提前算好会白白占掉一个编号，
+     *              而编号是「现有最大号 +1」算出来的，占掉不会自己还回来
+     */
+    fun withWakeOnce(
+        alarms: List<Alarm>,
+        date: LocalDate,
+        wakeMinute: Int,
+        leadMinutes: Int,
+        newId: () -> String
+    ): List<Alarm> {
+        val at = alarms.indexOfFirst { isWakeOnceFor(it, date) }
+        if (at < 0) return alarms + forWakeOnce(newId(), date, wakeMinute, leadMinutes)
+
+        val built = forWakeOnce(alarms[at].id, date, wakeMinute, leadMinutes)
+        return alarms.toMutableList().also {
+            it[at] = it[at].copy(
+                hour = built.hour,
+                minute = built.minute,
+                enabled = true,
+                // 之前长按「跳过下一次」跳过的正是明天 —— 重设就是要它响
+                skipDate = null
+            )
+        }.toList()
+    }
 }

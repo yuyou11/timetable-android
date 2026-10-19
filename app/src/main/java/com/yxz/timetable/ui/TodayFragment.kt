@@ -1,11 +1,9 @@
 package com.yxz.timetable.ui
 
 import android.app.Dialog
-import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.AlarmClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +11,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Alarms
 import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.Kind
 import com.yxz.timetable.data.Moment
@@ -106,7 +105,7 @@ class TodayFragment : Fragment() {
             render()
         }
 
-        binding.btnSetAlarm.setOnClickListener { setSystemAlarm() }
+        binding.btnSetAlarm.setOnClickListener { setWakeAlarm() }
 
         render()
     }
@@ -248,6 +247,16 @@ class TodayFragment : Fragment() {
             binding.rowWake.visibility = View.GONE
         }
 
+        // 按钮上直接写「已经设成几点」：点完一键设闹钟就忘了设没设，是这类操作的
+        // 老毛病。每次渲染都按闹钟列表重算，所以用户去闹钟页改／关掉之后，回到这里
+        // 也能对得上，按钮不会撒谎。
+        val wakeAlarm = Alarms.findWakeOnce(store.alarms(), tomorrow)
+        binding.btnSetAlarm.text = if (wakeAlarm != null && wakeAlarm.enabled) {
+            "⏰ ${wakeAlarm.timeText} · 改"
+        } else {
+            "⏰ 设闹钟"
+        }
+
         // ---- 第一件事 ----
         val first = moments.firstOrNull { it.kind != Kind.SLEEP && it.start > 0 }
         binding.tvTomorrowFirst.text =
@@ -275,55 +284,57 @@ class TodayFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
-    //  一键设置系统闹钟
+    //  明天的起床闹钟
     // ------------------------------------------------------------------
 
     /**
-     * 调用系统时钟的「设置闹钟」能力。
+     * 把「明天几点起床」变成**本 App 的一条闹钟**。
      *
-     * 这是让别的 App 帮我们做事的标准做法：**发出一个约定好的 Intent，
-     * 由系统或其它应用去处理**。好处是我们完全不用碰闹钟的实现，
-     * 也不用申请任何权限 —— 只是请时钟应用帮个忙。
+     * 这里以前是 `AlarmClock.ACTION_SET_ALARM`：跳出去、请系统时钟应用建一条。
+     * 能响，但**响不响不由我们掌握** —— 那条闹钟不在本 App 的闹钟页里，
+     * 改作息不会跟着变，卸载 App 之后它还留在别人家。现在它和课表卡片设的闹钟
+     * 进同一个列表：同样的铃声、同样的「跳过下一次」、同样的节假日开关。
      *
-     * 两个容易踩的点：
+     * 存的是**一次性**闹钟（[Alarms.forWakeOnce]）：A 型日 06:55、B 型日 07:25，
+     * 一条闹钟要每周复用只能二选一；而用户按的是「明天」这个按钮，
+     * 那就只管明天那一次，响过由 AlarmReceiver 自动关掉。
      *
-     * 1. **Android 11 起必须声明包可见性**（见 AndroidManifest 里的 `<queries>`）。
-     *    不声明的话系统会装作没有应用能处理这个 Intent，表现为「点了没反应」。
-     *
-     * 2. **`EXTRA_SKIP_UI` 要小心用。** 设成 true 表示「别弹确认界面，直接建好」。
-     *    确实一键，但如果用户的时钟应用不支持这个参数，行为不可预测。
-     *    这里的做法是：先试 skipUI，失败就退回到带确认界面的版本 ——
-     *    **降级总比点了没反应好。**
+     * 提前量沿用课表卡片那六档（[AlarmQuick.pickLead]）：用户已经在课表上
+     * 学过这个选择器，同一个 App 里不该冒出第二种问法。
      */
-    private fun setSystemAlarm() {
+    private fun setWakeAlarm() {
         val wake = tomorrowWake
         if (wake == null) {
             toast("这套作息模板里没有起床时间")
             return
         }
-        val hour = wake / 60
-        val minute = wake % 60
-        val base = Intent(AlarmClock.ACTION_SET_ALARM).apply {
-            putExtra(AlarmClock.EXTRA_HOUR, hour)
-            putExtra(AlarmClock.EXTRA_MINUTES, minute)
-            putExtra(AlarmClock.EXTRA_MESSAGE, "起床 · Time Machine")
-            // 只在周一至周五重复是错的：A/B 型日的起床时间不同，
-            // 让用户自己在时钟应用里决定要不要重复，比替他猜更靠谱。
+        val ctx = requireContext()
+        val tomorrow = LocalDate.now().plusDays(1)
+        val existing = Alarms.findWakeOnce(store.alarms(), tomorrow)
+        // 设过就停在用户上次选的那一档，别每次都退回「到点」
+        val currentLead = existing?.let { wake - (it.hour * 60 + it.minute) }?.coerceAtLeast(0)
+
+        AlarmQuick.pickLead(
+            ctx = ctx,
+            title = "明天 ${Slots.fmt(wake)} 起床：什么时候响",
+            lead = currentLead,
+            // 起床要的是「到点就叫」，不是「提前 5 分钟提醒我快起床了」
+            defaultLead = 0
+        ) { minutes, _ ->
+            store.saveAlarms(
+                Alarms.withWakeOnce(
+                    alarms = store.alarms(),
+                    date = tomorrow,
+                    wakeMinute = wake,
+                    leadMinutes = minutes,
+                    newId = store::nextAlarmId
+                )
+            )
+            // 存完必须重排 —— 不排的话闹钟页上「下次：…」还停在旧时刻
+            AlarmScheduler.scheduleAlarms(ctx)
+            toast("已加入闹钟页：明天 ${Slots.fmt((wake - minutes).coerceAtLeast(0))}，响过自动关掉")
+            render()
         }
-
-        val direct = Intent(base).putExtra(AlarmClock.EXTRA_SKIP_UI, true)
-        val ok = runCatching { startActivity(direct) }.isSuccess
-        if (ok) {
-            toast("已设置 ${Slots.fmt(wake)} 的闹钟")
-            return
-        }
-
-        // 降级：打开时钟应用并填好时间，让用户自己按确认
-        val fallback = runCatching { startActivity(base) }.isSuccess
-        if (fallback) return
-
-        // 再降级：有些机型根本没装时钟应用
-        toast("没有找到可以设置闹钟的应用")
     }
 
     // ------------------------------------------------------------------

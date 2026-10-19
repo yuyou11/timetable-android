@@ -26,24 +26,6 @@
          以及 3 分钟自动停都还在，见 AlarmRinger 的说明。 -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!--
-      Android 11 起有「软件包可见性」限制：App 默认看不见别的应用。
-      想用系统时钟的「设置闹钟」能力（AlarmClock.ACTION_SET_ALARM），
-      必须在这里声明我们认识这个 intent，否则系统会假装没有任何应用能处理它，
-      表现为「点了没反应」而不是报错 —— 很难查。
-
-      注意：这一项本来是为了隐私（防止 App 枚举你装了哪些软件），
-      而这里只需要声明「我要用这个功能」，不需要任何权限。
-    -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.SET_ALARM" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.SHOW_ALARMS" />
-        </intent>
-    </queries>
-
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

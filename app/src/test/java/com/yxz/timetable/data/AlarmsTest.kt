@@ -276,6 +276,98 @@ class AlarmsTest {
         )
     }
 
+    // ---------- 六·五、明天卡片的起床闹钟 ----------
+
+    @Test
+    fun `起床闹钟只响明天那一天`() {
+        val date = LocalDate.of(2026, 11, 19)
+        val a = Alarms.forWakeOnce("a1", date, 6 * 60 + 55)
+        assertTrue(Alarms.isOneShot(a))
+        assertEquals("06:55", a.timeText)
+        assertEquals(6 * 60 + 55, fire(a, date))
+        assertNull("前一天不响", fire(a, date.minusDays(1)))
+        assertNull("过完这一天就再也不响", fire(a, date.plusDays(1)))
+    }
+
+    @Test
+    fun `起床闹钟减掉提前量`() {
+        val a = Alarms.forWakeOnce("a1", LocalDate.of(2026, 11, 19), 6 * 60 + 55, 5)
+        assertEquals("提前 5 分钟就是 06:50", "06:50", a.timeText)
+    }
+
+    @Test
+    fun `提前量比起床时间还大时按 0 点算`() {
+        // 00:10 起、提前 20 分钟。算成「昨天 23:50」的话它永远不响，还查不出来
+        val a = Alarms.forWakeOnce("a1", LocalDate.of(2026, 11, 19), 10, 20)
+        assertEquals("00:00", a.timeText)
+        assertEquals(0, fire(a, LocalDate.of(2026, 11, 19)))
+    }
+
+    @Test
+    fun `同一天再设一次是改时刻 不是多出一条`() {
+        val date = LocalDate.of(2026, 11, 19)
+        val first = Alarms.withWakeOnce(emptyList(), date, 6 * 60 + 55, 0) { "a1" }
+        assertEquals(1, first.size)
+
+        val again = Alarms.withWakeOnce(first, date, 6 * 60 + 55, 10) { "a2" }
+        assertEquals("再点一次不该多出一条", 1, again.size)
+        assertEquals("id 还是原来那条", "a1", again[0].id)
+        assertEquals("改成提前 10 分钟", "06:45", again[0].timeText)
+    }
+
+    @Test
+    fun `重设起床闹钟会重新打开 并清掉跳过的这一天`() {
+        val date = LocalDate.of(2026, 11, 19)
+        val off = Alarms.forWakeOnce("a1", date, 6 * 60 + 55)
+            .copy(enabled = false, skipDate = date, soundUri = "content://bell")
+        val list = Alarms.withWakeOnce(listOf(off), date, 6 * 60 + 55, 5) { "a2" }
+
+        assertEquals(1, list.size)
+        assertTrue("重设就是要它响", list[0].enabled)
+        assertNull("长按跳过的正是明天，得清掉", list[0].skipDate)
+        assertEquals("用户换过的铃声要留着", "content://bell", list[0].soundUri)
+    }
+
+    @Test
+    fun `隔一天的起床闹钟各是各的`() {
+        val d1 = LocalDate.of(2026, 11, 19)
+        val d2 = d1.plusDays(1)
+        val one = Alarms.withWakeOnce(emptyList(), d1, 6 * 60 + 55, 0) { "a1" }
+        val two = Alarms.withWakeOnce(one, d2, 7 * 60 + 25, 0) { "a2" }
+
+        assertEquals(2, two.size)
+        assertNotNull("明天那条还在", Alarms.findWakeOnce(two, d1))
+        assertNotNull("后天那条也在", Alarms.findWakeOnce(two, d2))
+    }
+
+    @Test
+    fun `用户自己建的只响一次 不会被起床闹钟顶掉`() {
+        // 身份靠 label 认：同样是「只响一次、就在明天」，但那是「赶飞机」
+        val date = LocalDate.of(2026, 11, 19)
+        val mine = Alarm(
+            id = "a1", hour = 9, minute = 0, days = emptySet(),
+            label = "赶飞机", onceDate = date
+        )
+        val after = Alarms.withWakeOnce(listOf(mine), date, 6 * 60 + 55, 0) { "a2" }
+
+        assertEquals("两条都要在", 2, after.size)
+        assertEquals(9 * 60, fire(after[0], date))
+        assertEquals(6 * 60 + 55, fire(after[1], date))
+    }
+
+    @Test
+    fun `起床闹钟会被 nextFire 排上`() {
+        val date = LocalDate.of(2026, 11, 19)
+        val a = Alarms.forWakeOnce("a1", date, 6 * 60 + 55)
+        val next = Alarms.nextFire(
+            listOf(a), LocalDateTime.of(2026, 11, 18, 22, 0),
+            courses, templates, holidays, ::weekOf
+        )!!
+
+        assertEquals(date, next.date)
+        assertEquals(6 * 60 + 55, next.minuteOfDay)
+    }
+
     // ---------- 四·五、跳过下一次 / 过期 ----------
 
     @Test
