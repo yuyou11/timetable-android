@@ -271,7 +271,7 @@ $table
      * 可以把这段连同 App 的报错一起发给它，让它自己改。
      */
     fun forFix(errorMessage: String, generatedJson: String): String = """
-你刚才生成的时间规划表 JSON 导入失败了，App 报的错是：
+你刚才生成的 JSON 导入失败了，App 报的错是：
 
 ---
 $errorMessage

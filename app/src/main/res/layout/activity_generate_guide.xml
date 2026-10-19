@@ -2,7 +2,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/app_bg"
     android:orientation="vertical">
 
     <!-- 顶部标题栏 -->
@@ -10,26 +9,27 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/card_bg"
+        android:elevation="2dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="8dp"
-        android:paddingVertical="10dp">
+        android:paddingVertical="8dp">
 
         <Button
             android:id="@+id/btnBack"
             style="@style/FlatTextButton"
-            android:textSize="15sp"
-            android:text="← 返回" />
+            android:text="← 返回"
+            android:textSize="14sp" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/guide_title"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary" />
+            android:textColor="@color/text_primary"
+            android:textSize="16sp" />
     </LinearLayout>
 
     <ScrollView
@@ -42,35 +42,36 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/page_padding">
 
             <!-- ============ 一、复制提示词 ============ -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/guide_s1_title"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:textSize="17sp" />
 
             <TextView
                 android:id="@+id/tvIntro"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:textSize="13sp"
                 android:lineSpacingExtra="3dp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="12.5sp" />
 
             <Button
                 android:id="@+id/btnCopyCoursePrompt"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:text="@string/guide_copy_course" />
 
             <Button
                 android:id="@+id/btnCopyTemplatePrompt"
+                style="@style/TonalButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -78,6 +79,7 @@
 
             <Button
                 android:id="@+id/btnCopyFixPrompt"
+                style="@style/TonalButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -88,10 +90,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/guide_s2_title"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:textSize="17sp" />
 
             <LinearLayout
                 android:id="@+id/stepContainer"
@@ -100,29 +102,29 @@
                 android:layout_marginTop="8dp"
                 android:background="@drawable/bg_card"
                 android:orientation="vertical"
-                android:padding="14dp" />
+                android:padding="@dimen/card_padding" />
 
             <!-- ============ 三、提示词预览 ============ -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
+                android:fontFamily="sans-serif-medium"
                 android:text="@string/guide_s3_title"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:textSize="17sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="@string/guide_s3_desc"
-                android:textSize="12sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
             <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="340dp"
+                android:layout_height="300dp"
                 android:layout_marginTop="8dp"
                 android:background="@drawable/bg_prompt_box"
                 android:padding="10dp">
@@ -131,10 +133,10 @@
                     android:id="@+id/tvPromptPreview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textSize="10sp"
-                    android:textIsSelectable="true"
                     android:fontFamily="monospace"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textIsSelectable="true"
+                    android:textSize="11sp" />
             </ScrollView>
 
             <TextView
@@ -142,9 +144,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:layout_marginBottom="8dp"
-                android:textSize="11sp"
+                android:text="@string/guide_footer"
                 android:textColor="@color/text_secondary"
-                android:text="@string/guide_footer" />
+                android:textSize="11sp" />
 
         </LinearLayout>
     </ScrollView>

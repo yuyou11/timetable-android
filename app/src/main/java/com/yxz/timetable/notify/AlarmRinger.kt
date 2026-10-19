@@ -1,17 +1,20 @@
 package com.yxz.timetable.notify
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yxz.timetable.MainActivity
@@ -47,8 +50,9 @@ object AlarmRinger {
     const val CHANNEL_ID = "alarm_ring"
     private const val NOTIF_ID = 3001
 
-    /** 响多久自动停 */
-    private const val AUTO_STOP_MINUTES = 3
+    /** 渐强：从 15% 在 20 秒内升到 100% */
+    private const val FADE_MS = 20_000f
+    private const val FADE_FROM = 0.15f
 
     /** 通知按钮的动作（转发给 [ActionReceiver]） */
     const val ACTION_STOP = "com.yxz.timetable.ALARM_STOP"
@@ -58,6 +62,9 @@ object AlarmRinger {
     private var ringingIds: List<String> = emptyList()
     private var snoozeMinutes: Int = Alarms.MIN_SNOOZE_MINUTES
     private var lastKey: String = ""
+    private var audioManager: AudioManager? = null
+    private var focusRequest: AudioFocusRequest? = null
+    private var fadeStart = 0L
 
     private val handler = Handler(Looper.getMainLooper())
     private val autoStop = Runnable { stop(AppContextHolder.ctx) }
@@ -87,6 +94,9 @@ object AlarmRinger {
         val store = Store(ctx)
         ringingIds = due.map { it.id }
         snoozeMinutes = due.minOf { it.snoozeMinutes }.coerceAtLeast(Alarms.MIN_SNOOZE_MINUTES)
+        // 「上次响铃」留一条记录：自动停之后页面上还能看到它响过
+        store.lastRangAt = System.currentTimeMillis()
+        store.lastRangLabel = due.joinToString("、") { Alarms.describe(it, store.courses()) }
 
         ensureChannel(ctx)
         startSound(ctx, due.first(), store)
@@ -101,6 +111,8 @@ object AlarmRinger {
         player = null
         ringingIds = emptyList()
         handler.removeCallbacks(autoStop)
+        handler.removeCallbacks(fade)
+        abandonFocus()
         if (ctx != null) {
             runCatching { NotificationManagerCompat.from(ctx).cancel(NOTIF_ID) }
         }
@@ -126,24 +138,73 @@ object AlarmRinger {
     private fun startSound(ctx: Context, alarm: Alarm, store: Store) {
         stop(null)                       // 上一首先停掉，避免叠在一起
         AppContextHolder.ctx = ctx.applicationContext
+        requestFocus(ctx)
         val uri = soundUri(alarm, store)
         val ok = runCatching {
             MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
+                setAudioAttributes(alarmAttributes())
+                // 没有这行，息屏后 CPU 睡下去，声音可能被冻住 ——
+                // 闹钟成了「响到一半自己闭嘴」。只在响铃这几分钟持有，代价可忽略。
+                setWakeMode(ctx, PowerManager.PARTIAL_WAKE_LOCK)
                 setDataSource(ctx, uri)
                 isLooping = true
+                setVolume(FADE_FROM, FADE_FROM)
                 prepare()
                 start()
             }
         }.getOrNull()
         player = ok
+        if (ok != null) startFade() else abandonFocus()
         handler.removeCallbacks(autoStop)
-        handler.postDelayed(autoStop, AUTO_STOP_MINUTES * 60_000L)
+        handler.postDelayed(autoStop, store.ringMinutes * 60_000L)
+    }
+
+    private fun alarmAttributes(): AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+
+    /**
+     * 渐强音量：20 秒从 15% 升到 100%。
+     *
+     * 突然满音量会把人吓醒，半夜也容易惊到室友；渐进是正经闹钟应用的标配。
+     */
+    private fun startFade() {
+        fadeStart = System.currentTimeMillis()
+        handler.removeCallbacks(fade)
+        handler.post(fade)
+    }
+
+    private val fade = object : Runnable {
+        override fun run() {
+            val p = player ?: return
+            val ratio = ((System.currentTimeMillis() - fadeStart).toFloat() / FADE_MS)
+                .coerceIn(0f, 1f)
+            val volume = FADE_FROM + (1f - FADE_FROM) * ratio
+            runCatching { p.setVolume(volume, volume) }
+            if (ratio < 1f) handler.postDelayed(this, 250L)
+        }
+    }
+
+    /** 响铃时抢一次音频焦点：别让正在放的音乐和闹钟混在一起 */
+    private fun requestFocus(ctx: Context) {
+        val am = ctx.getSystemService(AudioManager::class.java) ?: return
+        val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(alarmAttributes())
+            .setOnAudioFocusChangeListener { }
+            .build()
+        runCatching { am.requestAudioFocus(req) }
+        audioManager = am
+        focusRequest = req
+    }
+
+    private fun abandonFocus() {
+        val am = audioManager
+        val req = focusRequest
+        if (am != null && req != null) runCatching { am.abandonAudioFocusRequest(req) }
+        audioManager = null
+        focusRequest = null
     }
 
     private fun notify(ctx: Context, due: List<Alarm>, store: Store) {
@@ -174,7 +235,12 @@ object AlarmRinger {
             .setDeleteIntent(action(ctx, ACTION_STOP, 54))
             .addAction(0, "停止", action(ctx, ACTION_STOP, 51))
             .addAction(0, "贪睡 $snoozeMinutes 分钟", action(ctx, ACTION_SNOOZE, 52))
-        runCatching { NotificationManagerCompat.from(ctx).notify(NOTIF_ID, builder.build()) }
+        try {
+            NotificationManagerCompat.from(ctx).notify(NOTIF_ID, builder.build())
+        } catch (_: SecurityException) {
+            // 通知权限被撤销时静默跳过：声音已经由 App 自己放了，
+            // 少一条通知不等于闹钟不响
+        }
     }
 
     /**
@@ -204,7 +270,6 @@ object AlarmRinger {
      * 渠道在这里只负责「高优先级 + 锁屏可见 + 有按钮」。
      */
     fun ensureChannel(ctx: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         val ch = NotificationChannel(CHANNEL_ID, "闹钟", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -217,6 +282,7 @@ object AlarmRinger {
     }
 
     /** 自动停的时候需要一个 Context —— 响铃时记下来，之后就不用再要了 */
+    @SuppressLint("StaticFieldLeak")   // 存的是 applicationContext，随进程走，不是泄漏
     private object AppContextHolder {
         var ctx: Context? = null
     }

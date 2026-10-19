@@ -1,9 +1,9 @@
 package com.yxz.timetable.ui
 
 import android.content.Context
-import android.graphics.Color
 import android.util.TypedValue
 import androidx.annotation.AttrRes
+import androidx.annotation.ColorRes
 import androidx.annotation.StyleRes
 import androidx.core.content.ContextCompat
 import com.yxz.timetable.R
@@ -19,9 +19,9 @@ import com.yxz.timetable.R
  * 布局      ?attr/accentColor          ← 只说「这里要强调色」，不说具体是什么色
  *   ↓
  * 主题      Theme.Timetable            ← accentColor = 蓝色
- *           Theme.Timetable.Green      ← accentColor = 绿色
+ *           Theme.Timetable.Purple     ← accentColor = 紫色
  *   ↓
- * 色值      colors.xml / values-night  ← 蓝/绿 × 日/夜 四种具体取值
+ * 色值      colors.xml / values-night  ← 八种颜色 × 日/夜 的具体取值
  * ```
  *
  * 切换时只要 `setTheme(另一套)` 再 `recreate()`，整个界面就换色了，
@@ -38,6 +38,12 @@ import com.yxz.timetable.R
  * 漏了 2 或 3 的话，编译不会报错，只是那个主题在日间或夜间下
  * 退回成上一套主题的颜色 —— **静默的错误**。
  * 所以 [AppThemeTest] 里有一条专门盯着这个。
+ *
+ * ## 为什么枚举里还要存 [accentRes]
+ *
+ * 设置页那个画板要给**每套主题**涂一个色块。色块上该显示的是「这套主题的
+ * 主色」，不是「当前主题的主色」—— 后者会把八个格子涂成同一个颜色。
+ * 所以画板不能走 `?attr/accentColor`，得直接拿到那张色号表里的值。
  */
 enum class AppTheme(
     /** 存进 SharedPreferences 的值。**不要改成中文或索引** ——
@@ -45,10 +51,38 @@ enum class AppTheme(
     val key: String,
     @StyleRes val resId: Int,
     /** 设置页里显示的名字 */
-    val label: String
+    val label: String,
+    /**
+     * 日间主色。画板的色块直接用它。
+     *
+     * 为什么不写成 `accent_${key}` 拼字符串：那会把「命名约定」变成运行时
+     * 依赖，改一个色值名（比如 accent_pink → accent_rose）编译器不会提醒你，
+     * 只在运行时找不到资源。写成 [ColorRes] 就有编译期检查。
+     */
+    @ColorRes val accentRes: Int
 ) {
-    BLUE("blue", R.style.Theme_Timetable, "蓝色"),
-    GREEN("green", R.style.Theme_Timetable_Green, "绿色");
+    BLUE("blue", R.style.Theme_Timetable, "蓝色", R.color.accent_blue),
+
+    /**
+     * 青色。比绿色偏冷，和蓝色区分得开 —— 两套都在的时候，
+     * 「青」和「蓝」在深色模式下亮度接近，但色相一个是 174° 一个是 210°，
+     * 并排放能看出来，单看也不会认错。
+     */
+    TEAL("teal", R.style.Theme_Timetable_Teal, "青色", R.color.accent_teal),
+
+    GREEN("green", R.style.Theme_Timetable_Green, "绿色", R.color.accent_green),
+
+    /**
+     * 紫色。Material Design 的默认主色就是它 —— 但正因为「默认」，
+     * 这里刻意把它做成一档可选，而不是默认：默认色要稳（蓝），
+     * 好玩的颜色让人自己挑。
+     */
+    PURPLE("purple", R.style.Theme_Timetable_Purple, "紫色", R.color.accent_purple),
+
+    PINK("pink", R.style.Theme_Timetable_Pink, "玫红", R.color.accent_pink),
+    ORANGE("orange", R.style.Theme_Timetable_Orange, "橙色", R.color.accent_orange),
+    RED("red", R.style.Theme_Timetable_Red, "红色", R.color.accent_red),
+    INDIGO("indigo", R.style.Theme_Timetable_Indigo, "靛蓝", R.color.accent_indigo);
 
     companion object {
         /** 默认用蓝色 —— 老用户升级上来看到的是原来的样子，不会被突然换色 */
@@ -65,6 +99,14 @@ fun Context.accentColor(): Int = themeColor(R.attr.accentColor, R.color.accent_b
 
 /** 读当前主题的强调色浅底 */
 fun Context.accentSoftColor(): Int = themeColor(R.attr.accentSoftColor, R.color.accent_soft_blue)
+
+/**
+ * 某套主题的主色（不管它是不是当前主题）。
+ *
+ * 画板要用它；日间 / 夜间由资源限定符自动决定 —— 深色模式下画板里的色块
+ * 会显示夜间那批色，正好是「选了它会变成什么样」。
+ */
+fun Context.themeAccent(theme: AppTheme): Int = ContextCompat.getColor(this, theme.accentRes)
 
 /**
  * 从当前主题里解析一个颜色属性。

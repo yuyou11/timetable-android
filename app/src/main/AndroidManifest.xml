@@ -5,6 +5,10 @@
     <!-- 发通知。Android 13 起是运行时权限，必须动态申请 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 响铃期间持有 CPU（MediaPlayer.setWakeMode）。
+         只在响铃那几分钟持有；没有它，息屏后 CPU 睡下去，声音可能断掉 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- 精确闹钟。
          USE_EXACT_ALARM：Android 13+ 自动授予，只给闹钟/日程类应用用（本应用属于此类）
          SCHEDULE_EXACT_ALARM：Android 12 用，需要用户在设置里手动开 -->
@@ -51,8 +55,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:label="@string/app_name">
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -18,6 +18,9 @@ enum class Kind { SLEEP, MEAL, CLASS, STUDY, TRAIN, FREE, CHORE, TRANSIT }
  *
  * @param nodes 不为 null 时，说明这一格是课表格子（值是节次范围，如 1..2），
  *              可以被当天的课程覆盖掉；为 null 则是固定日程，任何课都盖不住它。
+ * @param courseId 这一格是课程时，对应 [Course.id]；模板里的固定日程是空串。
+ *                 今日页点一格要能顺着它找回那门课（老师、周次、课程闹钟都要用），
+ *                 只靠课名找会在「一天上两次同一门课」时撞车。
  */
 data class Block(
     val start: Int,
@@ -27,7 +30,8 @@ data class Block(
     val kind: Kind = Kind.CHORE,
     val nodes: IntRange? = null,
     val place: String = "",
-    val isCourse: Boolean = false
+    val isCourse: Boolean = false,
+    val courseId: String = ""
 ) {
     val duration: Int get() = end - start
 }
@@ -60,7 +64,9 @@ data class Moment(
     val note: String,
     val place: String,
     val kind: Kind,
-    val isCourse: Boolean = false
+    val isCourse: Boolean = false,
+    /** 课程格的 [Course.id]；固定日程为空串。见 [Block.courseId] */
+    val courseId: String = ""
 ) {
     val duration: Int get() = end - start
     fun contains(minute: Int): Boolean = minute >= start && minute < end

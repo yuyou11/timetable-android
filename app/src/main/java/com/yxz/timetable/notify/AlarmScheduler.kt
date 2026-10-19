@@ -164,6 +164,9 @@ object AlarmScheduler {
 
     private const val ALARM_REQUEST_CODE = 2002
 
+    /** 超过这个时间还没响，才算「错过」—— 系统偶尔会晚几秒到几分钟，不能误报 */
+    private const val MISSED_GRACE_MS = 5 * 60 * 1000L
+
     /** 重新排「下一个用户闹钟」。闹钟增删改、开机、时区变化时都要调 */
     fun scheduleAlarms(ctx: Context) {
         val store = Store(ctx)
@@ -171,13 +174,23 @@ object AlarmScheduler {
         val pi = alarmPendingIntent(ctx)
         val now = System.currentTimeMillis()
 
+        // 在覆盖「下一次」之前先看一眼：上一次是不是到点了却没响
+        noteMissed(store, now)
+
         // 贪睡优先：刚按过贪睡，下一次就该是贪睡到点的那一刻
         val snoozeAt = store.snoozeAlarmUntil
         if (snoozeAt > now) {
             if (!setAlarmClock(am, ctx, snoozeAt, pi)) {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, snoozeAt, pi)
             }
+            store.alarmExpectedAt = snoozeAt
+            store.alarmExpectedLabel = "贪睡"
             return
+        }
+        // 过期的贪睡标记顺手清掉，免得下次误判
+        if (snoozeAt in 1 until now) {
+            store.snoozeAlarmUntil = 0L
+            store.snoozeAlarmIds = emptyList()
         }
 
         val next = Alarms.nextFire(
@@ -190,10 +203,15 @@ object AlarmScheduler {
         )
         if (next == null) {
             am.cancel(pi)
+            store.alarmExpectedAt = 0L
+            store.alarmExpectedLabel = ""
             return
         }
 
         val at = next.at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        // 记下「系统里排着的下一次」—— 闹钟页靠它发现「该响却没响」
+        store.alarmExpectedAt = at
+        store.alarmExpectedLabel = Alarms.describe(next.alarm, store.courses())
         if (!setAlarmClock(am, ctx, at, pi)) {
             // 没有精确闹钟权限（Android 12+ 用户能在系统设置里关掉）：
             // 退化成「大致准时」。至少不会静默不响 —— 那才是真的误事。
@@ -204,6 +222,21 @@ object AlarmScheduler {
     fun cancelAlarms(ctx: Context) {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(alarmPendingIntent(ctx))
+    }
+
+    /**
+     * 上一次排着的闹钟到点了却没响 —— 记成「错过」。
+     *
+     * 判断依据是 [Store.alarmExpectedAt]：它由本类在每次排程时写入，
+     * 真响过的话 [AlarmReceiver] 会清掉。过了 5 分钟还没被清，
+     * 说明这次唤醒被系统吞了（没电、被 ROM 杀掉、延迟太久）。
+     */
+    private fun noteMissed(store: Store, now: Long) {
+        val expected = store.alarmExpectedAt
+        if (expected in 1 until now - MISSED_GRACE_MS) {
+            store.missedAlarmAt = expected
+            store.missedAlarmLabel = store.alarmExpectedLabel
+        }
     }
 
     /**
@@ -234,6 +267,9 @@ object AlarmScheduler {
     private fun showIntent(ctx: Context): PendingIntent {
         val i = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // 从状态栏的闹钟图标点进来时，直接停在闹钟页；
+            // 这条**不带** EXTRA_FROM_ALARM —— 只是看一眼，不该亮屏、不该盖锁屏
+            putExtra(MainActivity.EXTRA_OPEN_ALARM_TAB, true)
         }
         return PendingIntent.getActivity(
             ctx, ALARM_REQUEST_CODE + 1, i,

@@ -1,24 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  时间轴上的一行。
-
-  左侧时间列改成两行：上面是开始时刻，下面是结束时刻（颜色淡一点）。
-  比写成「08:30–10:05」一行更容易扫视 —— 眼睛沿着一列数字往下走就行，
-  不用在每行里找那个破折号。
-
-  时长放在标题右边，用一个小胶囊底衬，和地点区分开。
--->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rowRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:foreground="?android:attr/selectableItemBackground"
     android:orientation="horizontal"
-    android:paddingHorizontal="10dp"
-    android:paddingVertical="9dp">
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp">
 
     <!-- 时间列 -->
     <LinearLayout
-        android:layout_width="48dp"
+        android:layout_width="46dp"
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
@@ -26,27 +18,27 @@
             android:id="@+id/tvTimeStart"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="13sp"
-            android:textStyle="bold"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
             android:textColor="@color/text_primary"
-            android:includeFontPadding="false" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/tvTimeEnd"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:textSize="11sp"
+            android:layout_marginTop="2dp"
+            android:includeFontPadding="false"
             android:textColor="@color/text_secondary"
-            android:includeFontPadding="false" />
+            android:textSize="11sp" />
     </LinearLayout>
 
     <View
         android:id="@+id/colorBar"
         android:layout_width="3dp"
         android:layout_height="match_parent"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="10dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="12dp"
         android:background="@color/divider" />
 
     <LinearLayout
@@ -58,17 +50,17 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/tvTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textSize="15sp"
+                android:includeFontPadding="false"
                 android:textColor="@color/text_primary"
-                android:includeFontPadding="false" />
+                android:textSize="14.5sp" />
 
             <TextView
                 android:id="@+id/tvDuration"
@@ -76,11 +68,11 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/bg_duration_chip"
+                android:includeFontPadding="false"
                 android:paddingHorizontal="6dp"
-                android:paddingVertical="1dp"
-                android:textSize="10sp"
+                android:paddingVertical="2dp"
                 android:textColor="@color/text_secondary"
-                android:includeFontPadding="false" />
+                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView
@@ -88,8 +80,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:textSize="12sp"
             android:textColor="@color/text_secondary"
+            android:textSize="11.5sp"
             android:visibility="gone" />
 
         <!-- 地点放在标题下面单独一行，而不是挤在标题右边：
@@ -102,10 +94,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:maxLines="1"
             android:ellipsize="end"
-            android:textSize="12sp"
+            android:maxLines="1"
             android:textColor="?attr/accentColor"
+            android:textSize="11.5sp"
             android:visibility="gone" />
     </LinearLayout>
 

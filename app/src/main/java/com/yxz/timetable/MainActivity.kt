@@ -3,6 +3,7 @@ package com.yxz.timetable
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -20,6 +21,7 @@ import com.yxz.timetable.ui.AlarmFragment
 import com.yxz.timetable.ui.SettingsFragment
 import com.yxz.timetable.ui.TodayFragment
 import com.yxz.timetable.ui.WeekFragment
+import com.yxz.timetable.ui.accentColor
 
 class MainActivity : AppCompatActivity() {
 
@@ -55,8 +57,20 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 底部导航的选中色跟着主题走（蓝 / 绿）。
+        // 用代码设而不是写 color selector：?attr 在 color 资源里要靠主题解析，
+        // 这里直接取当前主题的 accentColor 更直白；换主题 recreate 时会重新执行。
+        val navTint = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(accentColor(), ContextCompat.getColor(this, R.color.text_secondary))
+        )
+        binding.bottomNav.itemIconTintList = navTint
+        binding.bottomNav.itemTextColor = navTint
+
         // 是不是被闹钟拉起来的？是的话这次要:停在闹钟页 + 锁屏上也能显示 + 屏幕别灭
         val fromAlarm = intent?.getBooleanExtra(EXTRA_FROM_ALARM, false) == true
+        // 从状态栏闹钟图标点进来：只停在闹钟页，不亮屏、不盖锁屏
+        val openAlarmTab = intent?.getBooleanExtra(EXTRA_OPEN_ALARM_TAB, false) == true
         if (fromAlarm) {
             showOverLockScreen()
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -65,24 +79,22 @@ class MainActivity : AppCompatActivity() {
         // 渠道要尽早建好：一旦用户从通知栏点进设置改了重要性，这个渠道就固定下来了
         Notifier.ensureChannel(this)
 
+        // 四个页面各用一个固定 tag 装着，切页只 hide/show ——
+        // 用 replace 会把页面整个重建：课表翻到第 12 周、切去设置再回来就回到本周，
+        // 设置页滚到一半的位置也会丢。hide/show 保住实例，页面状态跟着一起保住。
         binding.bottomNav.setOnItemSelectedListener { item ->
-            val fragment: Fragment = when (item.itemId) {
-                R.id.nav_week -> WeekFragment()
-                R.id.nav_alarm -> AlarmFragment()
-                R.id.nav_settings -> SettingsFragment()
-                else -> TodayFragment()
-            }
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.container, fragment)
-                .commit()
+            showTab(item.itemId)
             true
         }
 
         // savedInstanceState == null 表示这是「全新启动」而不是「屏幕旋转后重建」。
         // 旋转时系统会自动恢复原来的 Fragment，这时再设一次 selectedItemId
-        // 会导致 Fragment 被创建两遍。
+        // 会导致页面被创建两遍。
         if (savedInstanceState == null) {
-            binding.bottomNav.selectedItemId = if (fromAlarm) R.id.nav_alarm else R.id.nav_today
+            binding.bottomNav.selectedItemId =
+                if (fromAlarm || openAlarmTab) R.id.nav_alarm else R.id.nav_today
+            // 部分版本 setSelectedItemId 不一定回调监听器，补一次（showTab 是幂等的）
+            showTab(binding.bottomNav.selectedItemId)
         }
 
         askNotificationPermission()
@@ -103,7 +115,61 @@ class MainActivity : AppCompatActivity() {
             showOverLockScreen()
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             binding.bottomNav.selectedItemId = R.id.nav_alarm
+            // 如果本来就停在闹钟页，selectedItemId 不会再回调监听器 ——
+            // 这里主动补一次，让「正在响铃」那条立刻出现。
+            // 它是响铃时唯一一定停得掉声音的入口，不能等下一次 onResume。
+            (supportFragmentManager.findFragmentByTag(TAG_ALARM) as? AlarmFragment)
+                ?.onAlarmLaunched()
+        } else if (intent.getBooleanExtra(EXTRA_OPEN_ALARM_TAB, false)) {
+            // 状态栏闹钟图标：只切页，不做任何「响铃」相关的事
+            binding.bottomNav.selectedItemId = R.id.nav_alarm
         }
+    }
+
+    /**
+     * 切页：只 hide 其它、show 目标，不销毁实例。
+     *
+     * 用 commitNow 而不是 commit：commit 是异步的，连着点两个标签时
+     * 第一次的 add 还没执行、第二次就找不到它，会同时留下两个可见页面。
+     */
+    private fun showTab(itemId: Int) {
+        val tag = tagOf(itemId)
+        val fm = supportFragmentManager
+        val tx = fm.beginTransaction().setReorderingAllowed(true)
+        var changed = false
+
+        for (t in TAB_TAGS) {
+            val f = fm.findFragmentByTag(t) ?: continue
+            if (t != tag && !f.isHidden) {
+                tx.hide(f)
+                changed = true
+            }
+        }
+
+        val target = fm.findFragmentByTag(tag)
+        if (target == null) {
+            tx.add(R.id.container, newTab(itemId), tag)
+            changed = true
+        } else if (target.isHidden) {
+            tx.show(target)
+            changed = true
+        }
+
+        if (changed) tx.commitNow()
+    }
+
+    private fun newTab(itemId: Int): Fragment = when (itemId) {
+        R.id.nav_week -> WeekFragment()
+        R.id.nav_alarm -> AlarmFragment()
+        R.id.nav_settings -> SettingsFragment()
+        else -> TodayFragment()
+    }
+
+    private fun tagOf(itemId: Int): String = when (itemId) {
+        R.id.nav_week -> TAG_WEEK
+        R.id.nav_alarm -> TAG_ALARM
+        R.id.nav_settings -> TAG_SETTINGS
+        else -> TAG_TODAY
     }
 
     /**
@@ -161,17 +227,29 @@ class MainActivity : AppCompatActivity() {
 
     /** 重建当前界面，让改动立刻反映出来 */
     private fun reboot() {
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.container, TodayFragment())
-            .commit()
-        binding.bottomNav.selectedItemId = R.id.nav_today
+        // 整页重建交给 recreate：FragmentManager 会把当前页一起重建，
+        // 数据重新读一遍。手动 replace 会破坏 hide/show 的页面集合，
+        // 下次切页还可能蹦出两个叠在一起的页面。
+        recreate()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // 兜底：进程被回收后重建，理论上 FragmentManager 会恢复页面；
+        // 万一没有（比如系统只恢复了 Activity），至少别留一个空容器。
+        if (supportFragmentManager.findFragmentById(R.id.container) == null) {
+            showTab(binding.bottomNav.selectedItemId)
+        }
     }
 
     override fun onResume() {
         super.onResume()
         // 从系统设置页返回时（比如刚开完精确闹钟权限），补一次排程，
         // 否则会出现「权限开了但闹钟还是按旧的（不精确）方式排着」的尴尬状态。
+        // 两条链都要排：schedule 是通知刷新点，scheduleAlarms 是用户闹钟 ——
+        // 后者漏掉的话，系统「强行停止」后重开 App 闹钟不会恢复。
         AlarmScheduler.schedule(this)
+        AlarmScheduler.scheduleAlarms(this)
     }
 
     private fun askNotificationPermission() {
@@ -192,6 +270,16 @@ class MainActivity : AppCompatActivity() {
          * 不必再维护第二套界面。
          */
         const val EXTRA_FROM_ALARM = "com.yxz.timetable.extra.FROM_ALARM"
+
+        /** 从状态栏闹钟图标打开：只停在闹钟页，不亮屏、不盖锁屏 */
+        const val EXTRA_OPEN_ALARM_TAB = "com.yxz.timetable.extra.OPEN_ALARM_TAB"
+
+        private const val TAG_TODAY = "tab_today"
+        private const val TAG_WEEK = "tab_week"
+        private const val TAG_ALARM = "tab_alarm"
+        private const val TAG_SETTINGS = "tab_settings"
+
+        private val TAB_TAGS = listOf(TAG_TODAY, TAG_WEEK, TAG_ALARM, TAG_SETTINGS)
 
         /**
          * 闹钟响时用来拉起窗口的 Intent。

@@ -2,21 +2,13 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
-import android.text.InputType
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.AccelerateInterpolator
-import android.view.animation.OvershootInterpolator
-import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.view.doOnLayout
-import com.yxz.timetable.R
 import com.yxz.timetable.data.Alarm
 import com.yxz.timetable.data.AlarmSource
-import com.yxz.timetable.data.Alarms
 import com.yxz.timetable.data.Block
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.SlotCourse
@@ -25,7 +17,6 @@ import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.databinding.DialogSlotCoursesBinding
 import com.yxz.timetable.databinding.ItemCourseCardBinding
-import com.yxz.timetable.notify.AlarmScheduler
 import kotlin.math.roundToInt
 
 /**
@@ -95,13 +86,13 @@ object SlotCoursesCard {
 
         binding.tvTitle.text = "${weekdayCn(day)} · ${nodeLabel(nodes.first, nodes.last)}"
         binding.tvSubtitle.text = if (items.isEmpty()) {
-            "全学期都没有课 · 这一格按作息模板安排"
+            "全学期没课 · 按作息模板安排"
         } else {
             val activeCount = items.count { it.activeInWeek != null }
             "全学期 ${items.size} 门课 · " + if (activeCount == 0) {
-                "第 $viewedWeek 教学周这一格没课"
+                "第 $viewedWeek 周这格没课"
             } else {
-                "第 $viewedWeek 教学周有 $activeCount 门"
+                "第 $viewedWeek 周有 $activeCount 门"
             }
         }
 
@@ -124,25 +115,16 @@ object SlotCoursesCard {
         }
 
         // 进场前先缩到最小并透明 —— 不留「先闪一帧原尺寸」的空隙
-        binding.card.scaleX = 0.2f
-        binding.card.scaleY = 0.2f
-        binding.card.alpha = 0f
+        shrinkBeforeEntrance(binding.card)
 
         val dialog = CardDialog(ctx, binding.card)
         dialog.setContentView(binding.root)
         dialog.setCanceledOnTouchOutside(true)
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setDimAmount(0.4f)
-            setGravity(Gravity.CENTER)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setWindowAnimations(R.style.CourseCardWindowAnim)
-        }
+        dialog.applyCardWindow()
 
         // 面板自己要接住点击：不然点在卡片上会一路穿透到根布局的「点外面收起」，
         // 读着读着随手一碰就关了。
-        binding.card.setOnClickListener { /* 只消费，不做动作 */ }
-        binding.root.setOnClickListener { dialog.dismiss() }
+        wireCardDialog(dialog, binding)
 
         val maxList =
             (anchor.resources.displayMetrics.heightPixels * LIST_MAX_SCREEN_RATIO).roundToInt()
@@ -151,7 +133,7 @@ object SlotCoursesCard {
                 binding.scroll.layoutParams = binding.scroll.layoutParams.apply { height = maxList }
             }
         }
-        binding.card.doOnLayout { popIn(it, anchor) }
+        binding.card.doOnLayout { popInFrom(it, anchor) }
         dialog.show()
         return dialog
     }
@@ -226,7 +208,7 @@ object SlotCoursesCard {
             timeText = "${Slots.fmt(start)} – ${Slots.fmt(end)}",
             place = block?.place?.takeIf { it.isNotBlank() },
             teacher = null,
-            weeksText = "全学期都没有课",
+            weeksText = "全学期无课",
             badge = "无课",
             badgeDim = true
         )
@@ -234,42 +216,27 @@ object SlotCoursesCard {
 
     /** 空教室 / 空老师写「未注明」而不是留白 —— 空白分不清「没有」和「没加载出来」 */
     private fun bindItem(row: ItemCourseCardBinding, card: Card, store: Store) {
-        row.tvName.text = card.name
-
-        if (card.badge == null) {
-            row.tvBadge.visibility = View.GONE
-        } else {
-            row.tvBadge.text = card.badge
-            row.tvBadge.alpha = if (card.badgeDim) 0.6f else 1f
-            row.tvBadge.visibility = View.VISIBLE
-        }
-
-        row.tvWhen.text = card.whenText
-        row.tvTime.text = card.timeText
-
-        if (card.place == null) {
-            row.rowPlace.visibility = View.GONE
-        } else {
-            row.tvPlace.text = card.place
-            row.rowPlace.visibility = View.VISIBLE
-        }
-
-        if (card.teacher == null) {
-            row.rowTeacher.visibility = View.GONE
-        } else {
-            row.tvTeacher.text = card.teacher
-            row.rowTeacher.visibility = View.VISIBLE
-        }
-
-        row.tvWeeks.text = card.weeksText
+        row.bindText(
+            CardText(
+                name = card.name,
+                whenText = card.whenText,
+                timeText = card.timeText,
+                place = card.place,
+                teacher = card.teacher,
+                weeksText = card.weeksText,
+                badge = card.badge,
+                badgeDim = card.badgeDim
+            )
+        )
         bindAlarmButton(row, card, store)
     }
 
     /**
      * 卡片底部的「设置闹钟」。
      *
-     * 五档提前量（1 / 5 / 10 / 20 / 自定义）—— 这是从你的实际用法倒推的：
-     * 早八要提前 20 分钟（洗漱 + 走到教室），临时小测提前 1 分钟就够。
+     * 六档提前量（**0** / 1 / 5 / 10 / 20 / 自定义）—— 这是从你的实际用法倒推的：
+     * 早八要提前 20 分钟（洗漱 + 走到教室），临时小测提前 1 分钟就够，
+     * 而「到点」这一档是给「我就想在铃响那一刻被提醒」的情况。
      * 选完立刻写进闹钟列表并重排，用户回到闹钟页就能看到它。
      */
     private fun bindAlarmButton(row: ItemCourseCardBinding, card: Card, store: Store) {
@@ -278,65 +245,35 @@ object SlotCoursesCard {
             return
         }
         row.btnAlarm.visibility = View.VISIBLE
-        row.btnAlarm.text = card.alarmLead
-            ?.let { "已设闹钟 · 课前 $it 分钟（点这里改）" }
-            ?: "设置闹钟"
+        row.btnAlarm.text = card.alarmLead?.let { "${courseLeadText(it)} · 点此修改" } ?: "设置闹钟"
 
         row.btnAlarm.setOnClickListener { v ->
             val ctx = v.context
-            val leads = listOf(1, 5, 10, 20)
-            val options = leads.map { "课前 $it 分钟" } + "自定义…"
-            AlertDialog.Builder(ctx)
-                .setTitle("${card.name}：提前多久提醒")
-                .setItems(options.toTypedArray()) { _, which ->
-                    if (which < leads.size) {
-                        applyCourseAlarm(ctx, store, card.courseId, leads[which], row)
-                    } else {
-                        askCustomLead(ctx) { m ->
-                            applyCourseAlarm(ctx, store, card.courseId, m, row)
-                        }
-                    }
-                }
-                .show()
+            AlarmQuick.pickLead(
+                ctx = ctx,
+                title = "${card.name}：提前多久提醒",
+                lead = card.alarmLead
+            ) { m, _ -> applyCourseAlarm(ctx, store, card.courseId, m, row) }
         }
     }
 
-    private fun askCustomLead(ctx: Context, onOk: (Int) -> Unit) {
-        val input = EditText(ctx).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER
-            hint = "提前多少分钟（0–120）"
-        }
-        AlertDialog.Builder(ctx)
-            .setTitle("自定义提前量")
-            .setView(input)
-            .setPositiveButton("确定") { _, _ ->
-                input.text.toString().toIntOrNull()?.let { onOk(it.coerceIn(0, 120)) }
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
+    /** 「课前 5 分钟」/「到点提醒」—— 0 分钟不是「课前 0 分钟」 */
+    private fun courseLeadText(lead: Int): String =
+        if (lead == 0) "到点提醒" else "课前 $lead 分钟"
 
     /**
      * 落一个课程闹钟。
      *
-     * **同一门课只留一个**：再设一次是改提前量，不是多出一个闹钟。
-     * 存完必须重排 —— 不排的话用户回到闹钟页看到「下次：…」还停在旧时刻。
+     * 去重规则在 [CourseAlarm] 里（课表页和今日页共用一份），
+     * 这里只管把按钮上的字和提示换成新的。
      */
     private fun applyCourseAlarm(
         ctx: Context, store: Store, courseId: String, lead: Int, row: ItemCourseCardBinding
     ) {
-        val list = store.alarms()
-        val at = list.indexOfFirst { it.source == AlarmSource.COURSE && it.courseId == courseId }
-        if (at >= 0) {
-            list[at] = list[at].copy(leadMinutes = lead, enabled = true)
-        } else {
-            list.add(Alarms.forCourse(store.nextAlarmId(), courseId, lead))
-        }
-        store.saveAlarms(list)
-        AlarmScheduler.scheduleAlarms(ctx)
-        row.btnAlarm.text = "已设闹钟 · 课前 $lead 分钟（点这里改）"
+        CourseAlarm.apply(ctx, store, courseId, lead)
+        row.btnAlarm.text = "${courseLeadText(lead)} · 点此修改"
         Toast.makeText(
-            ctx, "已加入闹钟页：课前 $lead 分钟（只在这门课真的上的那几周响）", Toast.LENGTH_LONG
+            ctx, "已加入闹钟页：${courseLeadText(lead)}，仅在这门课有课时响", Toast.LENGTH_LONG
         ).show()
     }
 
@@ -365,49 +302,5 @@ object SlotCoursesCard {
         parts += if (from == prev) "$from" else "$from-$prev"
         return parts.joinToString(", ") + " 周"
     }
-
-    /**
-     * 弹出动画：以被点格子的中心为圆心放大，配一点回弹。
-     *
-     * pivot 用屏幕坐标相减得到「格子中心落在面板坐标系里的哪里」，
-     * 再钳进面板实际尺寸 —— 格子在屏幕边上时也不会算出界外的 pivot。
-     */
-    private fun popIn(card: View, anchor: View) {
-        val cardLoc = IntArray(2)
-        card.getLocationOnScreen(cardLoc)
-        val anchorLoc = IntArray(2)
-        anchor.getLocationOnScreen(anchorLoc)
-        card.pivotX = (anchorLoc[0] + anchor.width / 2f - cardLoc[0])
-            .coerceIn(0f, card.width.toFloat())
-        card.pivotY = (anchorLoc[1] + anchor.height / 2f - cardLoc[1])
-            .coerceIn(0f, card.height.toFloat())
-        card.animate()
-            .scaleX(1f).scaleY(1f).alpha(1f)
-            .setDuration(260)
-            .setInterpolator(OvershootInterpolator(1.1f))
-            .start()
-    }
 }
 
-/**
- * 面板的 Dialog。唯一的存在理由是**收起也要有动画**：
- * 直接 dismiss() 的话面板瞬间蒸发，缩回格子的动作没机会播。
- *
- * 所有收场（点外面、按返回键、页面销毁）都从 dismiss() 这一个口子走，
- * 统一先缩回再真正关闭。closing 标志挡住连点两下的重复收场。
- */
-private class CardDialog(context: Context, private val card: View) : Dialog(context) {
-
-    private var closing = false
-
-    override fun dismiss() {
-        if (closing) return
-        closing = true
-        card.animate()
-            .scaleX(0.2f).scaleY(0.2f).alpha(0f)
-            .setDuration(160)
-            .setInterpolator(AccelerateInterpolator())
-            .withEndAction { super.dismiss() }
-            .start()
-    }
-}

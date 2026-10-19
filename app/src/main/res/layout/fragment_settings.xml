@@ -7,7 +7,20 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="14dp">
+        android:padding="@dimen/page_padding">
+
+        <!-- 存储读坏时的提示。默认隐藏，由 refreshLoadWarning() 决定显不显示 -->
+        <TextView
+            android:id="@+id/tvDataWarning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/space_m"
+            android:background="@drawable/bg_card_accent"
+            android:lineSpacingExtra="2dp"
+            android:padding="12dp"
+            android:textColor="?attr/accentColor"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <!-- ============ 常驻开关 ============ -->
         <LinearLayout
@@ -16,7 +29,7 @@
             android:background="@drawable/bg_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -25,19 +38,18 @@
                 android:orientation="vertical">
 
                 <TextView
+                    style="@style/CardTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/resident_title"
-                    android:textSize="16sp"
-                    android:textColor="@color/text_primary" />
+                    android:text="@string/resident_title" />
 
                 <TextView
                     android:id="@+id/tvSwitchState"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <com.google.android.material.switchmaterial.SwitchMaterial
@@ -46,22 +58,21 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <!-- ============ 权限自检 ============ -->
+        <!-- ============ 运行权限 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/perm_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/perm_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:paddingVertical="4dp">
+            android:paddingVertical="2dp">
 
             <!-- 通知权限 -->
             <LinearLayout style="@style/PermRow">
@@ -108,20 +119,19 @@
 
         <!-- ============ 锁屏显示 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/lockscreen_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/lockscreen_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -134,8 +144,8 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/lockscreen_show"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
                     android:id="@+id/swLockscreen"
@@ -148,12 +158,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:textSize="12sp"
                 android:lineSpacingExtra="3dp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="11.5sp" />
 
             <Button
                 android:id="@+id/btnLockscreen"
+                style="@style/TonalButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
@@ -162,20 +173,19 @@
 
         <!-- ============ 课前提醒 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/remind_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/remind_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -193,16 +203,16 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/remind_lead"
-                        android:textSize="15sp"
-                        android:textColor="@color/text_primary" />
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvRemindStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textSize="12sp"
-                        android:textColor="@color/text_secondary" />
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
                 <Button
@@ -214,11 +224,11 @@
                     android:id="@+id/tvRemindLead"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="66dp"
+                    android:fontFamily="sans-serif-medium"
                     android:gravity="center"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="?attr/accentColor" />
+                    android:minWidth="66dp"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="15sp" />
 
                 <Button
                     android:id="@+id/btnRemindPlus"
@@ -231,35 +241,34 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="@string/remind_desc"
-                android:textSize="11sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:paddingHorizontal="4dp"
+            android:paddingHorizontal="2dp"
             android:text="@string/hint_honor"
-            android:textSize="12sp"
-            android:textColor="@color/text_secondary" />
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
 
         <!-- ============ 闹钟 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/alarm_section_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/alarm_section_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:id="@+id/rowAlarmSound"
@@ -279,7 +288,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/alarm_sound_title"
                         android:textColor="@color/text_primary"
-                        android:textSize="15sp" />
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvAlarmSound"
@@ -287,7 +296,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
                 <TextView
@@ -306,8 +315,8 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="14dp"
                 android:background="@color/divider" />
 
             <LinearLayout
@@ -328,7 +337,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/alarm_holiday_title"
                         android:textColor="@color/text_primary"
-                        android:textSize="15sp" />
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvHolidayStatus"
@@ -336,7 +345,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
                 <TextView
@@ -351,12 +360,12 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="14dp"
                 android:background="@color/divider" />
 
             <!-- 全屏响铃：Android 14 起的新权限。没开也能用（退化成横幅通知），
-                 所以文案是「开了更省事」而不是「必须开」 —— 权限自检不该吓唬人 -->
+                  所以文案是「开了更省事」而不是「必须开」 —— 权限自检不该吓唬人 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -374,7 +383,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/alarm_fullscreen_title"
                         android:textColor="@color/text_primary"
-                        android:textSize="15sp" />
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvRingStatus"
@@ -382,7 +391,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
                 <Button
@@ -390,17 +399,56 @@
                     style="@style/PermButton"
                     android:text="去开启" />
             </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/divider" />
+
+            <!-- 响铃多久自动停：点一下在 1/3/5/10 分钟之间循环 -->
+            <LinearLayout
+                android:id="@+id/rowRingDuration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="响铃时长"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvRingDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="13sp" />
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="4dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_chevron_right" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ============ 外观 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/appearance_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/appearance_title" />
 
         <LinearLayout
             android:id="@+id/rowTheme"
@@ -411,7 +459,7 @@
             android:focusable="true"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -423,22 +471,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/theme_title"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/tvThemeStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11.5sp" />
             </LinearLayout>
 
             <!--
               当前主题色的预览色块。它引用的是 ?attr/accentColor，
-              所以「这个圆点是什么颜色」和「界面其他强调色」永远一致 ——
-              不需要在代码里另外维护一份「当前主题是什么色」的副本。
+              所以「这个圆点是什么颜色」和「界面其他强调色」永远一致
             -->
             <View
                 android:layout_width="20dp"
@@ -457,11 +504,11 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/bg_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -473,16 +520,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/week_dots_title"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:text="@string/week_dots_desc"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11.5sp" />
             </LinearLayout>
 
             <com.google.android.material.switchmaterial.SwitchMaterial
@@ -493,20 +540,19 @@
 
         <!-- ============ 学期 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/term_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/term_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -519,24 +565,24 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/term_name"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/tvTermName"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:maxWidth="180dp"
-                    android:maxLines="1"
                     android:ellipsize="end"
-                    android:textSize="14sp"
-                    android:textColor="?attr/accentColor" />
+                    android:maxLines="1"
+                    android:maxWidth="180dp"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btnTermName"
                     style="@style/FlatTextButton"
-                    android:textSize="14sp"
-                    android:text="改" />
+                    android:text="改"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <View style="@style/PermDivider" />
@@ -547,7 +593,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingVertical="4dp">
+                android:paddingVertical="6dp">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -559,23 +605,23 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/term_start"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_primary" />
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvTermStart"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textSize="13sp"
-                        android:textColor="?attr/accentColor" />
+                        android:textColor="?attr/accentColor"
+                        android:textSize="12.5sp" />
                 </LinearLayout>
 
                 <Button
                     android:id="@+id/btnTermStart"
                     style="@style/FlatTextButton"
-                    android:textSize="14sp"
-                    android:text="选日期" />
+                    android:text="选日期"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <View style="@style/PermDivider" />
@@ -584,7 +630,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:paddingVertical="6dp">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -596,16 +643,16 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/term_total_weeks"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_primary" />
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
 
                     <TextView
                         android:id="@+id/tvTotalWeeksHint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textSize="11sp"
-                        android:textColor="@color/text_secondary" />
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
                 </LinearLayout>
 
                 <Button
@@ -617,11 +664,11 @@
                     android:id="@+id/tvTotalWeeks"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="56dp"
+                    android:fontFamily="sans-serif-medium"
                     android:gravity="center"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="?attr/accentColor" />
+                    android:minWidth="56dp"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="15sp" />
 
                 <Button
                     android:id="@+id/btnTotalWeeksPlus"
@@ -635,15 +682,16 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:paddingVertical="6dp">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/week_override"
-                    android:textSize="14sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btnWeekMinus"
@@ -654,10 +702,10 @@
                     android:id="@+id/tvWeekOverride"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minWidth="56dp"
                     android:gravity="center"
-                    android:textSize="14sp"
-                    android:textColor="?attr/accentColor" />
+                    android:minWidth="56dp"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btnWeekPlus"
@@ -668,21 +716,20 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="调课导致周次对不上时，用这里手动钉死一个周次；点中间的文字可以切回自动。"
-                android:textSize="11sp"
-                android:textColor="@color/text_secondary" />
+                android:layout_marginTop="2dp"
+                android:text="调课导致周次对不上时手动指定；点中间文字切回自动。"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <!-- ============ 课程 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/courses_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/courses_title" />
 
         <LinearLayout
             android:id="@+id/courseContainer"
@@ -696,10 +743,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:paddingHorizontal="4dp"
+            android:paddingHorizontal="2dp"
             android:text="@string/courses_desc"
-            android:textSize="12sp"
-            android:textColor="@color/text_secondary" />
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -709,6 +756,7 @@
 
             <Button
                 android:id="@+id/btnClearCourses"
+                style="@style/TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -716,6 +764,7 @@
 
             <Button
                 android:id="@+id/btnResetCourses"
+                style="@style/TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
@@ -725,27 +774,26 @@
 
         <!-- ============ 数据导入导出 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="@string/data_title"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="@string/data_title" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <TextView
                 android:id="@+id/tvDataSummary"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
 
             <!-- 文案里有版本号，由代码填 —— 写死在 XML 里的话
                  格式升级时这行会被忘掉，用户看到的版本号就永远停在旧版本 -->
@@ -754,13 +802,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:textSize="11sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:orientation="horizontal">
 
                 <Button
@@ -787,6 +835,7 @@
 
                 <Button
                     android:id="@+id/btnCopyJson"
+                    style="@style/TonalButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -794,6 +843,7 @@
 
                 <Button
                     android:id="@+id/btnFormatHelp"
+                    style="@style/TonalButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
@@ -816,9 +866,10 @@
                 android:id="@+id/tvTemplateState"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:lineSpacingExtra="2dp"
                 android:paddingVertical="10dp"
-                android:textSize="12sp"
-                android:textColor="?attr/accentColor" />
+                android:textColor="?attr/accentColor"
+                android:textSize="11.5sp" />
         </LinearLayout>
 
         <TextView
@@ -828,8 +879,8 @@
             android:layout_marginTop="24dp"
             android:layout_marginBottom="8dp"
             android:gravity="center"
-            android:textSize="11sp"
-            android:textColor="@color/text_secondary" />
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
 
     </LinearLayout>
 </ScrollView>

@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -72,7 +71,6 @@ object Notifier {
 
     /** 通知渠道。Android 8.0 起必须先建渠道才能发通知 */
     fun ensureChannel(ctx: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
 
         // 如果渠道已存在，直接返回。
@@ -252,8 +250,11 @@ object Notifier {
     }
 
     private fun post(ctx: Context, n: Notification) {
-        runCatching {
+        try {
             NotificationManagerCompat.from(ctx).notify(NOTIF_ID, n)
+        } catch (_: SecurityException) {
+            // 权限可能在 isAllowed() 检查之后被用户撤掉（竞态）。
+            // 这里显式接住 SecurityException，而不是用 runCatching 吞掉一切。
         }
     }
 

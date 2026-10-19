@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yxz.timetable.MainActivity
@@ -47,7 +46,6 @@ object ReminderNotifier {
     private const val WINDOW_MINUTES = 2
 
     fun ensureChannel(ctx: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
 
@@ -130,9 +128,11 @@ object ReminderNotifier {
                 .setContentIntent(openApp(ctx))
                 .setAutoCancel(true)
 
-            runCatching {
+            try {
                 NotificationManagerCompat.from(ctx)
                     .notify(NOTIF_ID_BASE + m.start, builder.build())
+            } catch (_: SecurityException) {
+                // 通知权限被撤销时静默跳过；提醒本来就没发出去，也不该崩
             }
         }
     }

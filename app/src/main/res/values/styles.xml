@@ -11,9 +11,9 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingStart">16dp</item>
         <item name="android:paddingEnd">8dp</item>
-        <item name="android:paddingVertical">10dp</item>
+        <item name="android:paddingVertical">12dp</item>
     </style>
 
     <style name="PermTextCol">
@@ -34,8 +34,15 @@
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">2dp</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">11.5sp</item>
         <item name="android:textColor">@color/text_secondary</item>
+    </style>
+
+    <!-- 次要按钮：浅强调色底 + 强调色字，比一排实心大按钮轻得多 -->
+    <style name="TonalButton" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">?attr/accentColor</item>
+        <item name="android:minHeight">44dp</item>
     </style>
 
     <style name="PermButton">
@@ -48,7 +55,7 @@
     <style name="PermDivider">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">1dp</item>
-        <item name="android:layout_marginStart">14dp</item>
+        <item name="android:layout_marginStart">16dp</item>
         <item name="android:background">@color/divider</item>
     </style>
 
@@ -92,6 +99,30 @@
       （见 CourseDetailCard），窗口动画若再带平移或缩放，两套动作会叠加出
       奇怪的轨迹 —— 窗口这一层只管透明度，连背景压暗一起渐显 / 渐隐。
     -->
+    <!-- ========== 文字层级 ==========
+         全 App 只用这几档：22 标题 / 15 卡片标题 / 13 正文 / 12 次要 / 11 分区标签。
+         之前是 10~23 之间随手定，同一个页面里出现四五种「差不多大」的字，
+         看起来就散。 -->
+
+    <!-- 分区标签：小、灰、拉开字距，只用来分段，不和正文抢注意力 -->
+    <style name="SectionLabel">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:letterSpacing">0.12</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="CardTitle">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="NavLabel" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
     <style name="CourseCardWindowAnim">
         <item name="android:windowEnterAnimation">@anim/course_card_fade_in</item>
         <item name="android:windowExitAnimation">@anim/course_card_fade_out</item>

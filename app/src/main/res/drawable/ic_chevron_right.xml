@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  右侧箭头。默认染成「次要文字色」，而不是写死黑色：
+
+  这个图用在设置页那几行「点进去」的右边，而设置页没有单独给它设 tint ——
+  写死黑色的话，深色模式下它压在 #1B1E24 的卡片上等于看不见。
+
+  课表页的翻页按钮自己也设了 tint（?attr/accentColor），ImageView 上的 tint
+  会叠在这一层之上，所以那边仍然是强调色。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
+    android:tint="@color/text_secondary"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path

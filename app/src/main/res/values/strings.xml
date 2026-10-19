@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">时间规划表</string>
+    <string name="app_name">Time Machine</string>
 
     <string name="tab_today">今天</string>
     <string name="tab_week">课表</string>
@@ -19,62 +19,59 @@
     <string name="alarm_ringing">⏰ 正在响铃</string>
     <string name="alarm_ring_stop">停 止</string>
     <string name="alarm_ring_snooze">贪睡</string>
-    <string name="alarm_empty">还没有闹钟。\n点下面的「新建闹钟」，或者在课表页点一格，用卡片上的「设置闹钟」给某门课单独设一个。</string>
+    <string name="alarm_empty">还没有闹钟。\n点下方新建，或在课表页点一格给某门课设一个。</string>
 
     <string name="now_label">此刻</string>
-    <string name="next_label">接着</string>
 
     <string name="resident_title">常驻通知栏</string>
-    <string name="resident_desc">开启后，通知栏会一直显示此刻该做什么，并在每个时段切换时自动更新。不开启时 App 完全静止，不消耗任何电量。</string>
 
-    <string name="perm_title">运行权限自检</string>
+    <string name="perm_title">运行权限</string>
     <string name="perm_notif">通知权限</string>
-    <string name="perm_exact">精确闹钟（准时切换的关键）</string>
+    <string name="perm_exact">精确闹钟</string>
     <string name="perm_battery">电池优化白名单</string>
-    <string name="perm_lockscreen">锁屏显示通知</string>
-    <string name="perm_autostart">自启动 / 后台运行（荣耀手机必做）</string>
+    <string name="perm_autostart">自启动 / 后台运行</string>
 
     <string name="remind_title">课前提醒</string>
     <string name="remind_lead">提前多少分钟提醒</string>
-    <string name="remind_desc">每节课开始前，发一条会响铃震动的通知。0 表示关闭。这和常驻通知是两条独立的通知 —— 常驻那条一直安静地显示「此刻该做什么」，这条只在课前响一次。</string>
+    <string name="remind_desc">每节课前响一次，会响铃震动；0 表示关闭。</string>
     <string name="export_choice_title">导出内容</string>
 
     <string name="guide_title">用 AI 生成数据</string>
     <string name="guide_copy_course">① 复制「课表」提示词</string>
     <string name="guide_copy_template">② 复制「作息模板」提示词</string>
-    <string name="guide_copy_fix">③ 导入失败？复制「报错修复」提示词</string>
-    <string name="guide_s1_title">第一步：复制提示词</string>
-    <string name="guide_s2_title">第二步：照着做</string>
-    <string name="guide_s3_title">提示词内容</string>
-    <string name="guide_s3_desc">下面是「课表」提示词的实际内容。你可以在这里核对、或者手动长按选中复制。</string>
-    <string name="guide_footer">提示词里已经带上了你当前的学期信息（名称 / 起始日 / 总周数），\n所以 AI 不会在这些地方猜错。</string>
+    <string name="guide_copy_fix">③ 复制「报错修复」提示词</string>
+    <string name="guide_s1_title">复制提示词</string>
+    <string name="guide_s2_title">操作步骤</string>
+    <string name="guide_s3_title">提示词预览</string>
+    <string name="guide_s3_desc">下面就是「课表」提示词，可直接长按选中复制。</string>
+    <string name="guide_footer">提示词里已带上学期的名称、起始日与总周数。</string>
 
     <string name="appearance_title">外观</string>
     <string name="theme_title">主题颜色</string>
     <string name="week_dots_title">课表页周点阵预览</string>
-    <string name="week_dots_desc">课表页周次卡片里的近五周点阵（有课高亮 / 无课灰）。两节连堂的标准课表会自动两课并一课显示。</string>
+    <string name="week_dots_desc">近五周课程密度，有课高亮。</string>
 
     <string name="lockscreen_title">锁屏显示</string>
     <string name="lockscreen_show">在锁屏上显示通知内容</string>
-    <string name="lockscreen_desc">关闭后，锁屏上不会出现「此刻该做什么」这条通知，但解锁后通知栏照常显示。\n\n注意：这一项只控制本 App 的意愿。国产 ROM 还有一道系统开关，默认是关的 —— 不开的话，即使这里打开，锁屏上依然什么都看不到。\n\n而且那个开关不在应用页面上，要点进「此刻该做什么」这个通知渠道才看得到。</string>
     <string name="btn_open_sys_lockscreen">去开启系统锁屏通知</string>
 
     <string name="term_title">学期</string>
     <string name="term_name">学期名称</string>
     <string name="term_start">教学第 1 周的周一</string>
     <string name="week_override">手动指定周次</string>
-    <string name="week_auto">自动</string>
 
     <string name="data_title">数据</string>
-    <string name="data_desc">导入 / 导出使用统一的 JSON 格式（timetable v%1$s）。点「格式说明」可以看到完整写法。</string>
-    <string name="btn_import">导入课表</string>
-    <string name="btn_export">导出课表</string>
+    <string name="data_desc">统一 JSON 格式（v%1$s），点「格式说明」查看写法。</string>
+    <!-- 导入导出的不只是课表：还带着学期、作息模板、日型配置。
+         按钮上写「导入课表」会让只改模板的人以为这条路走不通 -->
+    <string name="btn_import">导入数据</string>
+    <string name="btn_export">导出数据</string>
     <string name="btn_copy_json">复制 JSON</string>
     <string name="btn_format_help">格式说明</string>
-    <string name="btn_ai_guide">不会写？用 AI 生成（含提示词）</string>
+    <string name="btn_ai_guide">不会写？用 AI 生成</string>
 
     <string name="courses_title">课程</string>
-    <string name="courses_desc">取消勾选可以临时停掉某门课（放假、停课时用）。周次和教室来自你的课表，改完立刻生效。</string>
+    <string name="courses_desc">取消勾选即可临时停课，改完立即生效。</string>
     <string name="reset_courses">恢复内置课表</string>
     <string name="clear_courses">清空所有课程</string>
     <string name="term_total_weeks">总周数</string>
@@ -82,7 +79,7 @@
     <string name="first_launch_title">第一次使用</string>
     <string name="first_launch_blank">从空白开始</string>
     <string name="first_launch_keep">用内置示例课表</string>
-    <string name="first_launch_msg">这个 App 内置了一份示例课表（示例大学 2026 级 · 大一上），包含 19 门课和大学作息模板。\n\n如果你想用自己的课表，请选「从空白开始」—— 然后到「设置 → 数据」里导入或用 AI 生成你自己的课表。\n\n选错了也没关系，设置页随时可以清空或恢复。</string>
+    <string name="first_launch_msg">内置一份示例课表（示例大学 2026 级 · 大一上），含 19 门课与作息模板。\n\n用自己的课表请选「从空白开始」，之后到「设置 → 数据」导入或用 AI 生成。</string>
 
-    <string name="hint_honor">荣耀 / 华为手机必做：设置 → 应用 → 应用启动管理 → 找到「时间规划表」→ 关闭「自动管理」→ 打开「允许自启动」「允许关联启动」「允许后台活动」。否则系统会在锁屏后杀掉闹钟。</string>
+    <string name="hint_honor">荣耀 / 华为：请在系统设置里允许自启动与后台活动，否则锁屏后闹钟会被杀掉。</string>
 </resources>

@@ -81,10 +81,30 @@ class Store(context: Context) {
             saveCourses(list)
             return list
         }
-        return runCatching {
+        return try {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }.toMutableList()
-        }.getOrElse { BuiltinCourses.LIST.toMutableList() }
+            val out = mutableListOf<Course>()
+            var bad = 0
+            for (i in 0 until arr.length()) {
+                try {
+                    out += fromJson(arr.getJSONObject(i))
+                } catch (_: Exception) {
+                    // 一条坏记录不该连坐整张课表 —— 跳过它，其余照常显示
+                    bad++
+                }
+            }
+            when {
+                bad == 0 -> Unit
+                out.isEmpty() -> noteLoadError("课表", "全部 $bad 门课解析失败")
+                else -> noteLoadError("课表", "$bad 门课解析失败，已跳过")
+            }
+            if (out.isEmpty() && bad > 0) BuiltinCourses.LIST.toMutableList() else out
+        } catch (e: Exception) {
+            // ⚠️ 回退必须**留下痕迹**。以前这里静默退回内置课表，
+            // 用户只会看到「我的课表怎么变成示例了」，却不知道发生了什么。
+            noteLoadError("课表", e.message)
+            BuiltinCourses.LIST.toMutableList()
+        }
     }
 
     fun saveCourses(list: List<Course>) {
@@ -94,6 +114,7 @@ class Store(context: Context) {
     }
 
     fun resetCourses() {
+        disableCourseAlarms()
         sp.edit().remove("courses").apply()
     }
 
@@ -110,7 +131,27 @@ class Store(context: Context) {
      * **「没有数据」和「数据是空的」是两种状态，不能混用同一个表示。**
      */
     fun clearCourses() {
+        disableCourseAlarms()
         saveCourses(emptyList())
+    }
+
+    /**
+     * 课表整个换掉 / 清空时，绑在课上的闹钟必须停用。
+     *
+     * 否则会出现一种很坑的状态：闹钟在列表里看着是「开着」的，
+     * 但它绑的课已经没了，永远不响 —— 用户以为有保险，实际没有。
+     */
+    private fun disableCourseAlarms() {
+        val list = alarms()
+        var changed = false
+        for (i in list.indices) {
+            val a = list[i]
+            if (a.source == AlarmSource.COURSE && a.enabled) {
+                list[i] = a.copy(enabled = false)
+                changed = true
+            }
+        }
+        if (changed) saveAlarms(list)
     }
 
     // ---------------- 首次启动 ----------------
@@ -151,12 +192,21 @@ class Store(context: Context) {
      */
     fun templates(): TemplateSet {
         val raw = sp.getString("templates", "") ?: ""
+        var failed = false
         val custom = if (raw.isBlank()) {
             emptyMap()
         } else {
-            // 占位格的节次按当前节数信息校验 —— 结构改小之后，
-            // 超出结构的存储内容会被当作坏数据丢弃（回落到内置模板）
-            ScheduleFormat.templatesFromJson(raw, nodeCount)
+            try {
+                ScheduleFormat.templatesFromJson(raw, nodeCount)
+            } catch (e: Exception) {
+                failed = true
+                noteLoadError("作息模板", e.message)
+                emptyMap()
+            }.also { parsed ->
+                // 一份合法的模板 JSON 至少有一套模板；解析出空表说明内容坏了。
+                // templatesFromJson 自己会吞异常，所以只能从这里补一刀。
+                if (!failed && parsed.isEmpty()) noteLoadError("作息模板", "内容为空")
+            }
         }
         return TemplateSet(custom, dayTypeConfig())
     }
@@ -400,15 +450,71 @@ class Store(context: Context) {
         get() = sp.getString("alarm_sound", "") ?: ""
         set(v) = sp.edit().putString("alarm_sound", v).apply()
 
-    /** 贪睡中的闹钟 id（空 = 没在贪睡） */
-    var snoozeAlarmId: String
-        get() = sp.getString("alarm_snooze_id", "") ?: ""
-        set(v) = sp.edit().putString("alarm_snooze_id", v).apply()
+    /**
+     * 贪睡中的闹钟 id 列表（空 = 没在贪睡）。
+     *
+     * 用列表而不是单个 id：两个闹钟设在同一分钟很常见（起床 + 吃药），
+     * 它们会一起响；只记一个的话，另一个按了贪睡就永远丢了。
+     * 旧版本存的是单个 `alarm_snooze_id`，这里仍读它作为迁移来源。
+     */
+    var snoozeAlarmIds: List<String>
+        get() {
+            val raw = sp.getString("alarm_snooze_ids", "") ?: ""
+            if (raw.isNotBlank()) {
+                return runCatching {
+                    val arr = JSONArray(raw)
+                    (0 until arr.length()).map { arr.getString(it) }
+                }.getOrDefault(emptyList())
+            }
+            val legacy = sp.getString("alarm_snooze_id", "") ?: ""
+            return if (legacy.isBlank()) emptyList() else listOf(legacy)
+        }
+        set(v) {
+            sp.edit().putString("alarm_snooze_ids", JSONArray(v).toString()).apply()
+        }
 
     /** 贪睡到什么时候（epoch 毫秒，0 = 没在贪睡） */
     var snoozeAlarmUntil: Long
         get() = sp.getLong("alarm_snooze_until", 0L)
         set(v) = sp.edit().putLong("alarm_snooze_until", v).apply()
+
+    /**
+     * 系统里**排着的下一次用户闹钟**（epoch 毫秒，0 = 没有）。
+     *
+     * 它不参与响铃，只有一个用途：发现「该响却没响」。
+     * 手机没电、被 ROM 杀掉、或系统晚了十几分钟才放行时，闹钟会彻底沉默；
+     * 没有这个记录，用户永远不知道发生了什么。
+     */
+    var alarmExpectedAt: Long
+        get() = sp.getLong("alarm_expected_at", 0L)
+        set(v) = sp.edit().putLong("alarm_expected_at", v).apply()
+
+    var alarmExpectedLabel: String
+        get() = sp.getString("alarm_expected_label", "") ?: ""
+        set(v) = sp.edit().putString("alarm_expected_label", v).apply()
+
+    /** 被判定为「错过」的那一次（epoch 毫秒，0 = 没有）。用户点掉提示后清空 */
+    var missedAlarmAt: Long
+        get() = sp.getLong("missed_alarm_at", 0L)
+        set(v) = sp.edit().putLong("missed_alarm_at", v).apply()
+
+    var missedAlarmLabel: String
+        get() = sp.getString("missed_alarm_label", "") ?: ""
+        set(v) = sp.edit().putString("missed_alarm_label", v).apply()
+
+    /** 最近一次**真的响了**的时刻与名称（闹钟页显示「上次响铃」，24 小时内有效） */
+    var lastRangAt: Long
+        get() = sp.getLong("last_rang_at", 0L)
+        set(v) = sp.edit().putLong("last_rang_at", v).apply()
+
+    var lastRangLabel: String
+        get() = sp.getString("last_rang_label", "") ?: ""
+        set(v) = sp.edit().putString("last_rang_label", v).apply()
+
+    /** 响铃持续几分钟后自动停（1..10，默认 3）。再长就没意义了，叫醒不是把人吵到起床 */
+    var ringMinutes: Int
+        get() = sp.getInt("ring_minutes", 3).coerceIn(1, 10)
+        set(v) = sp.edit().putInt("ring_minutes", v.coerceIn(1, 10)).apply()
 
     /** 去重键「日期|闹钟id」—— 同一次响铃不因为进程被杀重新走一遍而响第二遍 */
     var lastAlarmKey: String
@@ -418,10 +524,23 @@ class Store(context: Context) {
     fun alarms(): MutableList<Alarm> {
         val raw = sp.getString("alarms", "") ?: ""
         if (raw.isBlank()) return mutableListOf()
-        return runCatching {
+        return try {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map { fromAlarmJson(arr.getJSONObject(it)) }.toMutableList()
-        }.getOrElse { mutableListOf() }
+            val out = mutableListOf<Alarm>()
+            var bad = 0
+            for (i in 0 until arr.length()) {
+                try {
+                    out += fromAlarmJson(arr.getJSONObject(i))
+                } catch (_: Exception) {
+                    bad++
+                }
+            }
+            if (bad > 0) noteLoadError("闹钟", "$bad 条解析失败，已跳过")
+            out
+        } catch (e: Exception) {
+            noteLoadError("闹钟", e.message)
+            mutableListOf()
+        }
     }
 
     fun saveAlarms(list: List<Alarm>) {
@@ -443,17 +562,28 @@ class Store(context: Context) {
     fun customHolidays(): MutableList<HolidayDay> {
         val raw = sp.getString("custom_holidays", "") ?: ""
         if (raw.isBlank()) return mutableListOf()
-        return runCatching {
+        return try {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map {
-                val o = arr.getJSONObject(it)
-                HolidayDay(
-                    name = o.optString("name", ""),
-                    date = LocalDate.parse(o.getString("date")),
-                    offDay = o.optBoolean("off", true)
-                )
-            }.toMutableList()
-        }.getOrElse { mutableListOf() }
+            val out = mutableListOf<HolidayDay>()
+            var bad = 0
+            for (i in 0 until arr.length()) {
+                try {
+                    val o = arr.getJSONObject(i)
+                    out += HolidayDay(
+                        name = o.optString("name", ""),
+                        date = LocalDate.parse(o.getString("date")),
+                        offDay = o.optBoolean("off", true)
+                    )
+                } catch (_: Exception) {
+                    bad++
+                }
+            }
+            if (bad > 0) noteLoadError("节假日", "$bad 天解析失败，已跳过")
+            out
+        } catch (e: Exception) {
+            noteLoadError("节假日", e.message)
+            mutableListOf()
+        }
     }
 
     fun saveCustomHolidays(list: List<HolidayDay>) {
@@ -487,6 +617,12 @@ class Store(context: Context) {
         put("lead", a.leadMinutes)
         put("snooze", a.snoozeMinutes)
         put("once", a.onceDate?.toString() ?: "")
+        put("skip", a.skipDate?.toString() ?: "")
+        // 按 tag 响的闹钟（v1.13.6）。旧版本读到这几个键只会当作没看见 ——
+        // 它们出现在闹钟的本地存储里，不参与课表导出，所以不影响和电脑版互通
+        put("moment", a.momentTitle)
+        put("momentKind", a.momentKind?.name ?: "")
+        put("momentDayType", a.momentDayType?.id ?: "")
     }
 
     private fun fromAlarmJson(o: JSONObject): Alarm {
@@ -507,7 +643,16 @@ class Store(context: Context) {
             leadMinutes = o.optInt("lead", 0),
             snoozeMinutes = o.optInt("snooze", Alarms.MIN_SNOOZE_MINUTES),
             onceDate = o.optString("once", "").takeIf { it.isNotBlank() }
-                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+            skipDate = o.optString("skip", "").takeIf { it.isNotBlank() }
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+            momentTitle = o.optString("moment", ""),
+            momentKind = o.optString("momentKind", "").takeIf { it.isNotBlank() }
+                ?.let { runCatching { Kind.valueOf(it) }.getOrNull() },
+            // 日型按 id 存（"1"…"7"），不按枚举名 —— 名字是给人看的，
+            // 而且 REST 的 id 是 "7"，和枚举顺序无关
+            momentDayType = o.optString("momentDayType", "").takeIf { it.isNotBlank() }
+                ?.let { id -> DayType.entries.firstOrNull { it.id == id } }
         )
     }
 
@@ -551,7 +696,12 @@ class Store(context: Context) {
 
     /** 替换模式：文件里的课表完全取代现有的 */
     fun replaceCourses(incoming: List<Course>) {
-        saveCourses(renumber(incoming))
+        // 旧课表与旧闹钟都要在重编号**之前**取出来：课程闹钟按 courseId 绑定，
+        // 替换后要按自然键把它们接回新 id（见 Alarms.remapCourseAlarms）。
+        val old = courses()
+        val fresh = renumber(incoming)
+        saveAlarms(Alarms.remapCourseAlarms(alarms(), old, fresh))
+        saveCourses(fresh)
     }
 
     /**
@@ -564,18 +714,21 @@ class Store(context: Context) {
     fun mergeCourses(incoming: List<Course>): Int {
         val existing = courses()
         val seen = existing.map { keyOf(it) }.toMutableSet()
+        var next = (existing.mapNotNull { it.id.removePrefix("c").toIntOrNull() }.maxOrNull() ?: 0) + 1
         var added = 0
         for (c in incoming) {
             if (seen.add(keyOf(c))) {
-                existing += c
+                // ⚠️ 只给**新加入**的课编号，existing 的 id 一个都不动 ——
+                // 以前整表重编号，课程闹钟会跟着指向别的课。
+                existing += c.copy(id = "c%03d".format(next++))
                 added++
             }
         }
-        saveCourses(renumber(existing))
+        saveCourses(existing)
         return added
     }
 
-    private fun keyOf(c: Course) = "${c.name}|${c.dayOfWeek}|${c.startNode}"
+    private fun keyOf(c: Course) = Alarms.courseKey(c)
 
     /**
      * 重新编号。
@@ -621,6 +774,35 @@ class Store(context: Context) {
         )
     }
 
+    // ---------------- 读取失败记录 ----------------
+
+    /**
+     * 最近一次读取失败的对象（"课表" / "闹钟" / "作息模板" / "节假日"），null = 一切正常。
+     *
+     * 存进 SharedPreferences 而不是放内存字段：Store 是每次用都新建的，
+     * 失败发生在哪个实例上不重要 —— 设置页新建一个 Store 也得能读到它。
+     */
+    val lastLoadError: String?
+        get() {
+            val err = sp.getString(KEY_LOAD_ERROR, null) ?: return null
+            // 被用户忽略过的同一条错误不再弹；错误内容变了（换了别的对象 / 原因）会重新提示
+            return if (err == sp.getString(KEY_LOAD_ERROR_DISMISSED, null)) null else err
+        }
+
+    /** 用户确认过提示之后不再显示这一条（数据本身没修，只是不再打扰） */
+    fun clearLoadError() {
+        val err = sp.getString(KEY_LOAD_ERROR, null) ?: return
+        sp.edit().putString(KEY_LOAD_ERROR_DISMISSED, err).apply()
+    }
+
+    /** 读坏了一次，记下是谁、什么原因。同一句话不反复写盘 */
+    private fun noteLoadError(what: String, detail: String?) {
+        val text = "$what|${detail.orEmpty().take(120)}"
+        if (sp.getString(KEY_LOAD_ERROR, null) != text) {
+            sp.edit().putString(KEY_LOAD_ERROR, text).apply()
+        }
+    }
+
     companion object {
         val DEFAULT_TERM_START: LocalDate = LocalDate.of(2026, 9, 7)
         const val DEFAULT_TERM_NAME = "示例大学 2026 级 · 大一上"
@@ -636,5 +818,11 @@ class Store(context: Context) {
 
         /** 节数信息在 SharedPreferences 里的键 */
         private const val KEY_PERIODS = "periods"
+
+        /** 最近一次读取失败的记录（`对象|原因`），见 [lastLoadError] */
+        private const val KEY_LOAD_ERROR = "load_error"
+
+        /** 用户忽略过的那一条错误原文 */
+        private const val KEY_LOAD_ERROR_DISMISSED = "load_error_dismissed"
     }
 }

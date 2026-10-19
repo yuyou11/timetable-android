@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  间距与圆角的统一刻度。
+
+  页面里只允许出现这几档间距（4 / 8 / 12 / 16 / 24），
+  不再出现 10、14、18 这种「一手一个」的数字 ——
+  间距一乱，界面看起来就是潦草的，哪怕每个控件本身都没错。
+-->
+<resources>
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">12dp</dimen>
+    <dimen name="space_l">16dp</dimen>
+
+    <dimen name="page_padding">16dp</dimen>
+    <dimen name="card_radius">16dp</dimen>
+    <dimen name="card_padding">16dp</dimen>
+    <dimen name="section_gap">24dp</dimen>
+</resources>

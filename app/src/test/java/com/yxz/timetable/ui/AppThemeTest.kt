@@ -91,11 +91,9 @@ class AppThemeTest {
     //  二、色值必须在日间和夜间都定义
     // ============================================================
 
-    /** 主题枚举 -> 它用到的两个色值名 */
-    private fun colorNamesOf(theme: AppTheme): List<String> = when (theme) {
-        AppTheme.BLUE -> listOf("accent_blue", "accent_soft_blue")
-        AppTheme.GREEN -> listOf("accent_green", "accent_soft_green")
-    }
+    /** 主题枚举 -> 它用到的两个色值名。命名约定是 accent_<key> / accent_soft_<key> */
+    private fun colorNamesOf(theme: AppTheme): List<String> =
+        listOf("accent_${theme.key}", "accent_soft_${theme.key}")
 
     @Test
     fun `每套主题的色值在日间都定义了`() {
@@ -194,7 +192,7 @@ class AppThemeTest {
 
     @Test
     fun `主题属性本身确实定义在 themes xml 里`() {
-        // 属性只有被主题赋了值才有意义。这里确认两套主题各自都赋了
+        // 属性只有被主题赋了值才有意义。这里确认每套主题都赋了
         // accentColor 和 accentSoftColor —— 漏一个的话那个主题下
         // 相关控件会拿到空值/回落色。
         val xml = stripComments(res("values/themes.xml"))
@@ -206,6 +204,38 @@ class AppThemeTest {
                 count >= AppTheme.entries.size
             )
         }
+    }
+
+    @Test
+    fun `每套主题都把会染色控件的槽位设满了`() {
+        // ★ 这条守的是用户实际看到的问题：换主题之后标题、按钮字、导航条都变了，
+        // 可**开关的轨道、单选圈、浅底按钮的底色**还是上一套颜色。
+        //
+        // 原因是这些控件不认 ?attr/accentColor，它们认主题里另外几个槽：
+        //   android:colorControlActivated / colorAccent  → 老 AppCompat 的开关、单选、复选
+        //   colorPrimary                                 → 对话框按钮、输入框光标；
+        //                                                  **M3 开关打开时的圆钮**
+        //   colorPrimaryContainer                        → **M3 开关打开时的轨道（槽）**
+        //   colorSecondaryContainer                      → TonalButton 底色、底部导航胶囊
+        // 漏设任何一个，那一类控件就会退回 Material 的默认紫色 —— 不报错，只是难看。
+        val xml = stripComments(res("values/themes.xml"))
+        val slots = listOf(
+            "accentColor", "accentSoftColor",
+            "colorPrimary", "colorOnPrimary",
+            "colorPrimaryContainer", "colorOnPrimaryContainer",
+            "colorSecondary", "colorOnSecondary",
+            "colorSecondaryContainer", "colorOnSecondaryContainer",
+            "colorAccent", "android:colorControlActivated"
+        )
+        val n = AppTheme.entries.size
+        val missing = slots.filter { slot ->
+            Regex("""<item name="${Regex.escape(slot)}">""").findAll(xml).count() < n
+        }
+        assertTrue(
+            "themes.xml 里这些槽位没有每套主题都设一遍（共 $n 套）：$missing —— " +
+                    "漏设的那套换色后，开关 / 单选圈 / 浅底按钮不会跟着变",
+            missing.isEmpty()
+        )
     }
 
     @Test

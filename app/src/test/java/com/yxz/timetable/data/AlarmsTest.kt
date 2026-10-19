@@ -276,6 +276,98 @@ class AlarmsTest {
         )
     }
 
+    // ---------- 四·五、跳过下一次 / 过期 ----------
+
+    @Test
+    fun `跳过下一次只让那一天不响`() {
+        val a = alarmAt(6, 30, Alarms.WORKDAYS)
+        val wed = LocalDate.of(2026, 11, 18)
+        val skipped = a.copy(skipDate = wed)
+        assertNull("跳过的那天不响", fire(skipped, wed))
+        assertEquals("前一天照常", 6 * 60 + 30, fire(skipped, wed.minusDays(1))!!)
+        assertEquals("后一天照常", 6 * 60 + 30, fire(skipped, wed.plusDays(1))!!)
+    }
+
+    @Test
+    fun `课程闹钟也能跳过下一次`() {
+        val a = courseAlarm("c14")                       // 周四的课
+        val thu = LocalDate.of(2026, 9, 24)
+        assertNotNull("原本该响", fire(a, thu))
+        assertNull("跳过之后这一天不响", fire(a.copy(skipDate = thu), thu))
+    }
+
+    @Test
+    fun `跳过的那天不会被 nextFire 排进去`() {
+        val a = alarmAt(6, 30, Alarms.WORKDAYS)
+            .copy(skipDate = LocalDate.of(2026, 11, 18))   // 周三
+        val next = Alarms.nextFire(
+            listOf(a), LocalDateTime.of(2026, 11, 17, 20, 0),
+            courses, templates, holidays, ::weekOf
+        )!!
+        assertEquals("跳过周三之后，下一次是周四", LocalDate.of(2026, 11, 19), next.date)
+    }
+
+    @Test
+    fun `只响一次过期之后会被标出来 也不再被排程`() {
+        val a = Alarm(
+            id = "a1", hour = 7, minute = 0, days = emptySet(),
+            onceDate = LocalDate.of(2026, 11, 19)
+        )
+        assertFalse("当天还没过期", Alarms.isExpiredOneShot(a, LocalDate.of(2026, 11, 19)))
+        assertTrue("过了那天就是过期", Alarms.isExpiredOneShot(a, LocalDate.of(2026, 11, 20)))
+        assertFalse(
+            "重复闹钟没有过期这回事",
+            Alarms.isExpiredOneShot(alarmAt(7, 0, Alarms.WORKDAYS), LocalDate.of(2026, 11, 20))
+        )
+        assertNull(
+            Alarms.nextFire(
+                listOf(a), LocalDateTime.of(2026, 11, 20, 0, 1),
+                courses, templates, holidays, ::weekOf
+            )
+        )
+    }
+
+    @Test
+    fun `替换课表后 课程闹钟按自然键接回新 id`() {
+        val old = listOf(
+            Course("c001", "高数", 1, 1, 2, (1..4).toSet()),
+            Course("c002", "英语", 2, 3, 4, (1..4).toSet())
+        )
+        // 新表顺序颠倒 —— id 全变了，但两门课还是同样两门
+        val new = listOf(
+            Course("c001", "英语", 2, 3, 4, (1..4).toSet()),
+            Course("c002", "高数", 1, 1, 2, (1..4).toSet())
+        )
+        val alarms = listOf(
+            Alarm(id = "a1", days = emptySet(), source = AlarmSource.COURSE, courseId = "c001", leadMinutes = 10)
+        )
+        val out = Alarms.remapCourseAlarms(alarms, old, new)
+        assertEquals("高数在新表里是 c002", "c002", out.first().courseId)
+        assertTrue("接上了就不该被停用", out.first().enabled)
+    }
+
+    @Test
+    fun `替换后找不到的课程闹钟会被停用`() {
+        val old = listOf(Course("c001", "高数", 1, 1, 2, (1..4).toSet()))
+        val new = listOf(Course("c001", "英语", 2, 3, 4, (1..4).toSet()))
+        val alarms = listOf(
+            Alarm(id = "a1", days = emptySet(), source = AlarmSource.COURSE, courseId = "c001", leadMinutes = 10)
+        )
+        val out = Alarms.remapCourseAlarms(alarms, old, new)
+        assertFalse("课没了就该停用，不能留一条永远不响的闹钟", out.first().enabled)
+    }
+
+    @Test
+    fun `手建闹钟不受课表替换影响`() {
+        val manual = alarmAt(6, 30, Alarms.WORKDAYS)
+        val out = Alarms.remapCourseAlarms(
+            listOf(manual),
+            listOf(Course("c001", "高数", 1, 1, 2, (1..4).toSet())),
+            emptyList()
+        )
+        assertEquals(manual, out.first())
+    }
+
     // ---------- 五、文案与辅助 ----------
 
     @Test
@@ -316,5 +408,112 @@ class AlarmsTest {
         // Doze 下穿透闹钟大约每 9 分钟才放行一次，5 分钟会被系统推到 10 分钟后
         assertEquals(10, Alarms.MIN_SNOOZE_MINUTES)
         assertTrue(Alarm(id = "a").snoozeMinutes >= Alarms.MIN_SNOOZE_MINUTES)
+    }
+
+    // ---------- 六、按格子响的闹钟（今日页点一格设的那种） ----------
+
+    /**
+     * 七种日型都换成同一套简单模板，只为了让断言不依赖任何一天的课表。
+     *
+     * 用 `DayType.entries` 全铺满而不是只写 A：哪天落到哪套模板是引擎算出来的，
+     * 测试里再猜一遍没意义，也不该因为默认映射改了就让这些断言失败。
+     */
+    private fun flatTemplates(includeLunch: Boolean = true): TemplateSet {
+        val blocks = buildList {
+            add(Block(0, 7 * 60, "睡觉", "", Kind.SLEEP))
+            add(Block(7 * 60, 8 * 60, "早读", "", Kind.STUDY))
+            add(Block(8 * 60, 12 * 60, "自习", "", Kind.STUDY))
+            if (includeLunch) add(Block(12 * 60, 13 * 60, "午餐", "", Kind.MEAL))
+            add(Block(13 * 60, 24 * 60, "自由", "", Kind.FREE))
+        }
+        return TemplateSet(custom = DayType.entries.associateWith { blocks })
+    }
+
+    private fun fireMoment(a: Alarm, date: LocalDate, set: TemplateSet = flatTemplates()) =
+        Alarms.fireMinuteOfDay(a, date, weekOf(date), emptyList(), set, holidays)
+
+    /** 普通周三，不是节假日 */
+    private val wed = LocalDate.of(2026, 11, 18)
+
+    @Test
+    fun `按格子响的闹钟 0 分钟档就是到点响`() {
+        val a = Alarms.forMoment("a100", "午餐", Kind.MEAL, setOf(3), leadMinutes = 0)
+        assertEquals("到点 = 这一格的开始时刻", 12 * 60, fireMoment(a, wed)!!)
+    }
+
+    @Test
+    fun `按格子响的闹钟 提前量从这一格的开始时刻往前推`() {
+        val a = Alarms.forMoment("a101", "午餐", Kind.MEAL, setOf(3), leadMinutes = 5)
+        assertEquals(11 * 60 + 55, fireMoment(a, wed)!!)
+    }
+
+    @Test
+    fun `按格子响的闹钟 时间轴上没有这一格就不响`() {
+        // 把午餐从模板里拿掉 —— 用户改了作息之后，这一格不存在了，闹钟自然不该响
+        val a = Alarms.forMoment("a102", "午餐", Kind.MEAL, setOf(3))
+        assertNull(fireMoment(a, wed, flatTemplates(includeLunch = false)))
+    }
+
+    @Test
+    fun `按格子响的闹钟 只在这一天响`() {
+        val a = Alarms.forMoment("a103", "早读", Kind.STUDY, setOf(3))
+        assertNotNull("周三该响", fireMoment(a, wed))
+        assertNull("周四是另一天", fireMoment(a, LocalDate.of(2026, 11, 19)))
+    }
+
+    @Test
+    fun `标题一样但性质不同 不算同一格`() {
+        // 「自由」和「自习」标题不同；反过来同名不同性质（比如都是「放松」
+        // 但一格是 TRAIN 一格是 FREE）也不该被认成一格
+        val a = Alarms.forMoment("a104", "早读", Kind.TRAIN, setOf(3))
+        assertNull("早读是 STUDY，不是 TRAIN", fireMoment(a, wed))
+    }
+
+    @Test
+    fun `按日型响的闹钟 日型不符就不响`() {
+        // 没课的工作日 → REST；排上一节课就不再是 REST 了（日型变了）
+        val a = Alarms.forMoment("a105", "午餐", Kind.MEAL, setOf(3), DayType.REST)
+        assertNotNull("休息日该响", fireMoment(a, wed))
+
+        val withCourse = listOf(Course("c1", "高等数学", 3, 1, 2, setOf(weekOf(wed))))
+        assertNull(
+            "那天有早八，日型就不是 REST 了",
+            Alarms.fireMinuteOfDay(a, wed, weekOf(wed), withCourse, flatTemplates(), holidays)
+        )
+    }
+
+    @Test
+    fun `提前量比这一天还早 就不响而不是算出负数`() {
+        // 睡觉这一格从 00:00 开始，提前 5 分钟 → -5 分钟，那天没有这一刻
+        val a = Alarms.forMoment("a106", "睡觉", Kind.SLEEP, setOf(3), leadMinutes = 5)
+        assertNull(fireMoment(a, wed))
+    }
+
+    @Test
+    fun `按格子响的闹钟的文案`() {
+        val a = Alarms.forMoment("a107", "午餐", Kind.MEAL, setOf(3), leadMinutes = 0)
+        assertEquals("午餐 · 到点提醒", Alarms.describe(a, emptyList()))
+        assertEquals("每周三", Alarms.momentScope(a))
+        assertEquals("提前 5 分钟", a.copy(leadMinutes = 5).leadText)
+
+        val byType = a.copy(momentDayType = DayType.A)
+        assertEquals("每个「A 型日」", Alarms.momentScope(byType))
+    }
+
+    @Test
+    fun `时间轴上已经没有这一格时 闹钟要能被标出来`() {
+        val a = Alarms.forMoment("a108", "午餐", Kind.MEAL, setOf(3))
+        assertFalse(
+            "午餐还在时间轴上",
+            Alarms.isLostMoment(a, emptyList(), flatTemplates(), this::weekOf, wed)
+        )
+        assertTrue(
+            "模板里没午餐了，两周内都不会再出现",
+            Alarms.isLostMoment(a, emptyList(), flatTemplates(includeLunch = false), this::weekOf, wed)
+        )
+        assertFalse(
+            "课程闹钟不走这套判断",
+            Alarms.isLostMoment(courseAlarm("c14"), courses, templates, this::weekOf, wed)
+        )
     }
 }

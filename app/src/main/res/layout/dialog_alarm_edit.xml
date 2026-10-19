@@ -35,9 +35,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:timePickerMode="spinner" />
+            android:timePickerMode="clock" />
 
         <TextView
+            android:id="@+id/tvRepeatTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -73,6 +74,15 @@
 
         <LinearLayout
             android:id="@+id/leadRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal"
+            android:visibility="gone" />
+
+        <!-- 「自定义」单独一行：六档挤成一行时，最后那个 chip 会被压成「自…」 -->
+        <LinearLayout
+            android:id="@+id/leadCustomRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -150,7 +160,7 @@
                     android:layout_marginTop="2dp"
                     android:includeFontPadding="false"
                     android:lineSpacingExtra="2dp"
-                    android:text="法定放假日不响；补班日（周末上班）按工作日响"
+                    android:text="放假日不响，补班日按工作日响"
                     android:textColor="@color/text_secondary"
                     android:textSize="11.5sp" />
             </LinearLayout>

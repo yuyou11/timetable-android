@@ -61,10 +61,9 @@ class GenerateGuideActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
 
         binding.tvIntro.text =
-            "不知道怎么写出这个 App 要的 JSON 格式？不用学 —— 让 AI 替你转。\n\n" +
-                    "把提示词复制给豆包 / DeepSeek / Kimi / ChatGPT 任意一个，" +
-                    "再把你的课表（截图、Excel、文字都行）一起发过去，" +
-                    "它就会吐出可以直接导入的文件。"
+            "不用学 JSON —— 让 AI 替你转。\n" +
+                    "把提示词复制给豆包 / DeepSeek / Kimi / ChatGPT，" +
+                    "连同课表（截图、Excel、文字都行）一起发过去，它就会吐出能直接导入的文件。"
 
         // 预览只显示课表提示词 —— 模板那段更长，要看的话复制走看更方便
         binding.tvPromptPreview.text = coursePrompt
@@ -105,75 +104,36 @@ class GenerateGuideActivity : AppCompatActivity() {
     private fun steps(): List<Step> = listOf(
         Step(
             "复制提示词",
-            "点上面「① 复制『课表』提示词」。\n" +
-                    "提示词里已经带上了你当前的学期信息（${store.termName}，" +
-                    "第 1 周从 ${store.termStartIso} 起，共 ${store.totalWeeks} 周），" +
-                    "所以 AI 不会在这些地方猜错。"
+            "点上面「① 复制课表提示词」。\n" +
+                    "提示词里已经带好学期信息（${store.termName}，第 1 周从 ${store.termStartIso} 起，" +
+                    "共 ${store.totalWeeks} 周）。"
         ),
         Step(
-            "打开一个 AI",
-            "豆包、DeepSeek、Kimi、通义千问、ChatGPT 都可以，网页版或手机 App 都行。\n" +
-                    "推荐用支持「传文件」和「传图」的 —— 这样你可以直接把课表截图丢给它，不用手打。"
+            "发给 AI",
+            "豆包、DeepSeek、Kimi、ChatGPT 都行。\n" +
+                    "把提示词和课表一起发过去 —— 截图、Excel、文字都可以。\n" +
+                    "周次务必说清：单周 / 双周照课表原文写。"
         ),
         Step(
-            "把你的课表发给它",
-            "三种方式任选：\n" +
-                    "· 课程表截图（最省事，拍照或截图都行）\n" +
-                    "· 课表 Excel / Word 文件\n" +
-                    "· 直接打字，比如「周一 1-2 节大学英语，教一-101，2-4 周和 6-17 周」\n\n" +
-                    "⚠️ 一定要把「周次」说清楚。如果课表上写的是「单周」，告诉 AI 是单周。"
+            "检查输出",
+            "只要 JSON：第一行 {、最后一行 }，没有开场白，没有被代码块包住。\n" +
+                    "中文变成 \\u4e00 这种转义的话，回它一句「直接输出中文」。"
         ),
         Step(
-            "粘贴提示词，发送",
-            "把第 1 步复制的提示词贴进对话框，和课表一起发出去。"
-        ),
-        Step(
-            "检查它输出的内容",
-            "AI 有时候会说废话，检查这四点：\n" +
-                    "· 第一行是不是 { ，最后一行是不是 }\n" +
-                    "· 有没有混进「好的，我来帮你转换」这类开场白 → 有的话回它一句「只输出 JSON」\n" +
-                    "· 有没有被 ```json 这样的代码块包起来 → 有的话让它去掉\n" +
-                    "· 中文有没有变成 \\u4e00 这样的乱码 → 有的话让它「直接输出中文」"
-        ),
-        Step(
-            "保存成文件",
-            "新建一个文本文件（记事本 / VS Code / 手机备忘录都行），" +
-                    "把 AI 输出的 JSON **完整**粘进去，存成：\n\n" +
-                    "　　课表.json\n\n" +
-                    "⚠️ 这一步最容易出错，三个坑：\n\n" +
-                    "① Windows 默认**隐藏文件扩展名**。你以为存成了 课表.json，" +
-                    "实际是 课表.json.txt。\n" +
-                    "　 解决：文件管理器 → 上方「查看」→ 勾上「文件扩展名」，再改名。\n\n" +
-                    "② 用记事本「另存为」时，「保存类型」必须选「**所有文件**」，" +
-                    "否则它会自动加上 .txt。\n\n" +
-                    "③ 编码选 **UTF-8**，否则中文会变乱码。\n\n" +
-                    "（在手机上存的话：用「文件管理」新建 .txt，改后缀为 .json 即可。）"
-        ),
-        Step(
-            "传到手机",
-            "微信「文件传输助手」发给自己最方便。\n" +
-                    "QQ、数据线、网盘都可以。"
+            "存成 .json",
+            "存成 课表.json，编码选 UTF-8。\n" +
+                    "Windows 先打开「文件扩展名」，否则会变成 课表.json.txt；" +
+                    "记事本另存为时「保存类型」选「所有文件」。"
         ),
         Step(
             "导入",
-            "在微信里点开那个文件 → 右上角「…」→ 用其他应用打开（或先保存到手机）。\n" +
-                    "然后回到 App：设置 → 数据 → **导入课表** → 选中那个 .json 文件。"
+            "设置 → 数据 → 导入数据。\n" +
+                    "先看预览：课名是乱码说明编码不对，别点导入。"
         ),
         Step(
-            "确认预览再导入",
-            "App 会先显示预览：几门课（含前几门的课名）、学期信息、" +
-                    "每种模板的起床时间、启用了哪些日型、有没有时段冲突。\n\n" +
-                    "⚠️ **课名那一项要仔细看**：如果显示出来是一串乱码，" +
-                    "说明文件的编码不对（多半被存成了 ANSI / GBK），" +
-                    "这时别点导入 —— 导入进去的就是乱码课名。\n\n" +
-                    "⚠️ 如果提示「导入失败」，别急着重来 —— 见最下面那条。"
-        ),
-        Step(
-            "失败了怎么办",
-            "把 App 弹出的**报错原文**复制下来，连同 AI 上次生成的 JSON，" +
-                    "一起发给 AI，让它改。\n\n" +
-                    "省事的做法：点上面的「③ 复制『报错修复』提示词」，" +
-                    "把里面的两处占位替换成你的报错和 JSON，直接发给 AI。"
+            "失败了",
+            "把报错原文和 AI 生成的 JSON 一起发回去让它改；" +
+                    "点上面「③」复制修复提示词更省事。"
         )
     )
 
@@ -188,7 +148,7 @@ class GenerateGuideActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { if (i > 0) topMargin = ctx.dp(16) }
+                ).apply { if (i > 0) topMargin = ctx.dp(14) }
             }
 
             // 左侧编号圆点。用 TextView + 圆形背景，而不是 Unicode 圈码像 ① ② ——
@@ -217,7 +177,7 @@ class GenerateGuideActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 text = step.title
-                textSize = 15f
+                textSize = 14.5f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
                 includeFontPadding = false
@@ -229,9 +189,9 @@ class GenerateGuideActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = ctx.dp(4) }
                 text = step.body
-                textSize = 13f
+                textSize = 12.5f
                 setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
-                setLineSpacing(ctx.dp(3).toFloat(), 1f)
+                setLineSpacing(ctx.dp(2).toFloat(), 1f)
                 includeFontPadding = false
             })
 

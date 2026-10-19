@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  强调色浅底卡片，只给「此刻」这一张用。
+
+  它的作用是让「现在该干什么」在整页里第一个跳出来 ——
+  其他卡片都是白底，这张是整页唯一的色块。
+  颜色取 ?attr/accentSoftColor，换主题（蓝 / 绿）时自动跟着变。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/accentSoftColor" />
+    <corners android:radius="@dimen/card_radius" />
+</shape>

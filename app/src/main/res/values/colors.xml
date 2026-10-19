@@ -16,6 +16,14 @@
     <color name="text_secondary">#6B7280</color>
     <color name="divider">#E5E7EB</color>
 
+    <!-- 卡片的描边比分隔线更淡一档：卡片要「浮起来」，不能像表格框 -->
+    <color name="card_stroke">#E8EBF0</color>
+    <!-- 胶囊 / 浅底按钮的底色，比页面底色再深一点点 -->
+    <color name="chip_bg">#F1F3F7</color>
+
+    <!-- 强调色上的文字颜色。夜间强调色会调亮，白字会糊成一片，所以夜里改用深色字 -->
+    <color name="on_accent">#FFFFFF</color>
+
     <!-- ========== 主题一：蓝（原来的配色） ========== -->
     <color name="accent_blue">#1565C0</color>
     <color name="accent_soft_blue">#E3F0FC</color>
@@ -31,6 +39,36 @@
     -->
     <color name="accent_green">#2E7D32</color>
     <color name="accent_soft_green">#E8F5E9</color>
+
+    <!-- ========== 其余五套：青 / 紫 / 玫红 / 橙 / 红 / 靛蓝 ==========
+
+         选色规则只有两条，但都要守住：
+
+         1. **明度压在 25%~45% 之间**。太亮（比如 #FFB3FF）压在浅灰底上会
+            显得发飘，而且白字压不住；太暗又和正文的 #16181C 分不开。
+         2. **饱和度不拉满**。荧光色（#00FF00 那种）盯久了累，卡片上大面积
+            用它更难受。这几套都是「深一号」的同色系。
+
+         浅底（accent_soft）统一取同一个色相、明度 95% 左右 —— 它要同时满足
+         「看得出是这个颜色」和「当单元格背景时不抢内容」，所以压得很淡。
+    -->
+    <color name="accent_teal">#00695C</color>
+    <color name="accent_soft_teal">#E0F2F1</color>
+
+    <color name="accent_purple">#6A1B9A</color>
+    <color name="accent_soft_purple">#F3E5F5</color>
+
+    <color name="accent_pink">#AD1457</color>
+    <color name="accent_soft_pink">#FCE4EC</color>
+
+    <color name="accent_orange">#E65100</color>
+    <color name="accent_soft_orange">#FFF3E0</color>
+
+    <color name="accent_red">#C62828</color>
+    <color name="accent_soft_red">#FFEBEE</color>
+
+    <color name="accent_indigo">#283593</color>
+    <color name="accent_soft_indigo">#E8EAF6</color>
 
     <!--
       App 图标的背景色，**不跟主题变**。

@@ -114,7 +114,18 @@ class WeekFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        render()   // 从设置页改完课程回来，课表要跟着变
+        if (!isHidden) render()   // 从设置页改完课程回来，课表要跟着变
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) {
+            // 课程面板是窗口级 Dialog，不随页面隐藏消失 —— 切页时必须主动关掉
+            detailCard?.dismiss()
+            detailCard = null
+        } else {
+            render()
+        }
     }
 
     override fun onDestroyView() {
@@ -144,7 +155,7 @@ class WeekFragment : Fragment() {
         val sunday = monday.plusDays(6)
 
         binding.tvWeek.text =
-            if (week == thisWeek) "第 $week 教学周 · 本周" else "第 $week 教学周"
+            if (week == thisWeek) "第 $week 周 · 本周" else "第 $week 周"
         binding.tvWeekRange.text =
             "${monday.monthValue}.${monday.dayOfMonth} – ${sunday.monthValue}.${sunday.dayOfMonth}"
 

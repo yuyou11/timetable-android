@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 圆角卡片背景。shape 相当于 CSS 的 border-radius + background -->
+<!-- 圆角卡片。描边用 card_stroke（比 divider 淡），卡片才不会显得像表格框 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/card_bg" />
-    <corners android:radius="14dp" />
+    <corners android:radius="@dimen/card_radius" />
     <stroke
         android:width="1dp"
-        android:color="@color/divider" />
+        android:color="@color/card_stroke" />
 </shape>

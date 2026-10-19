@@ -5,9 +5,6 @@
   结构固定（课名 + 徽标 + 一行「星期·节次」+ 时间/教室/老师/周次四条明细），
   按 WeekFragment 开头那条判据，固定结构写 XML；
   课表格子那种「随数据变」的才用代码生成。
-
-  底部的 10dp 外边距是卡片之间的间距 —— 同一张卡在列表里重复出现，
-  间距写在卡上比让列表去数「第几张」简单。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/card"
@@ -16,8 +13,8 @@
     android:layout_marginBottom="10dp"
     android:background="@drawable/bg_card"
     android:orientation="vertical"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="14dp">
+    android:paddingHorizontal="18dp"
+    android:paddingVertical="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -30,11 +27,11 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
             android:includeFontPadding="false"
             android:maxLines="2"
             android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textSize="17sp" />
 
         <!-- 「本周 / 第 N 周 / 已停课」的小徽标。三种情况共用一个位置，
              默认藏起来，由 SlotCoursesCard 决定写什么 -->
@@ -45,7 +42,7 @@
             android:layout_marginStart="8dp"
             android:background="@drawable/bg_duration_chip"
             android:includeFontPadding="false"
-            android:paddingHorizontal="7dp"
+            android:paddingHorizontal="8dp"
             android:paddingVertical="3dp"
             android:textColor="?attr/accentColor"
             android:textSize="11sp"
@@ -66,7 +63,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="14dp"
         android:layout_marginBottom="2dp"
         android:background="@color/divider" />
 
@@ -75,7 +72,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:orientation="horizontal">
 
         <TextView
@@ -84,7 +81,7 @@
             android:includeFontPadding="false"
             android:text="时间"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/tvTime"
@@ -94,14 +91,14 @@
             android:layout_weight="1"
             android:includeFontPadding="false"
             android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+            android:textSize="12.5sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/rowPlace"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="9dp"
         android:orientation="horizontal">
 
         <TextView
@@ -110,7 +107,7 @@
             android:includeFontPadding="false"
             android:text="教室"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <!-- 教室用强调色，和今日页时间轴的地点行同款 -->
         <TextView
@@ -121,14 +118,14 @@
             android:layout_weight="1"
             android:includeFontPadding="false"
             android:textColor="?attr/accentColor"
-            android:textSize="13sp" />
+            android:textSize="12.5sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/rowTeacher"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="9dp"
         android:orientation="horizontal">
 
         <TextView
@@ -137,7 +134,7 @@
             android:includeFontPadding="false"
             android:text="老师"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/tvTeacher"
@@ -147,22 +144,23 @@
             android:layout_weight="1"
             android:includeFontPadding="false"
             android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+            android:textSize="12.5sp" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="9dp"
         android:orientation="horizontal">
 
         <TextView
+            android:id="@+id/tvWeeksLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
             android:text="周次"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <TextView
             android:id="@+id/tvWeeks"
@@ -172,7 +170,36 @@
             android:layout_weight="1"
             android:includeFontPadding="false"
             android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+            android:textSize="12.5sp" />
+    </LinearLayout>
+
+    <!-- 备注：模板里每一格的第二行字（「周三有晚课，这觉必须睡」）。
+         课程没有备注，这一行整块收起 —— 见 CardSheet.bindText -->
+    <LinearLayout
+        android:id="@+id/rowNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:text="备注"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tvNote"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:includeFontPadding="false"
+            android:textColor="@color/text_secondary"
+            android:textSize="12.5sp" />
     </LinearLayout>
 
     <!-- 「设置闹钟」：给这门课单独设一个课前提醒（只在这门课真的上的那几周才响）。
@@ -181,11 +208,11 @@
         android:id="@+id/btnAlarm"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="14dp"
         android:background="@drawable/bg_prompt_box"
         android:gravity="center"
         android:includeFontPadding="false"
-        android:paddingVertical="9dp"
+        android:paddingVertical="10dp"
         android:text="@string/alarm_set"
         android:textColor="?attr/accentColor"
         android:textSize="13sp" />

@@ -175,7 +175,7 @@ object TextDecode {
             if (out.size() > MAX_BYTES) {
                 return Decoded.Failed(
                     "文件太大了（超过 ${MAX_BYTES / 1024 / 1024} MB）。\n\n" +
-                            "课表 JSON 正常只有几十 KB，请确认你选的是从 App 里导出的那个文件。"
+                            "数据文件正常只有几十 KB，请确认你选的是从 App 里导出的那个文件。"
                 )
             }
         }
@@ -184,6 +184,6 @@ object TextDecode {
 
     private const val BINARY_MESSAGE =
         "这个文件不是文本文件，里面是二进制内容（图片、Word 文档、压缩包都是这样）。\n\n" +
-                "请选择从 App 里导出的 .json 课表文件。" +
-                "\n\n如果不知道是哪个：在 App 里点「设置 → 数据 → 导出」，先导出一份做对照。"
+                "请选择从 App 里导出的 .json 数据文件。" +
+                "\n\n如果不知道是哪个：在 App 里点「设置 → 数据 → 导出数据」，先导出一份做对照。"
 }

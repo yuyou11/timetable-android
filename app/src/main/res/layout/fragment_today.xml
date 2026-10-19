@@ -9,84 +9,92 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="14dp">
+        android:padding="@dimen/page_padding">
 
         <TextView
             android:id="@+id/tvHeaderDate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:letterSpacing="0.02"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/tvHeaderDayType"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary" />
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp" />
 
-        <!-- ============ 此刻 ============ -->
+        <!-- ============ 此刻（整页唯一的色块） ============ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="@dimen/space_l"
+            android:background="@drawable/bg_card_accent"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.16"
                 android:text="@string/now_label"
                 android:textColor="?attr/accentColor"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvNowTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textSize="23sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:layout_marginTop="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:textColor="@color/text_primary"
+                android:textSize="21sp" />
 
             <TextView
                 android:id="@+id/tvNowMeta"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
+                android:lineSpacingExtra="2dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
             <ProgressBar
                 android:id="@+id/nowProgress"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
-                android:layout_height="6dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="4dp"
+                android:layout_marginTop="14dp"
                 android:max="100"
-                android:progress="0" />
+                android:progress="0"
+                android:progressBackgroundTint="@color/divider"
+                android:progressTint="?attr/accentColor" />
 
             <TextView
                 android:id="@+id/tvNowNext"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- ============ 常驻开关 ============ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/space_m"
             android:background="@drawable/bg_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -95,19 +103,18 @@
                 android:orientation="vertical">
 
                 <TextView
+                    style="@style/CardTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/resident_title"
-                    android:textSize="16sp"
-                    android:textColor="@color/text_primary" />
+                    android:text="@string/resident_title" />
 
                 <TextView
                     android:id="@+id/tvSwitchState"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <com.google.android.material.switchmaterial.SwitchMaterial
@@ -120,43 +127,43 @@
             android:id="@+id/tvHint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingHorizontal="4dp"
-            android:textSize="12sp"
+            android:layout_marginTop="@dimen/space_s"
+            android:lineSpacingExtra="2dp"
+            android:paddingHorizontal="2dp"
             android:textColor="@color/text_secondary"
+            android:textSize="11sp"
             android:visibility="gone" />
 
         <!-- ============ 明日预告 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="明天"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="明天" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="@dimen/card_padding">
 
             <TextView
                 android:id="@+id/tvTomorrowHeader"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
 
             <!-- 起床时间 + 一键设闹钟 -->
             <LinearLayout
                 android:id="@+id/rowWake"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="@dimen/space_m"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -164,23 +171,23 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="起床"
-                    android:textSize="13sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/tvWakeTime"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_marginStart="10dp"
-                    android:textSize="19sp"
-                    android:textStyle="bold"
-                    android:textColor="?attr/accentColor" />
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="20sp" />
 
                 <Button
                     android:id="@+id/btnSetAlarm"
                     style="@style/FlatTextButton"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:text="⏰ 设闹钟" />
             </LinearLayout>
 
@@ -188,36 +195,35 @@
                 android:id="@+id/tvTomorrowFirst"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
+                android:layout_marginTop="@dimen/space_s"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/tvTomorrowCourses"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary" />
+                android:layout_marginTop="6dp"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
 
             <TextView
                 android:id="@+id/tvTomorrowTail"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- ============ 今日时间线 ============ -->
         <TextView
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="6dp"
-            android:text="今天的时间线"
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary" />
+            android:layout_marginTop="@dimen/section_gap"
+            android:layout_marginBottom="@dimen/space_s"
+            android:text="今天的时间线" />
 
         <LinearLayout
             android:id="@+id/timelineContainer"
@@ -225,7 +231,7 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:paddingVertical="4dp" />
+            android:paddingVertical="6dp" />
 
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

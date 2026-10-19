@@ -46,6 +46,15 @@ class AlarmEditor(
 
     private val binding = DialogAlarmEditBinding.inflate(LayoutInflater.from(ctx))
     private val isCourse = existing?.source == AlarmSource.COURSE
+    private val isMoment = existing?.source == AlarmSource.MOMENT
+
+    /**
+     * 时刻不是用户填的那两种：课程闹钟和「按格子响」的闹钟。
+     *
+     * 它们的时刻都从课表 / 作息模板推出来，所以时间选择器、周几、名称
+     * 这几块要整块收起来 —— 留着让用户填，填了也不生效，比没有更糟。
+     */
+    private val isBound = isCourse || isMoment
 
     private val days = (existing?.days ?: Alarms.WORKDAYS).toMutableSet()
     private var lead = existing?.leadMinutes ?: 10
@@ -61,7 +70,12 @@ class AlarmEditor(
 
     private companion object {
         val EVERY_DAY = setOf(1, 2, 3, 4, 5, 6, 7)
-        val LEAD_PRESETS = listOf(1, 5, 10, 20)
+
+        /**
+         * 提前量档位。**0 是正经一档**：今天页上「午餐」「睡觉」这些格子
+         * 要的是到点提醒，提前 5 分钟反而是错位。
+         */
+        val LEAD_PRESETS = listOf(0, 1, 5, 10, 20)
         val SNOOZE_OPTIONS = listOf(10, 15, 20, 30)
     }
 
@@ -78,6 +92,7 @@ class AlarmEditor(
     fun show(): AlertDialog {
         val title = when {
             isCourse -> "课程闹钟"
+            isMoment -> "格子闹钟"
             existing == null -> "新建闹钟"
             else -> "编辑闹钟"
         }
@@ -102,28 +117,39 @@ class AlarmEditor(
     // ------------------------------------------------------------------
 
     private fun setupTarget() {
-        if (!isCourse) return
-        val name = courses.firstOrNull { it.id == existing?.courseId }?.name ?: "已删除的课"
+        if (!isBound) return
         binding.tvTarget.visibility = View.VISIBLE
-        binding.tvTarget.text = "绑定课程：$name"
-        // 课程闹钟的时刻由课表推，不是用户填的 —— 这两块整个收起来
+        binding.tvTarget.text = if (isCourse) {
+            val name = courses.firstOrNull { it.id == existing?.courseId }?.name ?: "已删除的课"
+            "绑定课程：$name"
+        } else {
+            // 响铃范围（每周三 / 每个 A 型日）是点格子设的时候定的，
+            // 这里只如实写出来 —— 改它要回今日页点那一格
+            val a = existing!!
+            "绑定：${Alarms.momentScope(a, store.dayTypeNames())} · ${a.momentTitle}"
+        }
+        // 时刻由课表 / 模板推，不是用户填的 —— 这几块整个收起来。
+        // 「重复」这个小标题也要跟着收，否则会留下一个没有内容的标题
         binding.timePicker.visibility = View.GONE
+        binding.tvRepeatTitle.visibility = View.GONE
         binding.dayRow.visibility = View.GONE
         binding.presetRow.visibility = View.GONE
         binding.etLabel.visibility = View.GONE
         binding.tvLeadTitle.visibility = View.VISIBLE
+        binding.tvLeadTitle.text = "提前多久响（0 = 到点提醒）"
         binding.leadRow.visibility = View.VISIBLE
+        binding.leadCustomRow.visibility = View.VISIBLE
     }
 
     private fun setupTime() {
-        if (isCourse) return
+        if (isBound) return
         binding.timePicker.setIs24HourView(true)
         binding.timePicker.hour = existing?.hour ?: 7
         binding.timePicker.minute = existing?.minute ?: 0
     }
 
     private fun setupDays() {
-        if (isCourse) return
+        if (isBound) return
         for (d in 1..7) {
             val chip = chip(weekdayCn(d).removePrefix("周"), d in days, weight = 1f) { toggleDay(d) }
             dayChips[d] = chip
@@ -161,7 +187,7 @@ class AlarmEditor(
      * 不写出来的话，一个勾都不选的对话框看着像没设置好。
      */
     private fun oneShotHint() {
-        if (isCourse) return               // 这一行课程闹钟用来写「绑定课程：xxx」
+        if (isBound) return               // 这一行绑定闹钟用来写「绑定：xxx」
         if (days.isNotEmpty()) {
             binding.tvTarget.visibility = View.GONE
             return
@@ -176,15 +202,16 @@ class AlarmEditor(
     }
 
     private fun setupLead() {
-        if (!isCourse) return
+        if (!isBound) return
         for (m in LEAD_PRESETS) {
-            val chip = chip("$m 分钟", lead == m, weight = 1f) { lead = m; refreshLead() }
+            // 「0 分」写得和别的档一样短：六档挤一行时，「0 分钟」也照样被压成「0 分…」
+            val chip = chip("$m 分", lead == m, weight = 1f) { lead = m; refreshLead() }
             leadChips[m] = chip
             binding.leadRow.addView(chip)
         }
-        val custom = chip("自定义", lead !in LEAD_PRESETS, weight = 1f) { askCustomLead() }
+        val custom = chip("自定义…", lead !in LEAD_PRESETS, weight = 1f) { askCustomLead() }
         leadChips[-1] = custom
-        binding.leadRow.addView(custom)
+        binding.leadCustomRow.addView(custom)
     }
 
     private fun refreshLead() {
@@ -226,10 +253,10 @@ class AlarmEditor(
 
     private fun setupHoliday() {
         binding.swHoliday.isChecked = existing?.skipHolidays ?: true
-        binding.tvHolidayNote.text = if (isCourse) {
-            "法定放假日不响；这门课没上的那一周本来就不会响"
-        } else {
-            "法定放假日不响；补班日（周末上班）按工作日响"
+        binding.tvHolidayNote.text = when {
+            isCourse -> "法定放假日不响；这门课没上的那一周本来就不会响"
+            isMoment -> "法定放假日不响；那天时间轴上没有这一格，本来也不会响"
+            else -> "法定放假日不响；补班日（周末上班）按工作日响"
         }
     }
 
@@ -250,34 +277,47 @@ class AlarmEditor(
     // ------------------------------------------------------------------
 
     private fun save(d: AlertDialog) {
-        val built = if (isCourse) {
-            val base = existing ?: Alarms.forCourse(store.nextAlarmId(), "", lead)
-            base.copy(
-                leadMinutes = lead,
-                soundUri = sound,
-                skipHolidays = binding.swHoliday.isChecked,
-                snoozeMinutes = snooze
-            )
-        } else {
-            val hour = binding.timePicker.hour
-            val minute = binding.timePicker.minute
-            Alarm(
-                id = existing?.id ?: store.nextAlarmId(),
-                hour = hour,
-                minute = minute,
-                days = days.toSet(),
-                // 七天全不选 = 只响一次：把「下一次那个时刻」算成具体日期固定下来
-                onceDate = if (days.isEmpty()) {
-                    Alarms.oneShotDate(hour, minute, LocalDateTime.now())
-                } else {
-                    null
-                },
-                enabled = existing?.enabled ?: true,
-                label = binding.etLabel.text.toString().trim(),
-                soundUri = sound,
-                skipHolidays = binding.swHoliday.isChecked,
-                snoozeMinutes = snooze
-            )
+        val built = when {
+            isCourse -> {
+                val base = existing ?: Alarms.forCourse(store.nextAlarmId(), "", lead)
+                base.copy(
+                    leadMinutes = lead,
+                    soundUri = sound,
+                    skipHolidays = binding.swHoliday.isChecked,
+                    snoozeMinutes = snooze
+                )
+            }
+            // 按格子响的闹钟：时刻和响铃范围都不是这里能改的，
+            // 只让改提前量 / 铃声 / 贪睡 / 节假日
+            isMoment -> {
+                existing!!.copy(
+                    leadMinutes = lead,
+                    soundUri = sound,
+                    skipHolidays = binding.swHoliday.isChecked,
+                    snoozeMinutes = snooze
+                )
+            }
+            else -> {
+                val hour = binding.timePicker.hour
+                val minute = binding.timePicker.minute
+                Alarm(
+                    id = existing?.id ?: store.nextAlarmId(),
+                    hour = hour,
+                    minute = minute,
+                    days = days.toSet(),
+                    // 七天全不选 = 只响一次：把「下一次那个时刻」算成具体日期固定下来
+                    onceDate = if (days.isEmpty()) {
+                        Alarms.oneShotDate(hour, minute, LocalDateTime.now())
+                    } else {
+                        null
+                    },
+                    enabled = existing?.enabled ?: true,
+                    label = binding.etLabel.text.toString().trim(),
+                    soundUri = sound,
+                    skipHolidays = binding.swHoliday.isChecked,
+                    snoozeMinutes = snooze
+                )
+            }
         }
 
         val list = store.alarms()
@@ -302,7 +342,8 @@ class AlarmEditor(
     /** 铃声选择器回来了 */
     fun onSoundPicked(uri: String) {
         sound = uri
-        binding.tvSound.text = if (uri.isBlank()) "静音" else SoundPicker.nameOf(ctx, uri)
+        // 空串的语义是「跟随设置页里的默认铃声」，不是静音 —— 文案不能撒谎
+        binding.tvSound.text = if (uri.isBlank()) "默认（系统铃声）" else SoundPicker.nameOf(ctx, uri)
     }
 
     // ------------------------------------------------------------------

@@ -175,9 +175,9 @@ class ImportExport(
                 )
                 append('\n')
                 if (dtc.earlyType != null) {
-                    append("有早八（第 1-2 节有课）优先用：").append(dayTypeName(dtc.earlyType))
+                    append("早八优先：").append(dayTypeName(dtc.earlyType))
                 } else {
-                    append("不区分早八 —— 有早八也按星期映射走")
+                    append("不区分早八")
                 }
                 append('\n')
                 val idle = dtc.types.filter { dtc.weekdaysOf(it).isEmpty() && it != dtc.earlyType }
@@ -200,7 +200,7 @@ class ImportExport(
             // 节数信息决定了课表页怎么分行，带着它导入等于换一套网格结构 ——
             // 预览里不说，用户只会在课表页莫名看到行数变了。
             parsed.periods?.let {
-                append("\n节次结构：").append(it).append("（课表按它分行）\n")
+                append("\n节次结构：").append(it).append('\n')
             }
 
             if (parsed.warnings.isNotEmpty()) {
@@ -226,7 +226,7 @@ class ImportExport(
                 append("\n⚠️ 各日型的节次时间不一致，课表页只能显示其中的一种：\n")
                 conflicts.take(3).forEach { append("· ").append(it).append('\n') }
                 if (conflicts.size > 3) append("（还有 ${conflicts.size - 3} 处）\n")
-                append("建议改成一致 —— 节次时间是学校的作息，本来就不该各日型不同。\n")
+                append("建议统一，否则课表页只显示其中一种。\n")
             }
         }
 
@@ -309,10 +309,10 @@ class ImportExport(
     // ==================================================================
 
     /**
-     * 导出前问一句：只导课表，还是连作息配置一起导。
+     * 导出前问一句：只导课程，还是连作息配置一起导。
      *
      * 为什么要问？因为两者用途不一样：
-     *   · **只导课表** —— 文件几十行，拿来手改课程、发给同学最合适
+     *   · **只导课程** —— 文件几十行，拿来手改课程、发给同学最合适
      *   · **带作息**   —— 文件一百多行，是完整备份；也是你**想改作息时唯一
      *                    能拿到的底稿**（不用从零手写六套模板）
      * 默认总是输出某一种都不合适，所以让用户自己选。
@@ -322,16 +322,16 @@ class ImportExport(
             .setTitle(fragment.getString(R.string.export_choice_title))
             .setItems(
                 arrayOf(
-                    "仅课表（文件短，适合手改和分享）",
+                    "仅课程（文件短，适合手改和分享）",
                     // 措辞里带上「日型」：从 v3 起这一档导出的不只是模板，
                     // 还有「启用哪几种日型」。只说模板的话，
                     // 用户会以为日型设置没被备份进去
-                    "课表 + 作息（模板与启用的日型，完整备份）"
+                    "课程 + 作息（模板与启用的日型，完整备份）"
                 )
             ) { _, which ->
                 pendingExportIncludeTemplates = (which == 1)
                 launchSaver(
-                    if (which == 1) "完整备份-${store.termName}.json" else "课表-${store.termName}.json"
+                    if (which == 1) "完整备份-${store.termName}.json" else "课程-${store.termName}.json"
                 )
             }
             .setNegativeButton("取消", null)
@@ -364,7 +364,7 @@ class ImportExport(
         // 用户导入了一份只改 dayTypes 的文件 → hasCustomTemplates 是 false
         // → 复制出来的 JSON 不含 dayTypes → 他的日型设置静默丢失。
         val json = store.exportJson(store.hasCustomScheduleConfig)
-        cm.setPrimaryClip(ClipData.newPlainText("课表 JSON", json))
+        cm.setPrimaryClip(ClipData.newPlainText("数据 JSON", json))
         toast("已复制 ${store.courses().size} 门课的 JSON")
     }
 

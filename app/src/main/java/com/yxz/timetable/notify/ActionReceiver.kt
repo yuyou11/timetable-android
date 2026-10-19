@@ -45,12 +45,12 @@ class ActionReceiver : BroadcastReceiver() {
             ACTION_ALARM_STOP -> AlarmRinger.stop(context)
 
             ACTION_ALARM_SNOOZE -> {
-                // 贪睡哪个：正在响的那个。没人响着就什么都不做，
+                // 贪睡哪一批：正在响的那些。没人响着就什么都不做，
                 // 免得凭一个过期的按钮把闹钟排到莫名其妙的时间
-                val id = AlarmRinger.currentIds().firstOrNull()
-                if (id != null) {
+                val ids = AlarmRinger.currentIds()
+                if (ids.isNotEmpty()) {
                     val minutes = AlarmRinger.currentSnoozeMinutes()
-                    store.snoozeAlarmId = id
+                    store.snoozeAlarmIds = ids
                     store.snoozeAlarmUntil = System.currentTimeMillis() + minutes * 60_000L
                     AlarmRinger.stop(context)
                     AlarmScheduler.scheduleAlarms(context)

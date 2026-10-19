@@ -4,15 +4,19 @@ import android.app.AlertDialog
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -184,7 +188,12 @@ class SettingsFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        refresh()   // 从系统设置页回来，权限状态可能已经变了
+        if (!isHidden) refresh()   // 从系统设置页回来，权限状态可能已经变了
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) refresh()
     }
 
     override fun onDestroyView() {
@@ -214,6 +223,30 @@ class SettingsFragment : Fragment() {
         refreshTerm()
         refreshAlarm()
         refreshData()
+        // 放在最后：上面几块自己会读存储，读坏了才轮到这一条提示
+        refreshLoadWarning()
+    }
+
+    /**
+     * 存储读坏时的提示。
+     *
+     * 以前这种情况是**静默**回退的：课表解析失败就退回内置那 19 门示例课，
+     * 用户只会觉得「我的课表怎么变成别人的了」。
+     * [Store.lastLoadError] 把失败记下来，这里如实显示，点一下表示知道了。
+     */
+    private fun refreshLoadWarning() {
+        val err = store.lastLoadError
+        if (err == null) {
+            binding.tvDataWarning.visibility = View.GONE
+            return
+        }
+        binding.tvDataWarning.visibility = View.VISIBLE
+        val what = err.substringBefore('|')
+        binding.tvDataWarning.text = "「$what」读取失败，已回退到默认值。点此忽略。"
+        binding.tvDataWarning.setOnClickListener {
+            store.clearLoadError()
+            refreshLoadWarning()
+        }
     }
 
     /**
@@ -226,7 +259,8 @@ class SettingsFragment : Fragment() {
         val ctx = requireContext()
 
         binding.tvAlarmSound.text =
-            "当前：${SoundPicker.nameOf(ctx, store.alarmSoundUri)}（点文字试听）"
+            "${SoundPicker.nameOf(ctx, store.alarmSoundUri)}（点此试听）"
+        binding.tvRingDuration.text = "${store.ringMinutes} 分钟 · 点此调整"
         binding.rowAlarmSound.setOnClickListener { SoundPicker.play(ctx, store.alarmSoundUri) }
         binding.btnAlarmSound.setOnClickListener {
             pickAlarmSound.launch(SoundPicker.intent(store.alarmSoundUri))
@@ -234,10 +268,9 @@ class SettingsFragment : Fragment() {
 
         val custom = store.customHolidays()
         binding.tvHolidayStatus.text = if (custom.isEmpty()) {
-            "内置 ${Holidays.COVERED_YEARS.sorted().joinToString("、")} 年安排（放假与补班），" +
-                    "可手动补几天"
+            "内置 ${Holidays.COVERED_YEARS.sorted().joinToString("、")} 年 · 可手动补充"
         } else {
-            "内置之外手动补了 ${custom.size} 天，优先于内置"
+            "手动补了 ${custom.size} 天 · 优先于内置"
         }
         binding.rowHolidays.setOnClickListener {
             HolidayEditor(ctx, store) { refreshAlarm() }.show()
@@ -252,10 +285,19 @@ class SettingsFragment : Fragment() {
         }
         setPerm(
             binding.tvRingStatus, binding.btnRingFullScreen, fullScreenOk,
-            "已允许 · 响铃时锁屏直接弹出响铃界面（大按钮停止 / 贪睡）",
-            "未允许 · 响铃只会弹一条横幅通知（点一下照样进响铃界面）"
+            "已允许 · 锁屏直接弹出",
+            "未允许 · 只弹横幅通知"
         )
         binding.btnRingFullScreen.setOnClickListener { guide.openFullScreenIntentSettings() }
+
+        // 响铃时长：点一下在 1 / 3 / 5 / 10 分钟之间循环
+        binding.rowRingDuration.setOnClickListener {
+            val steps = listOf(1, 3, 5, 10)
+            val i = steps.indexOf(store.ringMinutes).let { if (it < 0) 1 else it }
+            store.ringMinutes = steps[(i + 1) % steps.size]
+            refreshAlarm()
+        }
+        binding.tvRingDuration.text = "${store.ringMinutes} 分钟 · 点此调整"
     }
 
     private fun refreshPermissions() {
@@ -266,18 +308,18 @@ class SettingsFragment : Fragment() {
         suppressSwitch = false
 
         binding.tvSwitchState.text =
-            if (store.enabled) "运行中" else "已关闭 · App 不会消耗任何电量"
+            if (store.enabled) "运行中" else "已关闭"
 
         // ---- 1. 通知权限 ----
         val notifOk = Notifier.isAllowed(ctx)
-        setPerm(binding.tvNotifStatus, binding.btnNotif, notifOk, "已允许", "未允许，通知不会出现")
+        setPerm(binding.tvNotifStatus, binding.btnNotif, notifOk, "已允许", "未允许 · 通知不会出现")
 
         // ---- 2. 精确闹钟 ----
         val exactOk = AlarmScheduler.canExact(ctx)
         setPerm(
             binding.tvExactStatus, binding.btnExact, exactOk,
-            "已允许 · 会准时切换",
-            "未允许 · 通知可能晚十几分钟，建议开启"
+            "已开启",
+            "未开启 · 切换可能延迟"
         )
 
         // ---- 3. 电池优化 ----
@@ -286,7 +328,7 @@ class SettingsFragment : Fragment() {
         setPerm(
             binding.tvBatteryStatus, binding.btnBattery, batteryOk,
             "已加入白名单",
-            "未加入 · 深度休眠时可能不唤醒"
+            "未加入 · 休眠时可能不唤醒"
         )
 
         // ---- 4. 锁屏显示 ----
@@ -295,25 +337,23 @@ class SettingsFragment : Fragment() {
         suppressLockscreen = false
 
         binding.tvLockscreenStatus.text = if (!store.lockscreenVisible) {
-            "已关闭 · 锁屏上不会出现通知（解锁后通知栏照常显示）"
+            "已关闭 · 锁屏不显示"
         } else {
-            "已开启 · App 愿意在锁屏显示。\n" +
-                    "⚠️ 但荣耀/华为还有一道系统总开关，默认是关的 —— " +
-                    "不打开它，上面这个开关开了也没用。点下面的按钮去开。"
+            "已开启 · 系统还有一道开关，需在通知渠道页打开"
         }
 
         // ---- 5. 自启动 ----
         // 这一项系统也没有提供查询接口，只能靠引导 + 用户自己确认
-        binding.tvAutostartStatus.text = "请手动确认已允许自启动与后台活动"
+        binding.tvAutostartStatus.text = "请手动确认已允许"
         binding.btnAutostart.visibility = View.VISIBLE
 
         // ---- 课前提醒 ----
         val lead = store.remindLead
         binding.tvRemindLead.text = if (lead == 0) "关闭" else "$lead 分"
         binding.tvRemindStatus.text = when {
-            lead == 0 -> "已关闭 · 不会在上课前打扰你"
-            !notifOk -> "需要通知权限才能生效"
-            else -> "每节课开始前 $lead 分钟响铃提醒一次"
+            lead == 0 -> "已关闭"
+            !notifOk -> "需要通知权限"
+            else -> "课前 $lead 分钟响铃"
         }
     }
 
@@ -331,9 +371,9 @@ class SettingsFragment : Fragment() {
         val today = LocalDate.now()
         val curWeek = store.weekOf(today)
         binding.tvTotalWeeksHint.text = when {
-            curWeek < 1 -> "今天是第 $curWeek 周 —— 学期还没开始"
-            curWeek > total -> "今天是第 $curWeek 周 —— 已经放完了"
-            else -> "今天是第 $curWeek 周"
+            curWeek < 1 -> "学期未开始"
+            curWeek > total -> "学期已结束"
+            else -> "第 $curWeek 周"
         }
 
         binding.tvWeekOverride.text =
@@ -342,15 +382,15 @@ class SettingsFragment : Fragment() {
 
     private fun refreshData() {
         // ---- 数据 ----
-        binding.tvDataSummary.text = "当前：共 ${store.totalWeeks} 周 · ${store.courses().size} 门课"
+        binding.tvDataSummary.text = "共 ${store.totalWeeks} 周 · ${store.courses().size} 门课"
         // 版本号从 ScheduleFormat.VERSION 取，不写死在 strings.xml 里 ——
         // 写死的话格式升级时这行必然被忘掉（实际上它就一直停在 v1）
         binding.tvDataDesc.text =
             getString(R.string.data_desc, ScheduleFormat.VERSION.toString())
-        binding.tvFooter.text = "${store.termName}\n数据格式 timetable v${ScheduleFormat.VERSION}"
+        binding.tvFooter.text = "${store.termName} · timetable v${ScheduleFormat.VERSION}"
 
         // ---- 外观 ----
-        binding.tvThemeStatus.text = "当前：${AppTheme.from(store.themeKey).label}　点此切换"
+        binding.tvThemeStatus.text = "${AppTheme.from(store.themeKey).label} · 点此切换"
 
         val custom = store.templates().custom
         val config = store.dayTypeConfig()
@@ -369,8 +409,8 @@ class SettingsFragment : Fragment() {
         // 把 id 念给用户听没有信息量。
         binding.tvTemplateState.text = buildString {
             append(
-                if (custom.isEmpty()) "作息模板：使用内置"
-                else "作息模板：已自定义 ${custom.size} 种 · 点此恢复内置"
+                if (custom.isEmpty()) "作息模板：内置"
+                else "作息模板：已自定义 ${custom.size} 种 · 点此恢复"
             )
             append('\n')
             append("日型：")
@@ -384,19 +424,22 @@ class SettingsFragment : Fragment() {
             )
             append('\n')
             append(
-                if (config.earlyType != null) "早八优先用：${dayTypeName(config.earlyType, names)}"
-                else "不区分早八 —— 有早八也按星期映射走"
+                if (config.earlyType != null) "早八优先：${dayTypeName(config.earlyType, names)}"
+                else "不区分早八"
             )
         }
     }
 
-    /** 课表一变，通知内容和下一个闹钟时刻就都变了，必须重排 */
+    /** 课表一变，通知内容、下一个闹钟时刻、课程闹钟都变了，必须重排 */
     private fun rescheduleNotification() {
         val ctx = requireContext()
         if (store.enabled) {
             Notifier.update(ctx)
             AlarmScheduler.schedule(ctx)
         }
+        // 用户闹钟是另一条链，且和「常驻开关」无关 —— 导入课表后课程闹钟
+        // 的绑定和时刻都可能变了，必须单独重排一次
+        AlarmScheduler.scheduleAlarms(ctx)
     }
 
     private fun setPerm(
@@ -521,11 +564,10 @@ class SettingsFragment : Fragment() {
                 AlertDialog.Builder(requireContext())
                     .setTitle("有课程会被挡在学期外")
                     .setMessage(
-                        "把总周数改成 $next 周后，下面这些课有部分周次超出了范围，" +
-                                "那些周次不会再显示：\n\n" +
+                        "改成 $next 周后，这些课超出范围的周次不再显示：\n\n" +
                                 orphan.take(5).joinToString("\n") { "· ${it.name}" } +
                                 (if (orphan.size > 5) "\n（还有 ${orphan.size - 5} 门）" else "") +
-                                "\n\n课程数据不会被删除，改回去就恢复。"
+                                "\n\n数据不会删除，改回去就恢复。"
                     )
                     .setPositiveButton("确定") { _, _ -> applyTotalWeeks(next) }
                     .setNegativeButton("取消", null)
@@ -558,10 +600,8 @@ class SettingsFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setTitle("清空所有课程")
             .setMessage(
-                "会删掉全部 $count 门课，课表变空。\n\n" +
-                        "适用场景：把这个 App 给别的学校的同学用，让他从空白开始。\n\n" +
-                        "⚠️ 建议先「导出课表」备份一份 —— 清空之后只能靠导入恢复，" +
-                        "内置课表可以用「恢复内置课表」找回来。"
+                "会删掉全部 $count 门课。\n\n" +
+                        "建议先「导出数据」备份；内置课表随时可以恢复。"
             )
             .setPositiveButton("确认清空") { _, _ ->
                 store.clearCourses()
@@ -620,11 +660,7 @@ class SettingsFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setTitle("恢复内置作息")
             .setMessage(
-                "会丢弃你导入的作息配置，重新使用内置版本：\n\n" +
-                        "· 模板：A 型 / B 型 / 训练日 / 周六 / 周日 / 休息日\n" +
-                        "· 日型配置：默认映射（周一~周五→B 型日，周六/周日各自那套，" +
-                        "有早八优先 A 型日）\n" +
-                        "· 自定义日型名：恢复默认\n\n" +
+                "会丢弃导入的模板、日型配置和自定义日型名，恢复默认。\n\n" +
                         "课表不受影响。"
             )
             .setPositiveButton("恢复") { _, _ ->
@@ -662,22 +698,120 @@ class SettingsFragment : Fragment() {
      * recreate 之后会**留在设置页**：MainActivity 里 `savedInstanceState != null`
      * 时不重设底部标签，FragmentManager 会自动恢复原来的 Fragment。
      * （那条逻辑本来是为「屏幕旋转」写的，这里正好也用上了。）
+     *
+     * ## 为什么是画板，不是一列文字
+     *
+     * 之前是八行「蓝色」「绿色」……选之前得先在脑子里把名字翻译成颜色。
+     * 颜色本来就该用眼睛挑，所以改成八个色块直接铺开，点哪个变哪个。
      */
     private fun pickTheme() {
-        val themes = AppTheme.entries
+        val ctx = requireContext()
         val current = AppTheme.from(store.themeKey)
 
-        AlertDialog.Builder(requireContext())
+        // 先建对话框，再往里填色块：色块的点击要能关掉这个对话框，
+        // 而那时对话框对象必须已经存在（不能反过来先建色块）
+        val dialog = AlertDialog.Builder(ctx)
             .setTitle(getString(R.string.theme_title))
-            .setItems(themes.map { it.label }.toTypedArray()) { _, which ->
-                val picked = themes[which]
-                // 选了已经在用的那套 —— 不做无谓的重建（界面闪一下也是成本）
-                if (picked == current) return@setItems
-                store.themeKey = picked.key
-                requireActivity().recreate()
-            }
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+
+        val board = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ctx.dp(12), ctx.dp(2), ctx.dp(12), ctx.dp(6))
+        }
+
+        for (rowThemes in AppTheme.entries.chunked(4)) {
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            for (t in rowThemes) {
+                row.addView(
+                    themeCell(ctx, t, t == current) {
+                        dialog.dismiss()
+                        applyTheme(t)
+                    }
+                )
+            }
+            // 最后一行不满四个时补空位：不补的话剩下的格子会被拉宽，
+            // 两行的圆点对不齐
+            repeat(4 - rowThemes.size) {
+                row.addView(View(ctx), LinearLayout.LayoutParams(0, ctx.dp(1), 1f))
+            }
+            board.addView(row)
+        }
+
+        board.addView(TextView(ctx).apply {
+            text = "点一个色块立刻生效"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(0, ctx.dp(10), 0, 0)
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+        })
+
+        dialog.setView(board)
+        dialog.show()
+    }
+
+    /**
+     * 画板里的一个格子：一个圆点 + 色名。
+     *
+     * 圆点的颜色用 [themeAccent] 现取，不用 `?attr/accentColor` ——
+     * 后者是「当前主题」的颜色，八个格子会涂成同一个色。
+     *
+     * 选中的那一圈用正文色而不是强调色：当前主题的强调色可能正好和旁边
+     * 那格撞色，「选中的是哪一格」就看不出来了。
+     */
+    private fun themeCell(
+        ctx: Context, theme: AppTheme, selected: Boolean, onPick: () -> Unit
+    ): View {
+        val cell = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+            isClickable = true
+            setPadding(0, ctx.dp(8), 0, ctx.dp(8))
+            setOnClickListener { onPick() }
+        }
+
+        cell.addView(View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(ctx.dp(38), ctx.dp(38))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(ctx.themeAccent(theme))
+                if (selected) setStroke(
+                    ctx.dp(3), ContextCompat.getColor(ctx, R.color.text_primary)
+                )
+            }
+        })
+
+        cell.addView(TextView(ctx).apply {
+            text = theme.label
+            textSize = 11f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(0, ctx.dp(6), 0, 0)
+            setTextColor(
+                ContextCompat.getColor(
+                    ctx, if (selected) R.color.text_primary else R.color.text_secondary
+                )
+            )
+        })
+        return cell
+    }
+
+    /** 选了颜色：存下来再整页重建（`setTheme` 只在 onCreate 之前有效，见 MainActivity） */
+    private fun applyTheme(theme: AppTheme) {
+        // 选了已经在用的那套 —— 不做无谓的重建（界面闪一下也是成本）
+        if (theme == AppTheme.from(store.themeKey)) return
+        store.themeKey = theme.key
+        requireActivity().recreate()
     }
 
     private fun editTermName() {

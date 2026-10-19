@@ -27,6 +27,9 @@
     <color name="text_primary">#E8EAED</color>
     <color name="text_secondary">#9AA1AC</color>
     <color name="divider">#2A2F38</color>
+    <color name="card_stroke">#262B34</color>
+    <color name="chip_bg">#232830</color>
+    <color name="on_accent">#101215</color>
 
     <!-- ========== 蓝（夜间） ==========
          夜间不能直接用日间那个 #1565C0 —— 深蓝压在深灰底上几乎看不见。
@@ -44,4 +47,29 @@
     -->
     <color name="accent_green">#81C784</color>
     <color name="accent_soft_green">#1B3220</color>
+
+    <!-- ========== 青 / 紫 / 玫红 / 橙 / 红 / 靛蓝（夜间） ==========
+
+         和蓝绿同一条规矩：夜间是**调亮 + 略降饱和**，不是把日间色直接搬过来。
+         日间那批明度只有 25%~45%，压在 #101215 的深底上等于没有。
+
+         浅底则相反：压到只比卡片背景（#1B1E24）亮一点点，当底色用不刺眼。
+    -->
+    <color name="accent_teal">#4DB6AC</color>
+    <color name="accent_soft_teal">#12312E</color>
+
+    <color name="accent_purple">#CE93D8</color>
+    <color name="accent_soft_purple">#2E1B33</color>
+
+    <color name="accent_pink">#F48FB1</color>
+    <color name="accent_soft_pink">#331B26</color>
+
+    <color name="accent_orange">#FFB74D</color>
+    <color name="accent_soft_orange">#33260F</color>
+
+    <color name="accent_red">#EF9A9A</color>
+    <color name="accent_soft_red">#33191B</color>
+
+    <color name="accent_indigo">#9FA8DA</color>
+    <color name="accent_soft_indigo">#1D2140</color>
 </resources>

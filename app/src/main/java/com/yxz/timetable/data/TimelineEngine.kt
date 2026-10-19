@@ -212,7 +212,8 @@ object TimelineEngine {
                 kind = Kind.CLASS,
                 nodes = c.startNode..c.endNode,
                 place = c.place,
-                isCourse = true
+                isCourse = true,
+                courseId = c.id
             )
         }
 
@@ -282,7 +283,7 @@ object TimelineEngine {
             val start = maxOf(b.start, cursor)
             if (start >= b.end) continue                 // 完全被前面的块吃掉了
             if (start > cursor) raw += gap(cursor, start)
-            raw += Moment(start, b.end, b.title, b.note, b.place, b.kind, b.isCourse)
+            raw += Moment(start, b.end, b.title, b.note, b.place, b.kind, b.isCourse, b.courseId)
             cursor = b.end
         }
         if (cursor < 1440) raw += gap(cursor, 1440)
@@ -301,7 +302,8 @@ object TimelineEngine {
             val last = merged.lastOrNull()
             if (last != null && last.end == m.start &&
                 last.title == m.title && last.note == m.note &&
-                last.place == m.place && last.kind == m.kind
+                last.place == m.place && last.kind == m.kind &&
+                last.courseId == m.courseId
             ) {
                 merged[merged.size - 1] = last.copy(end = m.end)
             } else {

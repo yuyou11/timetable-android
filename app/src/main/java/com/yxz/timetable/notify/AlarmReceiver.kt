@@ -42,14 +42,14 @@ class AlarmReceiver : BroadcastReceiver() {
         val store = Store(context)
         val nowMs = System.currentTimeMillis()
 
-        // 贪睡到点：直接响当初贪睡的那个闹钟
+        // 贪睡到点：直接响当初贪睡的那一批闹钟（同一分钟响的可能不止一个）
         val snoozedIds = if (store.snoozeAlarmUntil > 0L && nowMs >= store.snoozeAlarmUntil) {
-            listOf(store.snoozeAlarmId)
+            store.snoozeAlarmIds
         } else {
             emptyList()
         }
         store.snoozeAlarmUntil = 0L
-        store.snoozeAlarmId = ""
+        store.snoozeAlarmIds = emptyList()
 
         val due = if (snoozedIds.isNotEmpty()) {
             store.alarms().filter { it.id in snoozedIds }
@@ -66,7 +66,16 @@ class AlarmReceiver : BroadcastReceiver() {
             )
         }
 
+        // 贪睡的闹钟被删掉了：这次作废，别记成「错过」
+        if (snoozedIds.isNotEmpty() && due.isEmpty()) {
+            store.alarmExpectedAt = 0L
+            store.alarmExpectedLabel = ""
+        }
+
         if (due.isNotEmpty()) {
+            // 真的响了 —— 这次不算「错过」
+            store.alarmExpectedAt = 0L
+            store.alarmExpectedLabel = ""
             AlarmRinger.ring(context, due)
             // 「只响一次」的闹钟响过就关掉 —— 它是按日期固定的，不关的话
             // 明天同一时刻还会再响一次（那就成了每天响）

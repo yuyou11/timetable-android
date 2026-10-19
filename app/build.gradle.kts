@@ -34,9 +34,11 @@ android {
         //
         // 只改 versionName 不改 versionCode 是个很常见的坑：
         // 装上去看着是「新版本」，但系统层面新旧关系没变。
-        versionCode = 26
-        versionName = "1.13.4"
-        resourceConfigurations += listOf("zh", "en")
+        versionCode = 32
+        versionName = "2.0.1"
+        // 只有中文界面。以前这里还写着 "en"，但工程里从来没有 values-en ——
+        // 那等于对英文用户做了一个做不到的承诺，还会把依赖库的英文资源打进来。
+        resourceConfigurations += listOf("zh")
     }
 
     signingConfigs {

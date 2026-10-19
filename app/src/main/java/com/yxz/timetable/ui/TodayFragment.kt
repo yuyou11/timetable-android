@@ -1,5 +1,6 @@
 package com.yxz.timetable.ui
 
+import android.app.Dialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -12,11 +13,13 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.Kind
 import com.yxz.timetable.data.Moment
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
+import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentTodayBinding
 import com.yxz.timetable.databinding.ItemTimelineBinding
@@ -34,8 +37,27 @@ class TodayFragment : Fragment() {
     private var suppressSwitch = false
     private var scrolledOnce = false
 
+    /**
+     * 上一次画时间线时的「内容指纹」。
+     *
+     * 30 秒一次的刷新只为了让「还剩 N 分钟」和进度条走字，
+     * 时间线本身（十几二十个 View）在这段时间里一个字都没变。
+     * 指纹没变就跳过 removeAllViews + 重新 inflate ——
+     * 省下的不是电量（页面本来就醒着），是无谓的掉帧。
+     */
+    private var lastTimelineKey: Int? = null
+
     /** 明天的起床时刻。点了「设闹钟」要用，所以存下来 */
     private var tomorrowWake: Int? = null
+
+    /**
+     * 正在显示的「这一格是什么」面板。
+     *
+     * 时间线每 30 秒会重画一次（只剩内容变了才真的重画）。重画时被点的那个
+     * View 会被 removeAllViews 摘掉，面板却还挂在屏幕上 —— 它锚定的东西已经没了。
+     * 所以重画之前先收起来，别留一张指着空白处的卡。
+     */
+    private var detailCard: Dialog? = null
 
     /**
      * 界面上那个「还剩 23 分钟」需要每分钟变一次。
@@ -91,18 +113,48 @@ class TodayFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        scrolledOnce = false
-        Handler(Looper.getMainLooper()).post(ticker)
+        if (!isHidden) beginSession()
     }
 
     override fun onPause() {
         super.onPause()
+        stopTicker()
+        detailCard?.dismiss()
+        detailCard = null
+    }
+
+    /**
+     * 切页用的是 hide/show，Fragment 的生命周期不会重走一遍。
+     * 从别的页切回来时在这里补一次刷新，并重新开始每分钟的走字。
+     */
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) {
+            detailCard?.dismiss()
+            detailCard = null
+            stopTicker()
+        } else {
+            beginSession()
+        }
+    }
+
+    private fun beginSession() {
+        scrolledOnce = false
+        lastTimelineKey = null      // 回来时无条件重画一次，防止数据在后台变过
+        render()
+        stopTicker()
+        Handler(Looper.getMainLooper()).post(ticker)
+    }
+
+    private fun stopTicker() {
         Handler(Looper.getMainLooper()).removeCallbacks(ticker)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         Handler(Looper.getMainLooper()).removeCallbacks(ticker)
+        detailCard?.dismiss()
+        detailCard = null
         _binding = null
     }
 
@@ -138,45 +190,44 @@ class TodayFragment : Fragment() {
             val place = if (cur.place.isNotBlank()) " · ${cur.place}" else ""
             val remain = (cur.end - minute).coerceAtLeast(0)
             binding.tvNowMeta.text =
-                "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}$place · ${formatDuration(cur.duration)}" +
-                        " · 还剩 $remain 分钟"
+                "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}$place · 还剩 $remain 分钟"
             binding.nowProgress.progress =
                 if (cur.duration > 0) ((minute - cur.start) * 100 / cur.duration).coerceIn(0, 100) else 0
         }
 
         val next = TimelineEngine.nextAfter(moments, minute)
         binding.tvNowNext.text =
-            if (next != null) "接着　${Slots.fmt(next.start)}　${next.title}"
+            if (next != null) "接下来 ${Slots.fmt(next.start)} · ${next.title}"
             else "今天没有下一项了"
 
         // ---- 开关状态 ----
         binding.tvSwitchState.text = when {
-            !store.enabled -> "已关闭 · App 不会消耗任何电量"
-            !Notifier.isAllowed(ctx) -> "缺少通知权限，通知不会显示"
-            store.snoozeUntil > System.currentTimeMillis() -> "暂停中 · 到点自动恢复"
-            else -> "运行中 · 通知栏随时显示此刻该做什么"
+            !store.enabled -> "已关闭"
+            !Notifier.isAllowed(ctx) -> "缺少通知权限"
+            store.snoozeUntil > System.currentTimeMillis() -> "暂停中，到点自动恢复"
+            else -> "运行中"
         }
 
         // ---- 权限提示 ----
         val hints = mutableListOf<String>()
         if (store.enabled && !AlarmScheduler.canExact(ctx)) {
-            hints += "⚠️ 精确闹钟未开启，通知可能延迟十几分钟才切换。到「设置」页一键开启。"
+            hints += "精确闹钟未开启，切换可能延迟。到「设置」页一键开启。"
         }
         if (store.enabled && store.remindLead > 0 && !Notifier.isAllowed(ctx)) {
-            hints += "⚠️ 课前提醒需要通知权限。"
+            hints += "课前提醒需要通知权限。"
         }
         binding.tvHint.visibility = if (hints.isEmpty()) View.GONE else View.VISIBLE
         binding.tvHint.text = hints.joinToString("\n")
 
         renderTomorrow(courses, templates)
-        renderTimeline(moments, cur)
+        renderTimeline(moments, cur, today, week, courses, templates)
     }
 
     // ------------------------------------------------------------------
     //  明日预告
     // ------------------------------------------------------------------
 
-    private fun renderTomorrow(courses: List<com.yxz.timetable.data.Course>, templates: com.yxz.timetable.data.TemplateSet) {
+    private fun renderTomorrow(courses: List<Course>, templates: TemplateSet) {
         val tomorrow = LocalDate.now().plusDays(1)
         val week = store.weekOf(tomorrow)
         val type = TimelineEngine.dayType(tomorrow, week, courses, templates.config)
@@ -200,7 +251,7 @@ class TodayFragment : Fragment() {
         // ---- 第一件事 ----
         val first = moments.firstOrNull { it.kind != Kind.SLEEP && it.start > 0 }
         binding.tvTomorrowFirst.text =
-            if (first != null) "接着　${Slots.fmt(first.start)}　${first.title}" else ""
+            if (first != null) "第一项 ${Slots.fmt(first.start)} · ${first.title}" else ""
 
         // ---- 明天的课 ----
         val tomorrowCourses = moments.filter { it.isCourse }
@@ -210,7 +261,7 @@ class TodayFragment : Fragment() {
                 ContextCompat.getColor(requireContext(), R.color.text_secondary)
             )
         } else {
-            binding.tvTomorrowCourses.text = "有 ${tomorrowCourses.size} 节课：" +
+            binding.tvTomorrowCourses.text = "${tomorrowCourses.size} 节课：" +
                     tomorrowCourses.joinToString("、") { it.title }
             binding.tvTomorrowCourses.setTextColor(
                 ContextCompat.getColor(requireContext(), R.color.text_primary)
@@ -220,7 +271,7 @@ class TodayFragment : Fragment() {
         // ---- 收尾 ----
         val last = moments.lastOrNull { it.kind != Kind.SLEEP && it.end < 1440 }
         binding.tvTomorrowTail.text =
-            if (last != null) "最后一项　${Slots.fmt(last.start)}–${Slots.fmt(last.end)}　${last.title}" else ""
+            if (last != null) "最后 ${Slots.fmt(last.start)}–${Slots.fmt(last.end)} · ${last.title}" else ""
     }
 
     // ------------------------------------------------------------------
@@ -250,14 +301,12 @@ class TodayFragment : Fragment() {
             toast("这套作息模板里没有起床时间")
             return
         }
-        val ctx = requireContext()
         val hour = wake / 60
         val minute = wake % 60
-
         val base = Intent(AlarmClock.ACTION_SET_ALARM).apply {
             putExtra(AlarmClock.EXTRA_HOUR, hour)
             putExtra(AlarmClock.EXTRA_MINUTES, minute)
-            putExtra(AlarmClock.EXTRA_MESSAGE, "起床 · 时间规划表")
+            putExtra(AlarmClock.EXTRA_MESSAGE, "起床 · Time Machine")
             // 只在周一至周五重复是错的：A/B 型日的起床时间不同，
             // 让用户自己在时钟应用里决定要不要重复，比替他猜更靠谱。
         }
@@ -281,9 +330,40 @@ class TodayFragment : Fragment() {
     //  今日时间线
     // ------------------------------------------------------------------
 
-    private fun renderTimeline(moments: List<Moment>, current: Moment?) {
+    /**
+     * 画时间线。**每一格都能点**：点开是这一格的信息卡（[MomentCard]）。
+     *
+     * 为什么每格都能点，而不是只有上课的格子能点：这条线上真正占大多数的是
+     * 「午餐」「午睡」「空档 · 机动」这些格子，而「提醒我 12:00 去吃饭」
+     * 恰恰是它们在时间线上的意义。只有课程格子能点的话，这个页面就只是
+     * 课表的另一个视图了。
+     */
+    private fun renderTimeline(
+        moments: List<Moment>,
+        current: Moment?,
+        date: LocalDate,
+        week: Int,
+        courses: List<Course>,
+        templates: TemplateSet
+    ) {
+        // 内容指纹：时间线内容 + 当前是哪一格。任一变化才需要重画
+        val key = moments.hashCode() * 31 + (current?.start ?: -1)
+        if (key == lastTimelineKey) return
+        lastTimelineKey = key
+
+        // 重画会把被点的那个 View 摘掉，面板还开着就成了一张指着空白处的卡
+        detailCard?.dismiss()
+        detailCard = null
+
         val container = binding.timelineContainer
         container.removeAllViews()
+
+        // 这一屏的日型只算一次：卡片上是「A 型日」还是「无课 · 休息日」，
+        // 和页面顶部那行必须说同一件事
+        val dayType = TimelineEngine.dayType(date, week, courses, templates.config)
+        val dayTypeLabel = TimelineEngine.dayTypeDisplay(
+            date, week, courses, templates.config, store.dayTypeNames()
+        )
 
         val inflater = LayoutInflater.from(requireContext())
         var currentRow: View? = null
@@ -293,7 +373,7 @@ class TodayFragment : Fragment() {
 
             row.tvTimeStart.text = Slots.fmt(m.start)
             row.tvTimeEnd.text = Slots.fmt(m.end)
-            row.tvDuration.text = formatDuration(m.duration)
+            row.tvDuration.text = durationText(m.duration)
             row.tvTitle.text = m.title
             row.colorBar.setBackgroundColor(kindColor(m.kind))
 
@@ -318,6 +398,20 @@ class TodayFragment : Fragment() {
                 currentRow = row.root
             }
 
+            row.root.setOnClickListener { v ->
+                detailCard?.dismiss()
+                detailCard = MomentCard.show(
+                    anchor = v,
+                    moment = m,
+                    date = date,
+                    week = week,
+                    // 课程格才有的东西（老师、周次）顺着 courseId 找回来
+                    course = courses.firstOrNull { it.id == m.courseId },
+                    dayType = dayType,
+                    dayTypeLabel = dayTypeLabel
+                )
+            }
+
             container.addView(row.root)
         }
 
@@ -329,20 +423,6 @@ class TodayFragment : Fragment() {
                 binding.scroll.smoothScrollTo(0, (target.top - 200).coerceAtLeast(0))
             }
         }
-    }
-
-    /**
-     * 把分钟数写成人话：45 -> 「45 分」，95 -> 「1 时 35 分」，120 -> 「2 时」。
-     *
-     * 为什么不用「1h35m」这种紧凑写法？因为这是给中文用户看的日常界面，
-     * 「1 时 35 分」读起来不需要在脑子里做一次翻译。
-     */
-    private fun formatDuration(minutes: Int): String {
-        if (minutes <= 0) return ""
-        if (minutes < 60) return "$minutes 分"
-        val h = minutes / 60
-        val m = minutes % 60
-        return if (m == 0) "$h 时" else "$h 时 $m 分"
     }
 
     private fun toast(msg: String) =
