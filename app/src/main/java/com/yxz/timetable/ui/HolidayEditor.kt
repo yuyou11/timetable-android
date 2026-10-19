@@ -47,7 +47,7 @@ class HolidayEditor(
     private var dialog: AlertDialog? = null
 
     fun show() {
-        val d = AlertDialog.Builder(ctx)
+        val d = CardAlertDialogBuilder(ctx)
             .setTitle("放假 / 补班日")
             .setView(listBox)
             .setPositiveButton("添加一天") { _, _ -> askAdd() }
@@ -150,7 +150,7 @@ class HolidayEditor(
             addView(name)
         }
 
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle("添加一天")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->

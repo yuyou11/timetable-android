@@ -1,6 +1,8 @@
 package com.yxz.timetable
 
 import android.Manifest
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -8,16 +10,17 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.data.Store
 import com.yxz.timetable.databinding.ActivityMainBinding
+import com.yxz.timetable.notify.AlarmRinger
 import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
 import com.yxz.timetable.ui.AppTheme
 import com.yxz.timetable.ui.AlarmFragment
+import com.yxz.timetable.ui.CardAlertDialogBuilder
 import com.yxz.timetable.ui.SettingsFragment
 import com.yxz.timetable.ui.TodayFragment
 import com.yxz.timetable.ui.WeekFragment
@@ -26,6 +29,24 @@ import com.yxz.timetable.ui.accentColor
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    /**
+     * 这次窗口是不是「被闹钟拉起来的」。
+     *
+     * 它决定两件事：响铃期间窗口要盖在锁屏上；响铃一结束就得把这个窗口还回去
+     * （见 [onAlarmStopped]）。用户自己打开 App 时它是 false ——
+     * 权限该按需给，不按身份给。
+     */
+    private var alarmLaunch = false
+
+    /**
+     * 响铃结束的回调，注册在 [AlarmRinger] 上。
+     *
+     * 挂在铃声那边而不是让每个「停止」按钮自己收尾：停止闹钟有四条路
+     * （通知按钮 / 页面上的按钮 / 自动停 / 关掉开关），漏一条就会留下
+     * 一个压着锁屏的窗口 —— 那正是「解不开锁」的成因。
+     */
+    private val onRingingEnd = { onAlarmStopped() }
 
     /**
      * 通知权限的申请回调。
@@ -72,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         // 从状态栏闹钟图标点进来：只停在闹钟页，不亮屏、不盖锁屏
         val openAlarmTab = intent?.getBooleanExtra(EXTRA_OPEN_ALARM_TAB, false) == true
         if (fromAlarm) {
+            alarmLaunch = true
             showOverLockScreen()
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
@@ -112,6 +134,7 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(EXTRA_FROM_ALARM, false)) {
+            alarmLaunch = true
             showOverLockScreen()
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             binding.bottomNav.selectedItemId = R.id.nav_alarm
@@ -209,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         val store = Store(this)
         if (!store.isFirstLaunch) return
 
-        AlertDialog.Builder(this)
+        CardAlertDialogBuilder(this)
             .setTitle(R.string.first_launch_title)
             .setMessage(R.string.first_launch_msg)
             .setPositiveButton(R.string.first_launch_blank) { _, _ ->
@@ -240,6 +263,13 @@ class MainActivity : AppCompatActivity() {
         if (supportFragmentManager.findFragmentById(R.id.container) == null) {
             showTab(binding.bottomNav.selectedItemId)
         }
+        // 窗口在前台时才值得收尾：在后台时窗口本来就不显示，标签也就不用跟着改
+        AlarmRinger.addStopListener(onRingingEnd)
+    }
+
+    override fun onStop() {
+        AlarmRinger.removeStopListener(onRingingEnd)
+        super.onStop()
     }
 
     override fun onResume() {
@@ -250,6 +280,97 @@ class MainActivity : AppCompatActivity() {
         // 后者漏掉的话，系统「强行停止」后重开 App 闹钟不会恢复。
         AlarmScheduler.schedule(this)
         AlarmScheduler.scheduleAlarms(this)
+
+        // 响铃可能在窗口不在前台时就结束了（自动停、或用户从通知栏点了「停止」）。
+        // 那种情况下监听器收不到回调，所以回到前台再补一次判断 ——
+        // 否则一个已经不响了的窗口继续压着锁屏，用户照样解不开锁。
+        // 判断用「响铃会话还在不在」而不是「有没有声音」：铃声起不来时窗口也该显示。
+        if (alarmLaunch && !AlarmRinger.isSessionActive()) onAlarmStopped()
+    }
+
+    /**
+     * 响铃结束：把「盖在锁屏上」的那个窗口还给锁屏。
+     *
+     * ## 这个 bug 是怎么来的
+     *
+     * 闹钟响时会调 [setShowWhenLocked]（旧系统是 FLAG_SHOW_WHEN_LOCKED）把窗口
+     * **画在锁屏上面**。注意：这只是盖住，锁屏本身并没有被解开。只要这个标志还在，
+     * 用户划屏、按指纹想输 PIN，碰到的都是这块窗口，锁屏根本轮不到显示。
+     *
+     * 以前停掉闹钟之后这个标志从来没撤过：声音停了、通知也撤了，窗口却还压着锁屏。
+     * 用户看到的是一个闹钟页面，怎么划都解不开锁 —— 只能长按电源键重启。
+     *
+     * ## 现在怎么收
+     *
+     * 1. 撤掉「屏幕常亮」；
+     * 2. 撤掉「盖住锁屏」和「亮屏」这两个窗口标志（它们不是一次性动作，set 过就得 clear）；
+     * 3. **如果设备还锁着，直接把窗口交回去**（finishAndRemoveTask）——
+     *    用户立刻看到正常的锁屏，该输 PIN 输 PIN。只是清标志不够可靠：
+     *    有些厂商的锁屏不会马上重新浮上来。
+     *
+     * 设备已经解锁（闹钟响的时候人正在用手机）就不关窗口 —— 那是用户自己的 App，
+     * 没理由替他关掉，他只想要个安静。
+     */
+    fun onAlarmStopped() {
+        if (isFinishing || isDestroyed) return
+
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
+        val wasAlarmWindow = alarmLaunch
+        alarmLaunch = false
+        if (wasAlarmWindow && keyguardLocked()) finishAndRemoveTask()
+    }
+
+    /** 现在锁着没有。用来决定「响铃结束后要不要把窗口交还给锁屏」 */
+    private fun keyguardLocked(): Boolean =
+        (getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)?.isKeyguardLocked == true
+
+    /**
+     * 用户在响铃界面上主动要求解锁（见闹钟页那条「解锁手机」）。
+     *
+     * 用系统的 [KeyguardManager.requestDismissKeyguard] 而不是自己去解：
+     * 解锁界面（PIN / 图案 / 指纹）是锁屏的事，App 只要能「申请」就够了，
+     * 也没办法绕过它 —— 这正是应该的。
+     *
+     * 验证通过后窗口留在原地，只是从此变成一次「正常使用」：响铃继续，
+     * 想停再按停止；这时候停掉也不会把窗口关掉（见 [onUserUnlocked]）。
+     */
+    fun requestUnlock() {
+        val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return
+        km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+            override fun onDismissSucceeded() = onUserUnlocked()
+        })
+    }
+
+    /**
+     * 用户已经自己解锁了：把这个窗口降级成普通的 App 窗口。
+     *
+     * 不降级的话，用户下次锁屏时它还会盖上去 —— 那就把同一个 bug 又制造了一遍。
+     * 「屏幕常亮」留着：闹钟还在响，用户可能正看着它。
+     */
+    private fun onUserUnlocked() {
+        if (isFinishing || isDestroyed) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+        alarmLaunch = false
     }
 
     private fun askNotificationPermission() {
@@ -293,10 +414,5 @@ class MainActivity : AppCompatActivity() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(EXTRA_FROM_ALARM, true)
             }
-
-        /** 响铃结束后收掉「屏幕别灭」的标记（见 AlarmFragment 的停止 / 贪睡） */
-        fun clearKeepScreenOn(activity: android.app.Activity) {
-            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
     }
 }

@@ -30,12 +30,40 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
-        <TimePicker
-            android:id="@+id/timePicker"
-            android:layout_width="wrap_content"
+        <!--
+          时间：点一下开圆盘（见 TimeDialDialog）。
+          原来这里是系统的 TimePicker —— 占了半个屏幕、指针一格一格跳，
+          改个时间得在小圆盘上找半天。
+        -->
+        <LinearLayout
+            android:id="@+id/timeBox"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:timePickerMode="clock" />
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_card_accent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="14dp">
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textColor="?attr/accentColor"
+                android:textSize="34sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvTimeHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false"
+                android:text="点这里改时间"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvRepeatTitle"

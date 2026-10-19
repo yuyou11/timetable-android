@@ -63,6 +63,18 @@ class AlarmEditor(
     private var sound = existing?.soundUri ?: ""
     private var dialog: AlertDialog? = null
 
+    /**
+     * 当前选的时刻。圆盘里改的是这两个数，**保存时才落库** ——
+     * 中途取消不该留下任何痕迹。
+     *
+     * 新建时默认就是**此刻**：早上想设一个「20 分钟后」的闹钟，
+     * 不用先把一只停在 07:00 的盘拖到当前时间。
+     * [openedAt] 只取一次 —— 分两次 now() 有可能跨过整分，时分就对不上了。
+     */
+    private val openedAt = LocalDateTime.now()
+    private var hour = existing?.hour ?: openedAt.hour
+    private var minute = existing?.minute ?: openedAt.minute
+
     private val dayChips = mutableMapOf<Int, TextView>()
     private val presetChips = mutableListOf<Pair<Set<Int>, TextView>>()
     private val leadChips = mutableMapOf<Int, TextView>()
@@ -96,7 +108,7 @@ class AlarmEditor(
             existing == null -> "新建闹钟"
             else -> "编辑闹钟"
         }
-        val d = AlertDialog.Builder(ctx)
+        val d = CardAlertDialogBuilder(ctx)
             .setTitle(title)
             .setView(binding.root)
             .setPositiveButton("保存", null)
@@ -130,7 +142,7 @@ class AlarmEditor(
         }
         // 时刻由课表 / 模板推，不是用户填的 —— 这几块整个收起来。
         // 「重复」这个小标题也要跟着收，否则会留下一个没有内容的标题
-        binding.timePicker.visibility = View.GONE
+        binding.timeBox.visibility = View.GONE
         binding.tvRepeatTitle.visibility = View.GONE
         binding.dayRow.visibility = View.GONE
         binding.presetRow.visibility = View.GONE
@@ -143,9 +155,19 @@ class AlarmEditor(
 
     private fun setupTime() {
         if (isBound) return
-        binding.timePicker.setIs24HourView(true)
-        binding.timePicker.hour = existing?.hour ?: 7
-        binding.timePicker.minute = existing?.minute ?: 0
+        binding.timeBox.setOnClickListener {
+            TimeDialDialog(ctx, hour, minute) { h, m ->
+                hour = h
+                minute = m
+                renderTime()
+                oneShotHint()
+            }.show()
+        }
+        renderTime()
+    }
+
+    private fun renderTime() {
+        binding.tvTime.text = "%02d:%02d".format(hour, minute)
     }
 
     private fun setupDays() {
@@ -192,13 +214,11 @@ class AlarmEditor(
             binding.tvTarget.visibility = View.GONE
             return
         }
-        val at = Alarms.oneShotDate(
-            binding.timePicker.hour, binding.timePicker.minute, LocalDateTime.now()
-        )
+        val at = Alarms.oneShotDate(hour, minute, LocalDateTime.now())
         binding.tvTarget.visibility = View.VISIBLE
         binding.tvTarget.text = "只响一次：${at.monthValue} 月 ${at.dayOfMonth} 日" +
                 "（${weekdayCn(at.dayOfWeek.value)}）" +
-                "%02d:%02d".format(binding.timePicker.hour, binding.timePicker.minute)
+                "%02d:%02d".format(hour, minute)
     }
 
     private fun setupLead() {
@@ -226,7 +246,7 @@ class AlarmEditor(
             hint = "提前多少分钟（0–120）"
             setText(lead.toString())
         }
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle("自定义提前量")
             .setView(input)
             .setPositiveButton("确定") { _, _ ->
@@ -298,8 +318,6 @@ class AlarmEditor(
                 )
             }
             else -> {
-                val hour = binding.timePicker.hour
-                val minute = binding.timePicker.minute
                 Alarm(
                     id = existing?.id ?: store.nextAlarmId(),
                     hour = hour,

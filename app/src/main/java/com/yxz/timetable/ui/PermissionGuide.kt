@@ -1,7 +1,6 @@
 package com.yxz.timetable.ui
 
 import android.annotation.SuppressLint
-import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -181,7 +180,7 @@ class PermissionGuide(private val fragment: Fragment) {
      * 写死的路径迟早会和用户手机上看到的对不上。
      */
     fun openLockScreenHelp() {
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle("让通知出现在锁屏上")
             .setMessage(
                 "锁屏通知受两层控制：\n\n" +

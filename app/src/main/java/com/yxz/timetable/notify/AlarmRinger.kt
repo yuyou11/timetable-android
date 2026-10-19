@@ -78,6 +78,15 @@ object AlarmRinger {
     fun isRinging(): Boolean = player != null
 
     /**
+     * 这一轮响铃的「会话」还在不在 —— 从 [ring] 到 [stop] 之间都算。
+     *
+     * 和 [isRinging] 的区别：铃声文件坏了、MediaPlayer 起不来时 player 是空的，
+     * 但闹钟**确实响了**（通知还在、窗口也该弹出来）。用「有没有声音」来判断
+     * 会让这种时候的窗口一打开就被自己关掉。
+     */
+    fun isSessionActive(): Boolean = ringingIds.isNotEmpty()
+
+    /**
      * 响铃。[due] 是这一分钟里所有该响的闹钟（可能不止一个：
      * 起床 + 吃药设在同一分钟是常事，合并成一次唤醒 + 一次响铃）。
      */
@@ -103,8 +112,36 @@ object AlarmRinger {
         notify(ctx, due, store)
     }
 
+    /**
+     * 响铃结束的监听者。目前只有 [MainActivity] 用：把「盖在锁屏上」的窗口收回去。
+     *
+     * 为什么挂监听而不是让调用方各自去收：停响铃的路有四条（通知按钮、页面上的按钮、
+     * 自动停、关掉开关），漏掉任何一条，那个窗口都会继续压着锁屏 ——
+     * 表现就是「闹钟早停了，手机却解不开锁」。
+     *
+     * 全部调用方都在主线程（广播接收器、点击、Handler），所以这里不额外加锁。
+     */
+    private val stopListeners = mutableListOf<() -> Unit>()
+
+    fun addStopListener(l: () -> Unit) {
+        if (l !in stopListeners) stopListeners += l
+    }
+
+    fun removeStopListener(l: () -> Unit) {
+        stopListeners -= l
+    }
+
     /** 停音 + 撤通知（通知里的「停止」、自动停、以及关掉开关时都走这里） */
     fun stop(ctx: Context?) {
+        // 只有「本来真的在响」才算一次结束：startSound 开头那次静默清理也走
+        // stopInternal，但它不该惊动监听者 —— 否则新闹钟一响，窗口就被收起来了
+        val wasRinging = player != null || ringingIds.isNotEmpty()
+        stopInternal(ctx)
+        if (!wasRinging) return
+        for (l in stopListeners.toList()) runCatching { l() }
+    }
+
+    private fun stopInternal(ctx: Context?) {
         runCatching {
             player?.let { if (it.isPlaying) it.stop(); it.release() }
         }
@@ -136,7 +173,7 @@ object AlarmRinger {
     }
 
     private fun startSound(ctx: Context, alarm: Alarm, store: Store) {
-        stop(null)                       // 上一首先停掉，避免叠在一起
+        stopInternal(null)               // 上一首先停掉，避免叠在一起
         AppContextHolder.ctx = ctx.applicationContext
         requestFocus(ctx)
         val uri = soundUri(alarm, store)

@@ -19,6 +19,8 @@
     <string name="alarm_ringing">⏰ 正在响铃</string>
     <string name="alarm_ring_stop">停 止</string>
     <string name="alarm_ring_snooze">贪睡</string>
+    <!-- 响铃时窗口盖在锁屏**上面**，锁屏本身并没有被解开。这个入口让人能主动解锁 -->
+    <string name="alarm_ring_unlock">解锁手机</string>
     <string name="alarm_empty">还没有闹钟。\n点下方新建，或在课表页点一格给某门课设一个。</string>
 
     <string name="now_label">此刻</string>

@@ -1,6 +1,7 @@
 package com.yxz.timetable.ui
 
-import android.app.AlertDialog
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
@@ -253,7 +254,7 @@ class AlarmFragment : Fragment() {
             return
         }
         val date = next.date
-        AlertDialog.Builder(requireContext())
+        CardAlertDialogBuilder(requireContext())
             .setTitle("跳过下一次")
             .setMessage(
                 "${date.monthValue} 月 ${date.dayOfMonth} 日" +
@@ -296,12 +297,23 @@ class AlarmFragment : Fragment() {
                 (alarm?.let { Alarms.describe(it, store.courses()) } ?: "")
         binding.btnRingSnooze.text = "贪睡 ${AlarmRinger.currentSnoozeMinutes()} 分钟"
         binding.btnRingStop.setOnClickListener {
+            // 「把盖在锁屏上的窗口还回去」不用在这里做 —— AlarmRinger 会把所有停止路径
+            // 汇到一个回调上，MainActivity 在那里统一收尾（见 onAlarmStopped）
             AlarmRinger.stop(requireContext())
-            MainActivity.clearKeepScreenOn(requireActivity())   // 不响了就别再让屏幕亮着
             renderRinging()
             render()
         }
         binding.btnRingSnooze.setOnClickListener { snoozeFromApp() }
+
+        // 「解锁手机」只在设备真的锁着时出现。响铃窗口是盖在锁屏**上面**的，
+        // 锁屏并没有被解开 —— 想用手机只能先停闹钟，这条给了另一个出口。
+        // 每秒重算一次，所以用户自己解锁之后它会自己消失。
+        val locked = (requireContext().getSystemService(Context.KEYGUARD_SERVICE)
+                as? KeyguardManager)?.isKeyguardLocked == true
+        binding.btnRingUnlock.visibility = if (locked) View.VISIBLE else View.GONE
+        binding.btnRingUnlock.setOnClickListener {
+            (activity as? MainActivity)?.requestUnlock()
+        }
 
         handler.removeCallbacks(ringWatcher)
         handler.postDelayed(ringWatcher, 1000L)
@@ -318,7 +330,6 @@ class AlarmFragment : Fragment() {
             AlarmScheduler.scheduleAlarms(ctx)
         }
         AlarmRinger.stop(ctx)
-        MainActivity.clearKeepScreenOn(requireActivity())
         renderRinging()
         render()
     }

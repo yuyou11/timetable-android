@@ -1,6 +1,5 @@
 package com.yxz.timetable.ui
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -84,7 +83,7 @@ class ImportExport(
 
     /** 错误弹窗统一从这里出，免得每处各写一遍 AlertDialog.Builder */
     private fun showAlert(title: String, message: String) {
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton("知道了", null)
@@ -232,7 +231,7 @@ class ImportExport(
 
         // 文件里没带课程时，「替换 / 合并」这两个选项没有意义 ——
         // 给一个动作单一的按钮，避免用户以为自己在做选择
-        val builder = AlertDialog.Builder(ctx)
+        val builder = CardAlertDialogBuilder(ctx)
             .setTitle("确认导入")
             .setMessage(msg)
 
@@ -318,7 +317,7 @@ class ImportExport(
      * 默认总是输出某一种都不合适，所以让用户自己选。
      */
     fun chooseExportScope() {
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle(fragment.getString(R.string.export_choice_title))
             .setItems(
                 arrayOf(
@@ -380,7 +379,7 @@ class ImportExport(
         // 现在它紧挨着解析和生成代码，并且有测试断言里面的版本号和 dayTypes
         // 说明和代码一致。
         val help = ScheduleFormat.formatHelp()
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle("数据格式 timetable v${ScheduleFormat.VERSION}")
             .setMessage(help)
             .setPositiveButton("复制示例 JSON") { _, _ ->

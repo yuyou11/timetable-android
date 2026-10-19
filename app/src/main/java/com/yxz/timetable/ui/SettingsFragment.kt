@@ -1,6 +1,5 @@
 package com.yxz.timetable.ui
 
-import android.app.AlertDialog
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -561,7 +560,7 @@ class SettingsFragment : Fragment() {
         if (delta < 0) {
             val orphan = store.courses().filter { c -> c.weeks.any { it > next } }
             if (orphan.isNotEmpty()) {
-                AlertDialog.Builder(requireContext())
+                CardAlertDialogBuilder(requireContext())
                     .setTitle("有课程会被挡在学期外")
                     .setMessage(
                         "改成 $next 周后，这些课超出范围的周次不再显示：\n\n" +
@@ -597,7 +596,7 @@ class SettingsFragment : Fragment() {
             toast("课表已经是空的")
             return
         }
-        AlertDialog.Builder(requireContext())
+        CardAlertDialogBuilder(requireContext())
             .setTitle("清空所有课程")
             .setMessage(
                 "会删掉全部 $count 门课。\n\n" +
@@ -657,7 +656,7 @@ class SettingsFragment : Fragment() {
             return
         }
 
-        AlertDialog.Builder(requireContext())
+        CardAlertDialogBuilder(requireContext())
             .setTitle("恢复内置作息")
             .setMessage(
                 "会丢弃导入的模板、日型配置和自定义日型名，恢复默认。\n\n" +
@@ -710,7 +709,7 @@ class SettingsFragment : Fragment() {
 
         // 先建对话框，再往里填色块：色块的点击要能关掉这个对话框，
         // 而那时对话框对象必须已经存在（不能反过来先建色块）
-        val dialog = AlertDialog.Builder(ctx)
+        val dialog = CardAlertDialogBuilder(ctx)
             .setTitle(getString(R.string.theme_title))
             .setNegativeButton("取消", null)
             .create()
@@ -821,7 +820,7 @@ class SettingsFragment : Fragment() {
             val pad = (requireContext().resources.displayMetrics.density * 20).toInt()
             setPadding(pad, pad / 2, pad, pad / 2)
         }
-        AlertDialog.Builder(requireContext())
+        CardAlertDialogBuilder(requireContext())
             .setTitle("学期名称")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->

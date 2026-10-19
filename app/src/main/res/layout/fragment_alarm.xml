@@ -76,6 +76,23 @@
                     android:textColor="?attr/accentColor"
                     android:textSize="15sp" />
             </LinearLayout>
+
+            <!-- 响铃时窗口是盖在锁屏**上面**的，锁屏本身并没有被解开 ——
+                 没有这个出口的话，想解锁只能先把闹钟停掉。点这里弹系统解锁界面，
+                 解锁之后响铃继续（想停再按上面的停止）。
+                 只在设备锁着时显示，见 AlarmFragment.renderRinging。 -->
+            <TextView
+                android:id="@+id/btnRingUnlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:paddingVertical="10dp"
+                android:text="@string/alarm_ring_unlock"
+                android:textColor="?attr/accentColor"
+                android:textSize="14sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <com.yxz.timetable.ui.ClockView

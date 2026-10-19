@@ -242,7 +242,7 @@ internal object AlarmQuick {
         }
         dayTypeBox?.let { box.addView(it) }
 
-        val dialog = AlertDialog.Builder(ctx)
+        val dialog = CardAlertDialogBuilder(ctx)
             .setTitle(title)
             .setView(box)
             .setPositiveButton("确定", null)
@@ -272,7 +272,7 @@ internal object AlarmQuick {
             hint = "提前多少分钟（0–120）"
             current?.let { setText(it.toString()) }
         }
-        AlertDialog.Builder(ctx)
+        CardAlertDialogBuilder(ctx)
             .setTitle("自定义提前量")
             .setView(input)
             .setPositiveButton("确定") { _, _ ->
