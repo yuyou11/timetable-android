@@ -51,7 +51,7 @@
 
 ## 一、装到手机
 
-1. 把 `dist/Time-Machine-v2.1.10-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
+1. 把 `dist/Time-Machine-v2.1.11-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
 2. 用手机上的文件管理器点开它安装。
    系统会提示「不允许安装未知来源应用」——按提示允许一次即可（这是所有非应用商店安装的必经步骤）。
 3. 打开 App 直接进「今天」页（没有开屏动画）。
@@ -451,7 +451,7 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 65 个 .kt / 20,144 行
+app/src/main/java/com/yxz/timetable/          共 65 个 .kt / 20,149 行
 ├── MainActivity.kt            616 行 五个页面的容器（hide/show 保状态）；换主题；闹钟响时弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
 ├── data/                        数据层（18 个）★ = 核心
 │   ├── ScheduleFormat.kt        ★ 1564 行 数据格式标准 v5：解析、校验、生成、错误信息
@@ -508,7 +508,7 @@ app/src/main/java/com/yxz/timetable/          共 65 个 .kt / 20,144 行
 └── ui/persona/                  P3 换皮层（15 个，只在 p3Mode 下挂载）
     ├── PersonaTodayView.kt      1134 行 今天页整页自绘：蓝 HUD（日期 / 三角旗 / 此刻）+ 斜口白纸（色带 / 此刻卡 / 时间线 / 明天）
     ├── PersonaCalendarView.kt    740 行 日历整页自绘：深蓝水彩、白色弧面、巨号月份、撕纸「今天」
-    ├── PersonaWeekView.kt        880 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块（贴着格子边）、底部近五周密度卡（点阵与字放大一档，与网格、屏幕底各留空档）；行高铺满，超过 17 节才上下滑
+    ├── PersonaWeekView.kt        885 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块（贴着格子边）、底部近五周密度卡（点阵与字放大一档，与网格、屏幕底各留空档；关掉点阵也不贴边）；行高铺满，超过 17 节才上下滑
     ├── PersonaWeekLayout.kt       50 行 课表页的纵向算术：一行多高、能滚多远（纯函数，有单测）
     ├── PersonaDateHud.kt         485 行 旧的今天页 HUD（v3 起不再挂载；phaseOf / moonLitFraction 仍被新页复用）
     ├── PersonaPageView.kt        471 行 今天 / 课表两页共用的底座：调色板、k 比例、蓝底布纹、描边标题、混色行、折行

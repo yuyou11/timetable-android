@@ -48,6 +48,7 @@ data class SlotClock(val node: Int, val start: Int, val end: Int)
  * 但「铺满」不等于「贴死」：密度卡离屏幕底 12dp、离网格 10dp —— 每块之间都有
  * 空隙，边界才看得清是一块一块的，而不是页面被裁成了几截。**课块是例外**：
  * 它贴着格子边画（格线就是分界），填满一格的观感和「浮在格子里的一张卡」不一样。
+ * 关掉点阵预览时密度卡不画，但那 12dp 的底边距仍然留着（网格不会贴到导航栏）。
  *
  * 为什么不无限压下去：再压课名和教室就叠在一起了，宁可让人自己滑。
  *
@@ -230,7 +231,11 @@ class PersonaWeekView @JvmOverloads constructor(
         val densH = if (dotsEnabled && densityWeeks.isNotEmpty()) dp(densityH) else 0f
         // 密度卡**不贴边**：离屏幕底留一道呼吸，和网格之间也留一道 ——
         // 完全贴死会显得是页面被裁掉了一块，而不是一张独立的卡片。
-        val densTop = h - densH - (if (densH > 0f) dp(densityMargin) else 0f)
+        //
+        // 关掉「周点阵预览」时卡片整块不画（densH = 0），但这道底边距**要留着**：
+        // 早期版本把边距挂在「有没有卡片」上，结果一关点阵，网格就一路铺到导航栏，
+        // 看着像贴死了 —— 页面的下沿是同一件事，跟上面有没有卡无关。
+        val densTop = h - densH - dp(densityMargin)
         gridBottom = densTop - (if (densH > 0f) dp(densityGap) else 0f)
 
         val available = (gridBottom - gridTop).coerceAtLeast(1f)
