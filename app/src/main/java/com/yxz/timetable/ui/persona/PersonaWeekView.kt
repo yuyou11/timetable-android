@@ -145,7 +145,13 @@ class PersonaWeekView @JvmOverloads constructor(
     private val daysH = 46f
     private val sidePad = 12f
     private val timeColW = 34f
-    private val densityH = 50f
+    /**
+     * 近五周密度卡的高度（设计稿 dp）。
+     *
+     * 2.1.10 从 50 抬到 58：点阵和两行字都放大了一档，50dp 里塞不下 ——
+     * 十行的点阵原来只剩 3.1dp 的行距，放大后 3.8dp，字也从 9/6 变成 10.5/7。
+     */
+    private val densityH = 58f
 
     /** 网格区与密度卡之间的空档 */
     private val densityGap = 10f
@@ -668,22 +674,23 @@ class PersonaWeekView @JvmOverloads constructor(
         fill.color = PersonaP3.CYAN
         canvas.drawRect(l, densTop, l + dp(2f), densTop + dp(densityH), fill)
 
-        drawTag(canvas, "WEEK DENSITY", l + dp(8f), densTop + dp(19f), ts(6f), PersonaP3.CYAN, 0.16f)
+        drawTag(canvas, "WEEK DENSITY", l + dp(8f), densTop + dp(21f), ts(6.5f), PersonaP3.CYAN, 0.16f)
         text.typeface = PersonaP3.body
-        text.textSize = ts(9f)
+        text.textSize = ts(10.5f)
         text.color = 0xFFDCEBFF.toInt()
         text.textAlign = Paint.Align.LEFT
-        canvas.drawText("近五周", l + dp(8f), densTop + dp(34f), text)
+        canvas.drawText("近五周", l + dp(8f), densTop + dp(38f), text)
 
-        // 点阵：7 列 × 节数行。行距按可用高度收 —— 13 节的学校也不会顶出条外
-        val areaL = l + dp(58f)
-        val areaR = r - dp(8f)
+        // 点阵：7 列 × 节数行。行距按可用高度收 —— 再大的学校也不会顶出条外。
+        // 左边那一列字放大之后要跟着放宽（"WEEK DENSITY" 一行别压到点阵上）。
+        val areaL = l + dp(68f)
+        val areaR = r - dp(9f)
         val rows = densityWeeks.first().occupied.firstOrNull()?.size ?: 0
         if (rows == 0) return
         val dotsTop = densTop + dp(6f)
-        val dotsBottom = densTop + dp(densityH) - dp(13f)
-        val pitch = minOf(dp(3.4f), (dotsBottom - dotsTop) / rows)
-        val dotR = pitch * 0.34f
+        val dotsBottom = densTop + dp(densityH) - dp(15f)
+        val pitch = minOf(dp(4.2f), (dotsBottom - dotsTop) / rows)
+        val dotR = pitch * 0.36f
         val step = (areaR - areaL) / densityWeeks.size
 
         for ((wi, d) in densityWeeks.withIndex()) {
@@ -704,7 +711,7 @@ class PersonaWeekView @JvmOverloads constructor(
                 }
             }
             text.typeface = PersonaP3.body
-            text.textSize = ts(6f)
+            text.textSize = ts(7f)
             text.textAlign = Paint.Align.CENTER
             text.isFakeBoldText = d.highlight
             text.color = if (d.highlight) PersonaP3.CYAN else 0xFF7FA6E8.toInt()
