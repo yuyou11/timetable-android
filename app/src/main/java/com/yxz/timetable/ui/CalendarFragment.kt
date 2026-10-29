@@ -70,6 +70,12 @@ class CalendarFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         store = Store(requireContext())
         events = store.events()
+
+        // 右下角的新建入口（默认外观）。P3 下这块整层是 GONE，它有自己那一行字
+        binding.btnNewEvent.setOnClickListener {
+            EventEditor(requireContext(), store, null, LocalDate.now()) { reloadEvents() }.show()
+        }
+
         if (store.p3Mode) {
             showPersona3()
         } else {

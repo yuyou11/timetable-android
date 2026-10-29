@@ -103,6 +103,24 @@
                     android:orientation="vertical" />
             </LinearLayout>
         </ScrollView>
+
+        <!-- 新建日程的入口，贴在右下角（和 P3 那行「＋ 新建日程」同一个位置语法）。
+             默认外观没有选中日的概念，所以它固定落在「今天」，要记别的日子
+             在编辑卡里改日期就行。 -->
+        <TextView
+            android:id="@+id/btnNewEvent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card_accent"
+            android:gravity="center"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="11dp"
+            android:text="＋ 新建日程"
+            android:textColor="?attr/accentColor"
+            android:textSize="13sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- P3 彩蛋的宿主：运行时塞一个 PersonaCalendarView 进来 -->
