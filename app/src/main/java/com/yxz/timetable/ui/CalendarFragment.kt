@@ -123,10 +123,17 @@ class CalendarFragment : Fragment() {
         view.selectedDate = LocalDate.now()
         view.events = events
         view.onMonthStep = { delta -> showMonth(month.plusMonths(delta.toLong())) }
-        view.onDayClick = { date ->
-            view.selectedDate = date
-            openDay(date)
+        // 点日期**只选中，不弹窗**：这一页右下角那行「＋ 新建日程」才是入口，
+        // 当天有什么直接在白纸上列出来（点某一条直接编辑）。
+        // 默认外观没有这块白纸，格子又只有一行摘要，所以那边点格子仍然弹当天列表。
+        view.onDayClick = { date -> view.selectedDate = date }
+        view.onAddClick = { date ->
+            EventEditor(requireContext(), store, null, date) { reloadEvents() }.show()
         }
+        view.onEventClick = { ev ->
+            EventEditor(requireContext(), store, ev, ev.date) { reloadEvents() }.show()
+        }
+        view.onMoreClick = { date -> openDay(date) }
         p3 = view
     }
 

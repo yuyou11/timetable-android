@@ -52,7 +52,7 @@
 
 ## 一、装到手机
 
-1. 把 `dist/Time-Machine-v2.2.0-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
+1. 把 `dist/Time-Machine-v2.2.1-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
 2. 用手机上的文件管理器点开它安装。
    系统会提示「不允许安装未知来源应用」——按提示允许一次即可（这是所有非应用商店安装的必经步骤）。
 3. 打开 App 直接进「今天」页（没有开屏动画）。
@@ -454,7 +454,7 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 68 个 .kt / 20,848 行
+app/src/main/java/com/yxz/timetable/          共 68 个 .kt / 20,904 行
 ├── MainActivity.kt            616 行 五个页面的容器（hide/show 保状态）；换主题；闹钟响时弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
 ├── data/                        数据层（19 个）★ = 核心
 │   ├── ScheduleFormat.kt        ★ 1564 行 数据格式标准 v5：解析、校验、生成、错误信息
@@ -497,7 +497,7 @@ app/src/main/java/com/yxz/timetable/          共 68 个 .kt / 20,848 行
 │   ├── CardSheet.kt              342 行 两个页面共用的卡片面板：布局绑定、弹出 / 收起动画（圆心可以是 View，也可以是屏幕矩形）、提前量选择器
 │   ├── SlotCoursesCard.kt        316 行 课表页点一格弹出的面板（一门一张卡；含「设置闹钟」六档提前量）
 │   ├── MomentCard.kt             305 行 今日页点一格弹出的卡片（这一格是什么 + 按格子设闹钟）
-│   ├── CalendarFragment.kt       284 行 日历页：自己拼的 6×7 网格，格子上带日程摘要、点日期弹当天日程；P3 模式下换成 PersonaCalendarView
+│   ├── CalendarFragment.kt       291 行 日历页：自己拼的 6×7 网格，格子上带日程摘要、点日期弹当天日程；P3 模式下换成 PersonaCalendarView
 │   ├── DayEventsDialog.kt        176 行 某一天的日程列表（点一条去改、底部新建）
 │   ├── PermissionGuide.kt        218 行 权限 / 电池 / 自启动 / 全屏通知引导（含直达通知渠道页）
 │   ├── GenerateGuideActivity.kt  210 行 「用 AI 生成数据」向导页
@@ -513,7 +513,7 @@ app/src/main/java/com/yxz/timetable/          共 68 个 .kt / 20,848 行
 │   └── UiUtil.kt                  44 行 界面小工具
 └── ui/persona/                  P3 换皮层（15 个，只在 p3Mode 下挂载）
     ├── PersonaTodayView.kt      1134 行 今天页整页自绘：蓝 HUD（日期 / 三角旗 / 此刻）+ 斜口白纸（色带 / 此刻卡 / 时间线 / 明天）
-    ├── PersonaCalendarView.kt    831 行 日历整页自绘：深蓝水彩、白色弧面、巨号月份、撕纸「今天」、有日程的小标记与当天摘要
+    ├── PersonaCalendarView.kt    880 行 日历整页自绘：深蓝水彩、白色弧面、巨号月份、撕纸「今天」、有日程的小标记与当天摘要
     ├── PersonaWeekView.kt        885 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块（贴着格子边）、底部近五周密度卡（点阵与字放大一档，与网格、屏幕底各留空档；关掉点阵也不贴边）；行高铺满，超过 17 节才上下滑
     ├── PersonaWeekLayout.kt       50 行 课表页的纵向算术：一行多高、能滚多远（纯函数，有单测）
     ├── PersonaDateHud.kt         485 行 旧的今天页 HUD（v3 起不再挂载；phaseOf / moonLitFraction 仍被新页复用）
@@ -626,7 +626,7 @@ app/src/test/java/com/yxz/timetable/          共 25 个测试类 / 466 个 @Tes
 
 | 页面 | 状态 |
 |---|---|
-| 日历 | ✅ 整页自绘（深蓝水彩 / 白色弧面 / 巨号月份 / 撕纸「今天」）；蓝底和闹钟页是同一张手绘天空；有日程的日子带青色小方块，白纸上那几行换成当天日程摘要（[真机截图](p3web/android-calendar-p3.png)） |
+| 日历 | ✅ 整页自绘（深蓝水彩 / 白色弧面 / 巨号月份 / 撕纸「今天」）；蓝底和闹钟页是同一张手绘天空；有日程的日子带青色小方块，白纸上那几行换成当天日程（点条目直接编辑，右下角「＋ 新建日程」是新建入口，点日期只选中不弹窗）（[真机截图](p3web/android-calendar-p3.png)） |
 | 今天 | ✅ **v3 整页重画**：上半屏蓝 HUD（**和闹钟页同一张手绘天空**，日期 / 三角旗 / 此刻 / 日型），下半屏斜口白纸（24 小时色带 / 此刻卡 / 时间线 / 明天）（[真机截图](p3web/android-today-p3.png)） |
 | 课表 | ✅ **v2 整页重画**：巨号 WEEK + 幽灵周次、两个键帽翻周、青色今天光柱、玻璃课块、底部近五周密度卡；**行高铺满**表头与密度卡之间、卡片之间各留空档（不贴边），节数超过 17 才锁行高改为上下滑（[真机截图](p3web/android-week-p3.png)） |
 | 闹钟 | ✅ v4 已落地：首屏只有表盘 + 数字钟，上滑白纸；「此刻」卡用旧闹钟记录卡三层背景；矩形列表 / 新按钮 / 低对比响铃（[实现稿](p3web/alarm-p3-v4-list.png)） |

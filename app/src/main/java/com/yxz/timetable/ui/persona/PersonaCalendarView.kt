@@ -92,6 +92,26 @@ class PersonaCalendarView @JvmOverloads constructor(
     /** 点了某一天。 */
     var onDayClick: ((LocalDate) -> Unit)? = null
 
+    /** 点了右下角那行「＋ 新建日程」：给 [selectedDate] 新建一条 */
+    var onAddClick: ((LocalDate) -> Unit)? = null
+
+    /** 点了白纸上某一条日程：直接编辑它 */
+    var onEventClick: ((CalEvent) -> Unit)? = null
+
+    /** 点了「还有 N 条…」：打开当天的完整列表 */
+    var onMoreClick: ((LocalDate) -> Unit)? = null
+
+    /**
+     * 白纸上的可点区域（日程行 / 新建入口）。
+     *
+     * 为什么单独一张表而不是像课表页那样统一：这一页的日期格是用
+     * [cellAt] 按行列算的，而白纸上那几行是自由排版 —— 只有这里需要一个
+     * 显式的矩形。日期格不走这张表，免得两套命中逻辑互相打架。
+     */
+    private class PanelHit(val rect: RectF, val action: () -> Unit)
+
+    private val panelHits = ArrayList<PanelHit>(6)
+
     // ---------------------------------------------------------------- 尺寸 / 笔
 
     private val density = resources.displayMetrics.density
@@ -255,6 +275,7 @@ class PersonaCalendarView @JvmOverloads constructor(
         if (w <= 0f || h <= 0f) return
 
         cellW = (w - dp(pad) * 2) / 7f
+        panelHits.clear()
 
         // 网格占上方 56%，但行高要夹住：太矮的屏幕上不能把 6 行压成一条线，
         // 太高的屏幕上也不能让一行高得离谱（数字会漂在一大片空地里）。
@@ -505,7 +526,9 @@ class PersonaCalendarView @JvmOverloads constructor(
                 if (inMonth && date == selectedDate) {
                     stroke.color = cGold
                     stroke.strokeWidth = dp(1.4f)
-                    canvas.drawCircle(cx, cy, dp(19f), stroke)
+                    // 圆心要跟着数字走：数字画在 cy − 2dp（见上面 drawCentered 那行），
+                    // 圈画在 cy 就会比数字低 2dp —— 看着像「圈歪了」
+                    canvas.drawCircle(cx, cy - dp(2f), dp(19f), stroke)
                 }
             }
         }
@@ -635,8 +658,10 @@ class PersonaCalendarView @JvmOverloads constructor(
         val guideY = h - dp(46f)
         if (dayEvents.isNotEmpty()) {
             // 有日程时，白纸上那块地方让给日程列表（巨号日期不画）：
-            // 日期右边那条青色条里已经有了，再压一个比列表还显眼的大数字没意义
-            drawDayEvents(canvas, w, barTop, guideY, dayEvents)
+            // 日期右边那条青色条里已经有了，再压一个比列表还显眼的大数字没意义。
+            // 下沿再退 26dp：把最后一行的命中区和右下角「＋ 新建日程」错开，
+            // 否则点最后一条日程的下缘会被判成「新建」
+            drawDayEvents(canvas, w, barTop, guideY - dp(26f), dayEvents)
         } else {
             // 白纸上那个巨号日期 —— 原图里「5」就是骑在白纸上的，
             // 竖屏把整个网格铺满宽度后，只有这块白纸还有地方放得下它。
@@ -654,8 +679,9 @@ class PersonaCalendarView @JvmOverloads constructor(
             }
         }
 
-        // Guide：字号必须自己设回来，绝不能沿用上面那段的
-        val guide = "点日期看日程 · 在那里新建"
+        // 右下角这行小字是**新建日程的入口**（点日期只选中、不再弹窗）：
+        // 带下划线的斜体小字 + 一枚 ADD，和游戏里那种「操作提示」同一个位置语法
+        val guide = "＋ 新建日程"
         text.typeface = textFace
         text.textSize = sp(12f)
         text.color = cGuide
@@ -669,8 +695,16 @@ class PersonaCalendarView @JvmOverloads constructor(
         text.typeface = heavyFace
         text.textSize = sp(7f)
         text.textAlign = Paint.Align.RIGHT
-        canvas.drawText("Guide", w - dp(22f), guideY + dp(12f), text)
+        canvas.drawText("ADD", w - dp(22f), guideY + dp(12f), text)
         text.textAlign = Paint.Align.LEFT
+
+        // 命中区往外放宽：这行字只有 12sp 高，按字面大小手指按不准
+        panelHits += PanelHit(
+            RectF(
+                w - dp(22f) - gw - dp(12f), guideY - sp(16f),
+                w - dp(8f), guideY + dp(20f)
+            )
+        ) { onAddClick?.invoke(selectedDate) }
     }
 
     /**
@@ -698,9 +732,16 @@ class PersonaCalendarView @JvmOverloads constructor(
             val hm = clock(ev.start)
             canvas.drawText(hm, left, y, text)
             val timeW = text.measureText(hm) + dp(8f)
+            val lineTop = y - sp(12.5f)
 
             text.typeface = textFace
             canvas.drawText(fitText(ev.title, right - left - timeW), left + timeW, y, text)
+
+            // 整行都能点：点哪条就编哪条（删除在编辑卡里）
+            panelHits += PanelHit(
+                RectF(left - dp(4f), lineTop - dp(4f), right, y + dp(6f))
+            ) { onEventClick?.invoke(ev) }
+
             y += lineH
             shown++
         }
@@ -710,7 +751,11 @@ class PersonaCalendarView @JvmOverloads constructor(
             text.typeface = textFace
             text.textSize = sp(11f)
             text.color = cGray
-            canvas.drawText("还有 $rest 条…", left, y, text)
+            val more = "还有 $rest 条…"
+            canvas.drawText(more, left, y, text)
+            panelHits += PanelHit(
+                RectF(left - dp(4f), y - sp(11f) - dp(4f), left + text.measureText(more) + dp(8f), y + dp(6f))
+            ) { onMoreClick?.invoke(selectedDate) }
         }
     }
 
@@ -759,9 +804,13 @@ class PersonaCalendarView @JvmOverloads constructor(
                     performClick()
                     return true
                 }
+                // 白纸上的入口（日程行 / 新建）先于日期格判：它们都在网格下方，不会互相抢。
+                // 后画的在上，所以从后往前找第一个命中的。
+                val panelHit = panelHits.lastOrNull { it.rect.contains(event.x, event.y) }
                 when {
                     prevRect.contains(event.x, event.y) -> onMonthStep?.invoke(-1)
                     nextRect.contains(event.x, event.y) -> onMonthStep?.invoke(1)
+                    panelHit != null -> panelHit.action()
                     else -> cellAt(event.x, event.y)?.let { onDayClick?.invoke(it) }
                 }
                 performClick()
