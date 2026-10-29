@@ -303,9 +303,20 @@ class SettingsFragment : Fragment() {
         binding.pageHome.visibility = if (onHome && !p3Home) View.VISIBLE else View.GONE
         binding.personaMenu.visibility = if (p3Home) View.VISIBLE else View.GONE
         binding.titleBar.visibility = if (p3Home) View.GONE else View.VISIBLE
-        // 菜单要左右通铺到屏幕两岸，内容区的横向内边距在 P3 落地面时退出
+        // 菜单要**通铺到屏幕三边**：横向内边距在 P3 落地面时退出，纵向底边距也一样。
+        //
+        // 底部这一条（scroll 自己的 paddingBottom = space_l）必须一起退掉，否则
+        // ScrollView 量孩子时给的是「可视高 − 16dp」，PersonaMenuView 按这个高度
+        // 定高，菜单就比页面矮 16dp：最后那 16dp 露出的是 content 的背景图，
+        // 而它是按整屏缩放的 —— 同一张天空、两个缩放比，接缝处对不上，看起来
+        // 像「页面没铺到导航栏」，还能凭空多滚 16dp。退掉之后菜单高度 = 可视高度，
+        // 两张图缩放比一致，接缝自然消失。
         val pad = resources.getDimensionPixelSize(R.dimen.page_padding)
         val hp = if (p3Home) 0 else pad
+        val bp = if (p3Home) 0 else resources.getDimensionPixelSize(R.dimen.space_l)
+        binding.scroll.setPadding(
+            binding.scroll.paddingLeft, binding.scroll.paddingTop, binding.scroll.paddingRight, bp
+        )
         (binding.scroll.getChildAt(0) as? LinearLayout)?.setPadding(hp, 0, hp, 0)
 
         binding.pageData.visibility = if (page == Page.DATA) View.VISIBLE else View.GONE
