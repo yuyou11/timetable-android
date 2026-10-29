@@ -51,7 +51,7 @@
 
 ## 一、装到手机
 
-1. 把 `dist/Time-Machine-v2.1.6-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
+1. 把 `dist/Time-Machine-v2.1.7-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
 2. 用手机上的文件管理器点开它安装。
    系统会提示「不允许安装未知来源应用」——按提示允许一次即可（这是所有非应用商店安装的必经步骤）。
 3. 打开 App 直接进「今天」页（没有开屏动画）。
@@ -415,7 +415,8 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
   日程仍然只来自课表和作息模板；日历上的「今天」也只跟着手机日期走，不能手动改。
 - **P3 的今天页是一屏，但时间线本身可以上下滑**。打开时当前格在正中，往上翻能看
   早上那几格、往下翻能看到睡前那段，右边一条细滚动条表示还剩多少。
-  同理，课表页在 P3 下不滚动 —— 行高按屏高现算，13 节的课表也放得下。
+  同理，课表页在 P3 下：行高**铺满**表头与近五周密度条之间（密度条钉在屏幕最下面），
+  节数超过 17 才锁住行高、整张表上下滑（带惯性，右缘一条细滚动条）。
 - **日型总数上限 7 种**（id 空间 "1"-"7"），其中 "7" 恒为休息日：
   可以改名、可以改星期映射，但不能发明第八种日型（比如「考试周」）。
   真需要的话要扩 `DayType` 枚举再发新版。
@@ -450,7 +451,7 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 64 个 .kt / 19,920 行
+app/src/main/java/com/yxz/timetable/          共 65 个 .kt / 20,124 行
 ├── MainActivity.kt            616 行 五个页面的容器（hide/show 保状态）；换主题；闹钟响时弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
 ├── data/                        数据层（18 个）★ = 核心
 │   ├── ScheduleFormat.kt        ★ 1564 行 数据格式标准 v5：解析、校验、生成、错误信息
@@ -504,10 +505,11 @@ app/src/main/java/com/yxz/timetable/          共 64 个 .kt / 19,920 行
 │   ├── SwipeToOpenLayout.kt       64 行 卡片下滑关闭的手势容器
 │   ├── CardDialogBuilder.kt       53 行 统一圆角对话框壳
 │   └── UiUtil.kt                  44 行 界面小工具
-└── ui/persona/                  P3 换皮层（14 个，只在 p3Mode 下挂载）
+└── ui/persona/                  P3 换皮层（15 个，只在 p3Mode 下挂载）
     ├── PersonaTodayView.kt      1134 行 今天页整页自绘：蓝 HUD（日期 / 三角旗 / 此刻）+ 斜口白纸（色带 / 此刻卡 / 时间线 / 明天）
     ├── PersonaCalendarView.kt    740 行 日历整页自绘：深蓝水彩、白色弧面、巨号月份、撕纸「今天」
-    ├── PersonaWeekView.kt        717 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块、近五周密度条
+    ├── PersonaWeekView.kt        860 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块、底部近五周密度条（贴底）；行高铺满，超过 17 节才上下滑
+    ├── PersonaWeekLayout.kt       50 行 课表页的纵向算术：一行多高、能滚多远（纯函数，有单测）
     ├── PersonaDateHud.kt         485 行 旧的今天页 HUD（v3 起不再挂载；phaseOf / moonLitFraction 仍被新页复用）
     ├── PersonaPageView.kt        471 行 今天 / 课表两页共用的底座：调色板、k 比例、蓝底布纹、描边标题、混色行、折行
     ├── PersonaAlarmStyle.kt      412 行 闹钟页的 P3 皮肤：对话框卡、斜切按钮、标题条、配色表
@@ -533,7 +535,7 @@ app/src/main/res/                共 58 个资源文件
 ├── values-night/  colors.xml（深色模式配色覆盖）
 └── mipmap-anydpi-v26/  ic_launcher.xml、ic_launcher_round.xml（自适应图标）
 
-app/src/test/java/com/yxz/timetable/          共 23 个测试类 / 446 个 @Test / 6,371 行，全跑在电脑 JVM 上
+app/src/test/java/com/yxz/timetable/          共 24 个测试类 / 454 个 @Test / 6,453 行，全跑在电脑 JVM 上
 ├── data/   16 个类 / 390 条
 │   ├── ScheduleFormatTest.kt       114  格式解析、校验、生成、往返一致、字段顺序、teacher
 │   ├── DayTypePolicyTest.kt         47  日型三规则 + v4 迁移逐日一致
@@ -556,14 +558,15 @@ app/src/test/java/com/yxz/timetable/          共 23 个测试类 / 446 个 @Tes
 │   ├── WeekGridTest.kt              13  哪几格合成一块（区间重叠命中、相邻同课合并、停课/别周不出现、首尾相接铺满整列）+ 近五周点阵
 │   ├── DialMathTest.kt               7  圆盘选时间的角度换算、吸附、12 点接缝
 │   └── TimelineRowLayoutTest.kt      2  时间轴行布局结构（地点单独一行）
-├── ui/persona/ 2 个类 / 15 个
+├── ui/persona/ 3 个类 / 23 个
 │   ├── PersonaTodayModelTest.kt     13  时间线露出哪几行（当前格在倒数第二行、首尾不越界）+ 24 小时色带（铺满 1440、裁剪、配色不撞）
+│   ├── PersonaWeekLayoutTest.kt      8  课表行高：17 节以内铺满且不留滚动余量、超过 17 节锁行高改滚动、零节 / 零高度不除零
 │   └── PersonaDateHudTest.kt         2  HUD 的时段文案边界与月相受照比例
 └── notify/ 1 个类 / 6 个
     └── AlarmVolumeRampTest.kt        6  渐强曲线：前 3 秒升到满音量，之后保持不变
 ```
 
-共 **446 个单元测试**（23 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
+共 **454 个单元测试**（24 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
 
 ### 测试覆盖了什么
 
@@ -590,6 +593,7 @@ app/src/test/java/com/yxz/timetable/          共 23 个测试类 / 446 个 @Tes
 | `ui/AppThemeTest` | 13 | 主题配色的取值（八套）+ 八个染色槽位必须每套都设满 |
 | `ui/WeekGridTest` | 13 | 课表网格的合并规则（**两套外观共用一份实现**）：连堂课在它跨过的每一行都命中、起点不在行首的课不会消失、名称教室周次都相同的两条记录合并成一整块、停课和别的周不出现、块首尾相接铺满整列、节数结构变了块跟着行走；另加近五周点阵的占用表（停课 / 别周 / 越界节次） |
 | `ui/persona/PersonaTodayModelTest` | 13 | 时间线滚动：内容装得下时不许滚、初始位置把当前格摆在正中、深夜的最后一格和凌晨的第一格都夹在 `[0, max]` 内、每一格都有合法初始位置；格子状态（左闭右开：整点属于新格）、当前格下标（都不在区间时退回最后一格）；24 小时色带：铺满 1440 分钟、首尾相接、跨天/倒挂的时段被裁掉、八种时段配色两两不同 |
+| `ui/persona/PersonaWeekLayoutTest` | 8 | 课表页的纵向算术：17 节以内一行 = 可用高度 ÷ 节数，整表**刚好铺满、滚动余量为 0**；超过 17 节行高锁在「17 行铺满」的值，多出来的行数就是可滚距离（18 节滚一行、20 节滚三行）；节数越少行越高；零节 / 零高度不除零、不出 NaN |
 | `ui/DialMathTest` | 7 | 圆盘的角度换算（0° 在 12 点、顺时针）、跨 12 点接缝、吸附走最短路、24 / 60 格往返一致 |
 | `ui/persona/PersonaDateHudTest` | 2 | 时段文案的边界（凌晨不是「上午」）；月相受照比例跟着农历日走（初一朔、十五望） |
 | `ui/TimelineRowLayoutTest` | 2 | 时间轴行的布局结构：**地点必须在标题下方单独一行** |
@@ -616,7 +620,7 @@ app/src/test/java/com/yxz/timetable/          共 23 个测试类 / 446 个 @Tes
 |---|---|
 | 日历 | ✅ 整页自绘（深蓝水彩 / 白色弧面 / 巨号月份 / 撕纸「今天」）；蓝底和闹钟页是同一张手绘天空（[真机截图](p3web/android-calendar-p3.png)） |
 | 今天 | ✅ **v3 整页重画**：上半屏蓝 HUD（**和闹钟页同一张手绘天空**，日期 / 三角旗 / 此刻 / 日型），下半屏斜口白纸（24 小时色带 / 此刻卡 / 时间线 / 明天）（[真机截图](p3web/android-today-p3.png)） |
-| 课表 | ✅ **v2 整页重画**：巨号 WEEK + 幽灵周次、两个键帽翻周、青色今天光柱、玻璃课块、底部近五周密度条（[真机截图](p3web/android-week-p3.png)） |
+| 课表 | ✅ **v2 整页重画**：巨号 WEEK + 幽灵周次、两个键帽翻周、青色今天光柱、玻璃课块、底部近五周密度条；**行高铺满**表头与密度条之间、密度条贴底，节数超过 17 才锁行高改为上下滑（[真机截图](p3web/android-week-p3.png)） |
 | 闹钟 | ✅ v4 已落地：首屏只有表盘 + 数字钟，上滑白纸；「此刻」卡用旧闹钟记录卡三层背景；矩形列表 / 新按钮 / 低对比响铃（[实现稿](p3web/alarm-p3-v4-list.png)） |
 | 设置 | ✅ 首页是 P3 主菜单（01–04 编号 + 中文分类名 + 英文小标签），四个分类页整套换皮（深藏青直角卡片 / 青色勾选与开关 / 描边按钮），见 [首页](p3web/android-settings-home.png) · [数据页](p3web/android-settings-data.png) |
 | 底部导航 | ✅ 白纸栏 + 栏顶墨线 + 窄体粗斜标签；选中只靠颜色（墨蓝），没有其它装饰 |

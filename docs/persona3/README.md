@@ -59,7 +59,8 @@
 | 文件 | 作用 |
 |---|---|
 | `ui/persona/PersonaPageView.kt` | **两页共用的底座**：调色板 `PersonaP3`、k 比例、蓝底 / 布纹 / 潮汐光斑、描边标题、混色行、按宽度折行 |
-| `ui/persona/PersonaWeekView.kt` | 课表页整页自绘：表头、星期行、十行网格、今日光柱、课块、密度条、点格 / 翻周手势 |
+| `ui/persona/PersonaWeekView.kt` | 课表页整页自绘：表头、星期行、网格（行高铺满 / 超过 17 节上下滑）、今日光柱、课块、贴底密度条、点格 / 翻周 / 竖滑手势 |
+| `ui/persona/PersonaWeekLayout.kt` | 课表页的纵向算术：一行多高、能滚多远（**有单测**） |
 | `ui/persona/PersonaTodayView.kt` | 今天页整页自绘：HUD（日期 / 三角旗 / 此刻 / 日型）、白纸、24 小时色带、此刻卡、时间线、明天卡 |
 | `ui/persona/PersonaTodayModel.kt` | 今天页的纯逻辑：色带分段、时间线可见窗口、时段配色（**有单测**） |
 | `ui/persona/PersonaCardSkin.kt` | 点格弹卡的 P3 皮肤（黑卡 + 青字），字段和绑定逻辑不动 |
@@ -193,11 +194,14 @@ python docs\persona3\mock_calendar.py docs\persona3\mock-calendar.png
   上面还压着课块和光柱，铺图反而更花）；要统一的话改 `PersonaWeekView.onDraw` 那一行即可。
 - **文字不跟 fontScale**（和 [PersonaDateHud] 同一个判断）：这两页是「一张画」，
   系统字号放大到 1.5 倍会把课块和行高撑破，而缩放后的画布没地方重排。
-- **网格行高按剩余空间算**，不写死 46dp：节数由 `periods` 决定（"445" 是 13 行），
-  写死就会溢出屏幕。行高 = 「铺满可用高度」的 **2/3**（`ROW_FILL = 0.67`），
-  夹在 `[24, 56]dp`。长屏上铺满会顶到 56dp 上限，10 行的表稀得发空；
-  取 2/3 之后行高落在 30~38dp，一门连堂课（两行）仍有 60~76dp，放得下三行课名 + 教室。
-  **密度条跟着网格走**、不再钉在屏幕最下面 —— 网格矮了它就往上收，底下留一片天。
+- **网格行高按剩余空间算，而且是「铺满」**，不写死 46dp：节数由 `periods` 决定（"445" 是 13 行），
+  写死就会溢出屏幕。一行 = **表头下沿到密度条上沿之间的可用高度 ÷ 节数**，
+  不再乘系数、也不再夹 `[24, 56]dp`；密度条**钉在屏幕最下面**，中间那段全部给网格。
+  节数超过 **17** 就锁在「17 行刚好铺满」的高度，整张表改为在网格区里上下滑
+  （带惯性，右缘一条细滚动条；裁剪切在网格区，滚出去的行不会画到表头和密度条上）。
+  17 是「还能压」和「压下去字就叠了」的交点，规则在
+  [PersonaWeekLayout](../../app/src/main/java/com/yxz/timetable/ui/persona/PersonaWeekLayout.kt)，
+  有单测（`PersonaWeekLayoutTest`）。
 - **今天页的时间线可以上下滑**：整天的格子铺在一条裁剪过的视口里，打开时把**当前格
   摆在正中**（`PersonaTodayModel.initialScroll`），视口右边一条细滚动条表示还剩多少；
   拖动超过 `touchSlop` 才算滑动，松手时不会再误触弹卡。一屏露几行仍按屏高算（2–6 行），

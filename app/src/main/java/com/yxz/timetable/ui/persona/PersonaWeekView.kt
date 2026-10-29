@@ -9,6 +9,9 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
+import android.widget.OverScroller
 import com.yxz.timetable.data.Course
 import com.yxz.timetable.data.ScheduleFormat.weekdayCn
 import com.yxz.timetable.ui.WeekDotsView
@@ -30,10 +33,19 @@ data class SlotClock(val node: Int, val start: Int, val end: Int)
  *   · 原稿里**没有竖格线**，课是浮在蓝底上的玻璃块 —— 留着格线就不是 P3 的样子；
  *   · 今天不是一格淡底，是一条**青色光柱**，表头上还钉着一条品红胶带；
  *   · 巨号 `WEEK` + 幽灵周次压在标题后面，周次选择收进标题区（两个键帽）；
- *   · 近五周点阵从顶部卡片挪到底部一条密度条。
+ *   · 近五周点阵从顶部卡片挪到底部一条密度条，**钉在屏幕最下面**。
  *
  * 这些都不是「改颜色」，所以只能自绘。原网格仍然保留（默认外观走它），
  * 两者按 `Store.p3Mode` 二选一挂载 —— 和日历页同一套做法。
+ *
+ * ## 竖向版式：铺满，装不下才滚
+ *
+ * 表头固定、密度条贴底，中间那段全部给网格：**一行 = 可用高度 ÷ 节数**，
+ * 十行就十等分，不再乘 2/3、也不再夹在 24~56dp。[PersonaWeekLayout.MAX_FIT_ROWS]
+ * （17）是分界：17 节以内继续压行高也要铺满；超过 17 就锁在「17 行刚好铺满」的高度，
+ * 整张表改为在网格区里上下滑（带惯性和右缘细滚动条），密度条不跟着动。
+ *
+ * 为什么不无限压下去：再压课名和教室就叠在一起了，宁可让人自己滑。
  *
  * ## 数据从哪来
  *
@@ -96,6 +108,8 @@ class PersonaWeekView @JvmOverloads constructor(
                 this.courses === courses &&
                 this.densityWeeks == density &&
                 this.meta == meta
+        // 换了周 / 换了节数结构就别停在半步腰上：新表可能根本不用滚，旧偏移会看着像卡住
+        val resetScroll = this.week != week || this.slots != slots
         this.week = week
         this.todayDay = todayDay
         this.slots = slots
@@ -106,6 +120,10 @@ class PersonaWeekView @JvmOverloads constructor(
         this.dotsEnabled = dotsEnabled
 
         if (!same) {
+            if (resetScroll) {
+                scrollY = 0f
+                if (!scroller.isFinished) scroller.abortAnimation()
+            }
             syncDescription()
             invalidate()
         }
@@ -138,7 +156,14 @@ class PersonaWeekView @JvmOverloads constructor(
 
     // ---- 命中表（onDraw 里重建，触摸时查） ----
 
-    private class Hit(val rect: RectF, val action: () -> Unit)
+    /**
+     * 一个命中区。
+     *
+     * [scrolls] 标记它属于会上下滑的网格：判断时要先卡住「点在网格可视区内」，
+     * 否则滚出去的行虽然不画了，却还能隔着表头 / 密度条点到 —— 那种「点空白弹卡片」
+     * 是最难查的一类 bug。
+     */
+    private class Hit(val rect: RectF, val scrolls: Boolean, val action: () -> Unit)
 
     private val hits = ArrayList<Hit>(64)
     private val prevKey = RectF()
@@ -149,6 +174,19 @@ class PersonaWeekView @JvmOverloads constructor(
     private var rowH = 0f
     private var colW = 0f
     private var gridLeft = 0f
+
+    /** 网格区的下沿（= 密度条上沿 − 间距）。滚动时裁剪到这里为止 */
+    private var gridBottom = 0f
+
+    // ---- 纵向滚动：只有节数 > 17、整表装不下时才会真的动 ----
+
+    private var scrollY = 0f
+    private var maxScroll = 0f
+    private val scroller = OverScroller(context)
+    private var velocity: VelocityTracker? = null
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var dragging = false
+    private var downScroll = 0f
 
     private var downX = 0f
     private var downY = 0f
@@ -162,23 +200,26 @@ class PersonaWeekView @JvmOverloads constructor(
 
         hits.clear()
 
-        // 行数随 periods 变（默认 10 行），所以行高只能现算：先求「铺满到密度条」时
-        // 一行有多高，再**只取其中的 2/3**。
+        // 竖向版式只有三块：表头 / 网格 / 近五周密度条（钉在最下面）。
         //
-        // 为什么不再铺满：长屏上（比如 2400px / 810dp 高）铺满会把行高顶到 56dp 的上限，
-        // 10 行的表看着又稀又空，课块之间的蓝底比课名还多。矮一点之后整张表更紧凑，
-        // 看起来才像「一眼扫完一周」。
+        // 网格一行多高只有一个目标：**把表头下沿到密度条上沿之间的那段铺满**，
+        // 一行 = 可用高度 ÷ 节数，不再乘任何系数、也不再有 24~56dp 的夹取。
         //
-        // 密度条跟着网格走、不再钉在屏幕最下面 —— 网格矮了，它也自然往上收。
-        // 再往下让两个格子的高度：收紧后的网格上方留白少、下方留白多，
-        // 卡片贴着网格会显得「挤在中间」；让出两行之后，上下两侧的留白才平衡。
+        // 节数超过 17 就不再往下压行高 —— 再压课名和教室就叠一起了 ——
+        // 行高锁在「17 行刚好铺满」的值，整张表改成在网格区里上下滑
+        // （规则见 [PersonaWeekLayout]，有单测）。密度条本身不参与滚动。
         gridLeft = dp(sidePad)
         gridTop = dp(headH) + dp(daysH)
+
         val rows = slots.size.coerceAtLeast(1)
-        val fullRow = ((h - dp(densityH) - dp(densityGap)) - gridTop) / rows
-        rowH = (fullRow * ROW_FILL).coerceIn(dp(24f), dp(56f))
-        val gridBottom = gridTop + rowH * rows
-        val densTop = gridBottom + dp(densityGap) + rowH * 2f
+        val densH = if (dotsEnabled && densityWeeks.isNotEmpty()) dp(densityH) else 0f
+        val densTop = h - densH
+        gridBottom = densTop - (if (densH > 0f) dp(densityGap) else 0f)
+
+        val available = (gridBottom - gridTop).coerceAtLeast(1f)
+        rowH = PersonaWeekLayout.rowHeight(available, rows)
+        maxScroll = PersonaWeekLayout.scrollRange(available, rows, rowH)
+        scrollY = scrollY.coerceIn(0f, maxScroll)
 
         val gridRight = w - dp(sidePad)
         colW = (gridRight - gridLeft - dp(timeColW)) / 7f
@@ -186,8 +227,16 @@ class PersonaWeekView @JvmOverloads constructor(
         drawBackdrop(canvas, w, h)
         drawHead(canvas, w)
         drawDayHeaders(canvas)
+
+        // 先在可视区里裁剪，再整体上移 scrollY：滚出去的行不会画到表头或密度条上
+        val save = canvas.save()
+        canvas.clipRect(0f, gridTop, w, gridBottom)
+        canvas.translate(0f, -scrollY)
         drawGrid(canvas, w)
+        canvas.restoreToCount(save)
+
         drawDensity(canvas, w, densTop)
+        drawScrollBar(canvas, w)
     }
 
     // ---------------------------------------------------------------- 表头
@@ -352,8 +401,8 @@ class PersonaWeekView @JvmOverloads constructor(
 
         // 键帽的命中区。⚠️ 光有 rect 不够：点击是靠 hits 表分发的，
         // 忘了登记就是「画得出来、点不动」—— 比不画还糟（用户会以为卡住了）
-        hits += Hit(RectF(prevKey).apply { inset(-dp(4f), -dp(4f)) }) { onWeekStep?.invoke(-1) }
-        hits += Hit(RectF(nextKey).apply { inset(-dp(4f), -dp(4f)) }) { onWeekStep?.invoke(1) }
+        hits += Hit(RectF(prevKey).apply { inset(-dp(4f), -dp(4f)) }, false) { onWeekStep?.invoke(-1) }
+        hits += Hit(RectF(nextKey).apply { inset(-dp(4f), -dp(4f)) }, false) { onWeekStep?.invoke(1) }
     }
 
     /** 键帽里的箭头。用 Path 画而不是字形：国产 ROM 的字体里常常没有 ‹ › */
@@ -521,11 +570,14 @@ class PersonaWeekView @JvmOverloads constructor(
         canvas: Canvas, span: WeekGrid.Span,
         l: Float, top: Float, r: Float, bottom: Float
     ) {
-        // 命中区域对空格子也有效：点空的格子要能看「这一格全学期都上过什么课」
+        // 命中区域对空格子也有效：点空的格子要能看「这一格全学期都上过什么课」。
+        // 这里记的是**屏幕坐标**（减掉 scrollY），触摸时不用再换算一次；
+        // 弹卡的圆心也要屏幕坐标，所以两边用的是同一个矩形。
+        val vTop = top - scrollY
+        val vBottom = bottom - scrollY
         hits += Hit(
-            RectF(l, top, r, bottom),
-            { onSlotClick?.invoke(span.day, span.fromNode..span.toNode, screenRect(l, top, r, bottom)) }
-        )
+            RectF(l, vTop, r, vBottom), true
+        ) { onSlotClick?.invoke(span.day, span.fromNode..span.toNode, screenRect(l, vTop, r, vBottom)) }
 
         val course = span.course ?: return
 
@@ -649,6 +701,30 @@ class PersonaWeekView @JvmOverloads constructor(
         text.textAlign = Paint.Align.LEFT
     }
 
+    // ---------------------------------------------------------------- 滚动条
+
+    /**
+     * 整表装不下时，网格右缘一条细滚动条（和今天页那条同一个语法）。
+     *
+     * 只在 [maxScroll] > 0 时出现：装得下却画一根满格条，会让人以为下面还有内容。
+     */
+    private fun drawScrollBar(canvas: Canvas, w: Float) {
+        if (maxScroll <= 0f) return
+        val trackH = gridBottom - gridTop
+        if (trackH <= 0f) return
+
+        val thumbH = (trackH * (trackH / (trackH + maxScroll))).coerceAtLeast(dp(18f))
+        val travel = (trackH - thumbH).coerceAtLeast(0f)
+        val frac = (scrollY / maxScroll).coerceIn(0f, 1f)
+        val x = w - dp(3f)
+
+        fill.shader = null
+        fill.color = 0x33DCEEFF
+        canvas.drawRect(x, gridTop, x + dp(2f), gridBottom, fill)
+        fill.color = 0xB3DCEEFF.toInt()
+        canvas.drawRect(x, gridTop + travel * frac, x + dp(2f), gridTop + travel * frac + thumbH, fill)
+    }
+
     // ---------------------------------------------------------------- 小工具
 
     private fun clock(minute: Int): String = "%02d:%02d".format(minute / 60, minute % 60)
@@ -662,15 +738,53 @@ class PersonaWeekView @JvmOverloads constructor(
 
     // ================================================================ 手势
 
+    /**
+     * 三种手势共用一次触摸：
+     *
+     * - **横滑**（dx 明显大于 dy）→ 翻周；
+     * - **竖滑**（网格装不下时才有意义）→ 网格上下滚，松手带惯性；
+     * - **点一下**（位移小于 12dp）→ 查命中表，弹课卡。
+     *
+     * 判成竖滑之后这一轮就不再是「点一下」：`dragging` 会把 UP 的点击分支整个跳过，
+     * 否则「滑到底部时手一松」正好落在某门课上，会弹出一张莫名其妙的卡片。
+     */
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
+                downScroll = scrollY
+                dragging = false
+                if (!scroller.isFinished) scroller.abortAnimation()
+                velocity?.recycle()
+                velocity = VelocityTracker.obtain().also { it.addMovement(event) }
                 return true
             }
 
+            MotionEvent.ACTION_MOVE -> {
+                velocity?.addMovement(event)
+                if (!dragging && maxScroll > 0f) {
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (abs(dy) > touchSlop && abs(dy) > abs(dx)) dragging = true
+                }
+                if (dragging) {
+                    scrollY = (downScroll - (event.y - downY)).coerceIn(0f, maxScroll)
+                    invalidate()
+                    return true
+                }
+            }
+
             MotionEvent.ACTION_UP -> {
+                if (dragging) {
+                    velocity?.addMovement(event)
+                    startFling()
+                    endDrag()
+                    performClick()
+                    return true
+                }
+                endDrag()
+
                 val dx = event.x - downX
                 val dy = event.y - downY
                 // 横滑翻周：和日历页的横滑翻月同一个手势，向左滑 = 下一周
@@ -682,8 +796,11 @@ class PersonaWeekView @JvmOverloads constructor(
                 if (abs(dx) < dp(12f) && abs(dy) < dp(12f)) {
                     // 后加进来的命中优先（课块压在光柱和分隔线之后）
                     for (i in hits.indices.reversed()) {
-                        if (hits[i].rect.contains(event.x, event.y)) {
-                            hits[i].action()
+                        val hit = hits[i]
+                        // 滚出去的行还在命中表里，但只有落在网格可视区里的才算数
+                        if (hit.scrolls && (event.y < gridTop || event.y > gridBottom)) continue
+                        if (hit.rect.contains(event.x, event.y)) {
+                            hit.action()
                             performClick()
                             return true
                         }
@@ -692,8 +809,43 @@ class PersonaWeekView @JvmOverloads constructor(
                 performClick()
                 return true
             }
+
+            MotionEvent.ACTION_CANCEL -> {
+                endDrag()
+                return true
+            }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun endDrag() {
+        dragging = false
+        velocity?.recycle()
+        velocity = null
+    }
+
+    /** 松手时按甩动速度继续滑一段；`postOnAnimation` 自己驱动，不依赖父容器的 computeScroll */
+    private fun startFling() {
+        val vt = velocity ?: return
+        vt.computeCurrentVelocity(1000)
+        val vy = vt.yVelocity
+        if (abs(vy) < dp(120f)) return
+        scroller.fling(
+            0, scrollY.toInt(),
+            0, (-vy).toInt(),
+            0, 0,
+            0, maxScroll.toInt()
+        )
+        postOnAnimation(flingTick)
+    }
+
+    private val flingTick = object : Runnable {
+        override fun run() {
+            if (!scroller.computeScrollOffset()) return
+            scrollY = scroller.currY.toFloat().coerceIn(0f, maxScroll)
+            invalidate()
+            postOnAnimation(this)
+        }
     }
 
     override fun performClick(): Boolean {
@@ -704,14 +856,5 @@ class PersonaWeekView @JvmOverloads constructor(
     private companion object {
         /** 星期表头的英文缩写，和样稿一致 */
         val EN_DAYS = arrayOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
-
-        /**
-         * 行高取「铺满可用高度」的几成。
-         *
-         * 0.67 ≈ 2/3：长屏上铺满会让行高顶到 56dp 上限，10 行的表稀得发空；
-         * 取 2/3 之后行高落在 30~38dp，一门 1-2 节的连堂课有 60~76dp，
-         * 放得下三行课名 + 教室。改这个值只影响留白多少，不影响任何信息。
-         */
-        const val ROW_FILL = 0.67f
     }
 }
