@@ -66,8 +66,12 @@ object ScheduleFormat {
      * 升到 v5 之后，老 App 会明确拒绝：
      * 「文件是 v5 格式，这个 App 只认到 v3，请更新 App 后再导入」——
      * **拒绝比误解好**，这一条在任何数据交换的场合都成立。
+     *
+     * v6（2026-10）：多了 `alarms` 和 `events` 两段 —— 完整备份不再只有课表，
+     * 还把闹钟和日历日程一起带走。两段都是**可选**的：只写课表的文件照旧
+     * 能导入，老版本 App 读到 v6 会明确拒绝（这正是版本号的意义）。
      */
-    const val VERSION = 5
+    const val VERSION = 6
 
     /**
      * 节次上限 = 一天能排下的小节数（14），与 [Slots] 的外推时刻表一致。
@@ -141,7 +145,14 @@ object ScheduleFormat {
          * 成这个字段（见 [configFromPolicy]），所以导入方只需要认它。
          */
         val dayTypeConfig: DayTypeConfig? = null,
-        val warnings: List<String>
+        val warnings: List<String>,
+        /**
+         * 闹钟列表（v6 新增）。null = 文件里没写这一段，**不要动现有闹钟**；
+         * 空列表（写了 `"alarms": []`）才算「把它清空」。
+         */
+        val alarms: List<Alarm>? = null,
+        /** 日历日程（v6 新增）。null 的语义同 [alarms]。 */
+        val events: List<CalEvent>? = null
     )
 
     /** 用 sealed class 而不是抛异常：调用方必须显式处理失败分支，编译器会盯着 */
@@ -530,6 +541,38 @@ object ScheduleFormat {
             warnings += detectConflicts(list)
         }
 
+        // ---- alarms 段（可选，v6）----
+        var alarms: List<Alarm>? = null
+        root.optJSONArray("alarms")?.let { a ->
+            val list = mutableListOf<Alarm>()
+            for (i in 0 until a.length()) {
+                val obj = a.optJSONObject(i)
+                    ?: return Result.Failed("alarms 第 ${i + 1} 条不是对象。")
+                list += try {
+                    parseAlarm(obj, i)
+                } catch (e: FormatException) {
+                    return Result.Failed(e.message ?: "alarms 第 ${i + 1} 条格式有误。")
+                }
+            }
+            alarms = list
+        }
+
+        // ---- events 段（可选，v6）----
+        var events: List<CalEvent>? = null
+        root.optJSONArray("events")?.let { a ->
+            val list = mutableListOf<CalEvent>()
+            for (i in 0 until a.length()) {
+                val obj = a.optJSONObject(i)
+                    ?: return Result.Failed("events 第 ${i + 1} 条不是对象。")
+                list += try {
+                    parseEvent(obj, i)
+                } catch (e: FormatException) {
+                    return Result.Failed(e.message ?: "events 第 ${i + 1} 条格式有误。")
+                }
+            }
+            events = list
+        }
+
         // ---- 兜底：这份文件至少得说点什么 ----
         // 四段全空的文件导入它没有任何意义，而且多半意味着用户选错了文件
         // 或者 AI 输出的东西是坏的 —— 明确报错比「导入成功但什么都没变」好。
@@ -537,18 +580,22 @@ object ScheduleFormat {
         // ⚠️ periods 不算内容：它只改显示结构，一份只带 periods 的文件
         // 没有可导入的东西，照样拒绝（和电脑版行为一致）。
         if (term == null && courses == null && templates == null && dayTypes == null &&
-            dayTypeNames == null && dayTypeConfig == null
+            dayTypeNames == null && dayTypeConfig == null && alarms == null && events == null
         ) {
             return Result.Failed(
-                "这份文件里 term、courses、templates、dayTypes、dayTypeNames、dayTypeConfig " +
-                        "各段都没有内容，没有可导入的东西。\n\n" +
+                "这份文件里 term、courses、templates、dayTypes、dayTypeNames、dayTypeConfig、" +
+                        "alarms、events 各段都没有内容，没有可导入的东西。\n\n" +
                         "如果你是想导入课表，检查一下 courses 数组是不是空的；\n" +
                         "如果是想让 AI 生成，把「报错修复」提示词发回给它。"
             )
         }
 
         return Result.Ok(
-            Parsed(term, courses, templates, dayTypes, periods, dayTypeNames, dayTypeConfig, warnings)
+            Parsed(
+                term = term, courses = courses, templates = templates, dayTypes = dayTypes,
+                periods = periods, dayTypeNames = dayTypeNames, dayTypeConfig = dayTypeConfig,
+                warnings = warnings, alarms = alarms, events = events
+            )
         )
     }
 
@@ -1114,9 +1161,13 @@ object ScheduleFormat {
         periods: String = DEFAULT_PERIODS,
         dayTypeNames: Map<DayType, String>? = null,
         dayTypeConfig: DayTypeConfig? = null,
-        version: Int = VERSION
+        version: Int = VERSION,
+        /** v6：闹钟列表。传空表就不写这一段（只导课表时保持文件干净） */
+        alarms: List<Alarm> = emptyList(),
+        /** v6：日历日程。同上 */
+        events: List<CalEvent> = emptyList()
     ): String {
-        require(version in listOf(3, 4, 5)) { "serialize 只支持输出 v3/v4/v5，收到 v$version" }
+        require(version in listOf(3, 4, 5, 6)) { "serialize 只支持输出 v3–v6，收到 v$version" }
         // v3 兼容：键用语义名、段序按当年的语义分组序；v4 起：键是 id、按 id 升序
         // （templates 段含休息日，见 FILE_ORDER）。
         val dtOrder = if (version == 3) V3_ORDER else Templates.ALL_TYPES
@@ -1231,6 +1282,18 @@ object ScheduleFormat {
             appendTemplates(sb, templates, order = tmplOrder, keyOf = keyOf)
         }
 
+        // alarms / events（v6）：只有调用方真的给了内容才写。
+        // 放在最后是有意的 —— 前几段是「课表怎么跑」，这两段是「我和这台手机
+        // 的私事」，从公共到私人，读文件的人按这个顺序理解最顺。
+        if (version >= 6 && alarms.isNotEmpty()) {
+            sb.append(",\n")
+            appendAlarms(sb, alarms)
+        }
+        if (version >= 6 && events.isNotEmpty()) {
+            sb.append(",\n")
+            appendEvents(sb, events)
+        }
+
         sb.append("\n}\n")
         return sb.toString()
     }
@@ -1306,6 +1369,183 @@ object ScheduleFormat {
     }
 
     /** JSON 字符串转义。少了这一步，课程名里出现引号就会生成一份坏文件。 */
+    // ============================================================
+    //  闹钟 / 日程（v6）
+    // ============================================================
+
+    /**
+     * 写出 alarms 段。
+     *
+     * 字段和本地存储（[Store.toAlarmJson]）**不完全一样**：这里省略所有默认值，
+     * 文件才不至于为了「一个默认的 10 分钟贪睡」多出一行 —— 导入时缺省即默认，
+     * 语义等价。id 照写：同一份文件导回同一台设备时能原样对上，
+     * 换设备时由 [Alarms.merge] 重新编号。
+     */
+    private fun appendAlarms(sb: StringBuilder, alarms: List<Alarm>) {
+        sb.append("  \"alarms\": [\n")
+        alarms.forEachIndexed { i, a ->
+            sb.append("    {\n")
+            sb.append("      \"id\": \"").append(escape(a.id)).append("\",\n")
+            sb.append("      \"hour\": ").append(a.hour).append(",\n")
+            sb.append("      \"minute\": ").append(a.minute).append(",\n")
+            sb.append("      \"days\": [").append(a.days.sorted().joinToString(", ")).append("],\n")
+            sb.append("      \"source\": \"").append(a.source.name).append('"')
+            if (!a.enabled) sb.append(",\n      \"enabled\": false")
+            if (a.label.isNotBlank()) {
+                sb.append(",\n      \"label\": \"").append(escape(a.label)).append('"')
+            }
+            if (a.soundUri.isNotBlank()) {
+                sb.append(",\n      \"sound\": \"").append(escape(a.soundUri)).append('"')
+            }
+            if (!a.skipHolidays) sb.append(",\n      \"skipHolidays\": false")
+            if (a.courseId.isNotBlank()) {
+                sb.append(",\n      \"courseId\": \"").append(escape(a.courseId)).append('"')
+            }
+            if (a.leadMinutes != 0) sb.append(",\n      \"lead\": ").append(a.leadMinutes)
+            if (a.snoozeMinutes != Alarms.MIN_SNOOZE_MINUTES) {
+                sb.append(",\n      \"snooze\": ").append(a.snoozeMinutes)
+            }
+            a.onceDate?.let { sb.append(",\n      \"once\": \"").append(it).append('"') }
+            a.skipDate?.let { sb.append(",\n      \"skip\": \"").append(it).append('"') }
+            if (a.momentTitle.isNotBlank()) {
+                sb.append(",\n      \"moment\": \"").append(escape(a.momentTitle)).append('"')
+            }
+            a.momentKind?.let { sb.append(",\n      \"momentKind\": \"").append(it.name).append('"') }
+            a.momentDayType?.let {
+                sb.append(",\n      \"momentDayType\": \"").append(it.id).append('"')
+            }
+            sb.append('\n').append("    }")
+            if (i < alarms.size - 1) sb.append(',')
+            sb.append('\n')
+        }
+        sb.append("  ]")
+    }
+
+    /** 写出 events 段。字段同样是「必填全写、可选只在有值时写」 */
+    private fun appendEvents(sb: StringBuilder, events: List<CalEvent>) {
+        sb.append("  \"events\": [\n")
+        events.forEachIndexed { i, e ->
+            sb.append("    {\n")
+            sb.append("      \"id\": \"").append(escape(e.id)).append("\",\n")
+            sb.append("      \"date\": \"").append(e.date).append("\",\n")
+            sb.append("      \"start\": ").append(e.start).append(",\n")
+            sb.append("      \"end\": ").append(e.end).append(",\n")
+            sb.append("      \"title\": \"").append(escape(e.title)).append("\",\n")
+            sb.append("      \"weekly\": ").append(e.weekly)
+            if (e.place.isNotBlank()) {
+                sb.append(",\n      \"place\": \"").append(escape(e.place)).append('"')
+            }
+            if (e.note.isNotBlank()) {
+                sb.append(",\n      \"note\": \"").append(escape(e.note)).append('"')
+            }
+            e.until?.let { sb.append(",\n      \"until\": \"").append(it).append('"') }
+            sb.append('\n').append("    }")
+            if (i < events.size - 1) sb.append(',')
+            sb.append('\n')
+        }
+        sb.append("  ]")
+    }
+
+    /**
+     * 解析一条闹钟。缺省字段按默认值补（和导出时「默认值不写」对应），
+     * 写错的字段**明确报错并说清是哪一条的哪个字段** —— 这个文件是给人改的。
+     */
+    private fun parseAlarm(o: JSONObject, index: Int): Alarm {
+        val where = "alarms 第 ${index + 1} 条"
+        val hour = o.optInt("hour", 7)
+        if (hour !in 0..23) throw FormatException("$where 的 hour 必须在 0–23 之间，现在是 $hour。")
+        val minute = o.optInt("minute", 0)
+        if (minute !in 0..59) {
+            throw FormatException("$where 的 minute 必须在 0–59 之间，现在是 $minute。")
+        }
+
+        val daysArr = o.optJSONArray("days")
+        val days = if (daysArr == null) {
+            Alarms.WORKDAYS
+        } else {
+            buildSet {
+                for (i in 0 until daysArr.length()) {
+                    val d = daysArr.optInt(i, 0)
+                    if (d !in 1..7) {
+                        throw FormatException("$where 的 days 里有 $d，星期几只能是 1–7（1 = 周一）。")
+                    }
+                    add(d)
+                }
+            }
+        }
+
+        fun date(key: String): LocalDate? {
+            val raw = o.optString(key, "")
+            if (raw.isBlank()) return null
+            return try {
+                LocalDate.parse(raw)
+            } catch (_: Exception) {
+                throw FormatException("$where 的 $key 写的 \"$raw\" 不是合法日期，正确写法如 \"2026-10-08\"。")
+            }
+        }
+
+        val source = runCatching { AlarmSource.valueOf(o.optString("source", "MANUAL")) }
+            .getOrDefault(AlarmSource.MANUAL)
+        val momentKind = o.optString("momentKind", "").takeIf { it.isNotBlank() }
+            ?.let { runCatching { Kind.valueOf(it) }.getOrNull() }
+        val momentDayType = o.optString("momentDayType", "").takeIf { it.isNotBlank() }
+            ?.let { id -> DayType.entries.firstOrNull { it.id == id } }
+
+        return Alarm(
+            id = o.optString("id", "").ifBlank { "a%03d".format(index + 1) },
+            hour = hour,
+            minute = minute,
+            days = days,
+            enabled = o.optBoolean("enabled", true),
+            label = o.optString("label", ""),
+            soundUri = o.optString("sound", ""),
+            skipHolidays = o.optBoolean("skipHolidays", true),
+            source = source,
+            courseId = o.optString("courseId", ""),
+            leadMinutes = o.optInt("lead", 0),
+            snoozeMinutes = o.optInt("snooze", Alarms.MIN_SNOOZE_MINUTES),
+            onceDate = date("once"),
+            skipDate = date("skip"),
+            momentTitle = o.optString("moment", ""),
+            momentKind = momentKind,
+            momentDayType = momentDayType
+        )
+    }
+
+    /** 解析一条日程；校验走 [Events.normalize]，规则只有一份 */
+    private fun parseEvent(o: JSONObject, index: Int): CalEvent {
+        val where = "events 第 ${index + 1} 条"
+        val dateRaw = o.optString("date", "").trim()
+        if (dateRaw.isEmpty()) {
+            throw FormatException("$where 缺少 date 字段，正确写法如 \"date\": \"2026-10-07\"。")
+        }
+        val date = try {
+            LocalDate.parse(dateRaw)
+        } catch (_: Exception) {
+            throw FormatException("$where 的 date \"$dateRaw\" 不是合法日期，正确写法如 \"2026-10-07\"。")
+        }
+        val until = o.optString("until", "").takeIf { it.isNotBlank() }?.let {
+            try {
+                LocalDate.parse(it)
+            } catch (_: Exception) {
+                throw FormatException("$where 的 until \"$it\" 不是合法日期，正确写法如 \"2026-12-30\"。")
+            }
+        }
+        val draft = CalEvent(
+            id = o.optString("id", "").ifBlank { "e%03d".format(index + 1) },
+            date = date,
+            start = o.optInt("start", 0),
+            end = o.optInt("end", 0),
+            title = o.optString("title", ""),
+            place = o.optString("place", ""),
+            note = o.optString("note", ""),
+            weekly = o.optBoolean("weekly", false),
+            until = until
+        )
+        return Events.normalize(draft)
+            ?: throw FormatException("$where 存不了：标题是空的，或者结束时间不晚于开始时间。")
+    }
+
     private fun escape(s: String): String {
         val sb = StringBuilder(s.length + 8)
         for (ch in s) {

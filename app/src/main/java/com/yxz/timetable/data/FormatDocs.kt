@@ -30,8 +30,11 @@ internal object FormatDocs {
         dayTypeNames  自定义日型名（可选）
         courses       课程数组（可选）
         templates     作息模板（可选）
+        alarms        闹钟数组（可选，v6）
+        events        日历日程数组（可选，v6）
 
         上面几段都是「没写 = 不要动」，不是「清空」。
+        写了空数组 [] 才是「把它清空」。
 
         【periods 节数信息】
         一串数字（1-14 位，每位 1-9），从左到
@@ -118,6 +121,28 @@ internal object FormatDocs {
         **只写想改的那几种**，没写的回落到内置模板。
         占位格（带 nodes 的格子）里写的时刻就是
         上课时间 —— 改上课时间就是改这里的时刻。
+
+        【alarms 段】（v6，完整备份才带）
+        hour / minute   几点几分
+        days            星期几 [1-7]，1 = 周一；
+                        [] 表示「只响一次」，配合 once
+        once            只响一次的那天，YYYY-MM-DD
+        label           闹钟名字（可选）
+        source          MANUAL / COURSE / MOMENT
+        courseId        课程闹钟绑的课程 id
+        lead            提前几分钟（0 = 到点）
+        snooze          贪睡分钟，默认 10
+        skipHolidays    节假日不响，默认 true
+        导入时课程闹钟会按「课名 + 星期 + 起始节」
+        重新绑到本机的课程上，id 不参与去重。
+
+        【events 段】（v6，完整备份才带）
+        date            哪一天，YYYY-MM-DD
+        start / end     起止分钟（距当天 00:00）
+        title           标题（必填）
+        place / note    地点、备注（可选）
+        weekly          每周重复，默认 false
+        until           重复到哪天为止（可选）
 
         【设计约定】
         · 周次不能超过 totalWeeks

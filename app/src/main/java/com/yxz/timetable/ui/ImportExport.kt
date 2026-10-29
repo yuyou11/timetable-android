@@ -6,6 +6,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
+import com.yxz.timetable.data.AlarmSource
+import com.yxz.timetable.data.Alarms
+import com.yxz.timetable.data.Events
 import com.yxz.timetable.data.ScheduleFormat
 import com.yxz.timetable.data.Slots
 import com.yxz.timetable.data.Store
@@ -196,6 +199,39 @@ class ImportExport(
                 append('\n')
             }
 
+            // 闹钟 / 日程（v6）：这两段是「私人物品」，导入前必须让用户看见
+            // 自己要覆盖什么 —— 尤其选「替换」时它们会被整份换掉。
+            val alarms = parsed.alarms
+            if (alarms == null) {
+                append("\n闹钟：文件里没写，保持不变\n")
+            } else {
+                append("\n闹钟：").append(alarms.size).append(" 条")
+                if (alarms.isEmpty()) append("（会清空现有闹钟）")
+                append('\n')
+                alarms.take(3).forEach { a ->
+                    append("· ").append(a.timeText).append(' ')
+                    append(a.label.ifBlank { "（未命名）" })
+                    if (a.source == AlarmSource.COURSE) append("（课程）")
+                    if (a.source == AlarmSource.MOMENT) append("（格子）")
+                    append('\n')
+                }
+                if (alarms.size > 3) append("（还有 ${alarms.size - 3} 条）\n")
+            }
+            val events = parsed.events
+            if (events == null) {
+                append("日程：文件里没写，保持不变\n")
+            } else {
+                append("日程：").append(events.size).append(" 条")
+                if (events.isEmpty()) append("（会清空现有日程）")
+                append('\n')
+                events.take(3).forEach { e ->
+                    append("· ").append(e.date).append(' ')
+                    if (e.weekly) append("每周 ")
+                    append(e.title).append('\n')
+                }
+                if (events.size > 3) append("（还有 ${events.size - 3} 条）\n")
+            }
+
             // 节数信息决定了课表页怎么分行，带着它导入等于换一套网格结构 ——
             // 预览里不说，用户只会在课表页莫名看到行数变了。
             parsed.periods?.let {
@@ -229,16 +265,18 @@ class ImportExport(
             }
         }
 
-        // 文件里没带课程时，「替换 / 合并」这两个选项没有意义 ——
+        // 文件里没带课程、也没带闹钟 / 日程时，「替换 / 合并」这两个选项没有意义 ——
         // 给一个动作单一的按钮，避免用户以为自己在做选择
         val builder = CardAlertDialogBuilder(ctx)
             .setTitle("确认导入")
             .setMessage(msg)
 
-        if (parsed.courses == null) {
+        val hasListData = parsed.courses != null || parsed.alarms != null || parsed.events != null
+        if (!hasListData) {
             builder.setPositiveButton("应用") { _, _ -> doImport(parsed, replace = false) }
         } else {
-            builder.setPositiveButton("替换现有课表") { _, _ -> doImport(parsed, replace = true) }
+            // 措辞从「课表」改成「数据」：v6 起这个按钮同时决定闹钟和日程要不要被整份替换
+            builder.setPositiveButton("替换现有数据") { _, _ -> doImport(parsed, replace = true) }
                 .setNeutralButton("合并") { _, _ -> doImport(parsed, replace = false) }
         }
         builder.setNegativeButton("取消", null).show()
@@ -266,6 +304,34 @@ class ImportExport(
         } else {
             val added = store.mergeCourses(incoming)
             parts += "合并完成：新增 $added 门，跳过 ${incoming.size - added} 门重复"
+        }
+
+        // 闹钟 / 日程（v6）。**必须在课程之后处理**：
+        // 课程闹钟的 courseId 是导出那台设备上的编号，导入时整张表会重新编号，
+        // 先按课程的自然键（课名 + 星期 + 起始节）重绑到本机的课程上，
+        // 再去重 / 保存 —— 否则那条闹钟会指向另一门课、在错误的时间响。
+        parsed.alarms?.let { incomingAlarms ->
+            val fileCourses = parsed.courses ?: store.courses()
+            val remapped = Alarms.remapCourseAlarms(incomingAlarms, fileCourses, store.courses())
+            if (replace) {
+                store.saveAlarms(remapped)
+                parts += "闹钟 ${remapped.size} 条（已替换）"
+            } else {
+                val r = Alarms.merge(store.alarms(), remapped)
+                store.saveAlarms(r.alarms)
+                parts += "闹钟新增 ${r.added} 条"
+            }
+        }
+
+        parsed.events?.let { incomingEvents ->
+            if (replace) {
+                store.saveEvents(incomingEvents)
+                parts += "日程 ${incomingEvents.size} 条（已替换）"
+            } else {
+                val r = Events.merge(store.events(), incomingEvents)
+                store.saveEvents(r.events)
+                parts += "日程新增 ${r.added} 条"
+            }
         }
 
         parsed.templates?.let { parts += "作息模板 ${it.size} 种" }
@@ -322,10 +388,9 @@ class ImportExport(
             .setItems(
                 arrayOf(
                     "仅课程（文件短，适合手改和分享）",
-                    // 措辞里带上「日型」：从 v3 起这一档导出的不只是模板，
-                    // 还有「启用哪几种日型」。只说模板的话，
-                    // 用户会以为日型设置没被备份进去
-                    "课程 + 作息（模板与启用的日型，完整备份）"
+                    // 措辞里把「日型 / 闹钟 / 日程」都点出来：从 v3 起这一档就不只是模板，
+                    // v6 起还多了闹钟和日程。只说模板的话，用户会以为那些没被备份进去
+                    "完整备份（课程 + 作息 + 闹钟 + 日程）"
                 )
             ) { _, which ->
                 pendingExportIncludeTemplates = (which == 1)

@@ -100,6 +100,32 @@ object Events {
         return e.copy(title = title, start = start, end = end, until = until)
     }
 
+    /**
+     * 「同一条日程」的自然键 —— 不含 id（两台设备上的 `e001` 不是同一条）。
+     * 日期 + 起止 + 标题 + 是否每周 + 截止日足够区分：同一天同一时刻同名同重复
+     * 规则的两条，本来也该当成一条。
+     */
+    fun naturalKey(e: CalEvent): String =
+        "${e.date}|${e.start}|${e.end}|${e.title}|${e.weekly}|${e.until ?: ""}"
+
+    /** 合并结果：新列表 + 实际新增了几条 */
+    data class MergeResult(val events: List<CalEvent>, val added: Int)
+
+    /** 把 [incoming] 里现有列表没有的追加进来（去重看 [naturalKey]，新增的重新编号） */
+    fun merge(existing: List<CalEvent>, incoming: List<CalEvent>): MergeResult {
+        if (incoming.isEmpty()) return MergeResult(existing, 0)
+        val seen = existing.mapTo(HashSet()) { naturalKey(it) }
+        val out = existing.toMutableList()
+        var next = (existing.mapNotNull { it.id.removePrefix("e").toIntOrNull() }.maxOrNull() ?: 0) + 1
+        var added = 0
+        for (e in incoming) {
+            if (!seen.add(naturalKey(e))) continue
+            out += e.copy(id = "e%03d".format(next++))
+            added++
+        }
+        return MergeResult(out, added)
+    }
+
     // ---------------------------------------------------------------- JSON
 
     fun toJson(list: List<CalEvent>): String {

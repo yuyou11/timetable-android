@@ -1,4 +1,4 @@
-﻿package com.yxz.timetable.data
+package com.yxz.timetable.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -1201,7 +1201,8 @@ class ScheduleFormatTest {
         val json = ScheduleFormat.serialize(
             "测试学期", LocalDate.of(2026, 9, 7), 19, emptyList(),
             templates = TemplateSet(config = config).expanded(),
-            dayTypeConfig = config
+            dayTypeConfig = config,
+            version = 5
         )
         assertTrue(json.contains("\"version\": 5"))
         assertEquals(config, ok(json).dayTypeConfig)
@@ -1320,7 +1321,9 @@ class ScheduleFormatTest {
             BuiltinCourses.LIST,
             templates = TemplateSet.BUILTIN.expanded(),
             dayTypeNames = null,
-            dayTypeConfig = DayTypeConfig.DEFAULT
+            dayTypeConfig = DayTypeConfig.DEFAULT,
+            // 这份示例是 v5 时代的活样本：显式钉住版本，引擎升到 v6 也不该改动它
+            version = 5
         )
         val actual = docsFile("example-full-v5.json").readText()
         assertEquals("示例文件与真实导出有出入（逐字节对比）", expected, actual)

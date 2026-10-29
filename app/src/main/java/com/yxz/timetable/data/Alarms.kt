@@ -396,6 +396,55 @@ object Alarms {
     /** 课程的自然键：课名 + 星期 + 起始节。课程 id 会随导入重编号，这个不会 */
     internal fun courseKey(c: Course): String = "${c.name}|${c.dayOfWeek}|${c.startNode}"
 
+    // ------------------------------------------------------------------
+    //  跨设备合并（导入备份时用）
+    // ------------------------------------------------------------------
+
+    /**
+     * 「同一条闹钟」的自然键 —— **不含 id**。
+     *
+     * 两台设备上的 `a001` 完全可能是两条毫不相干的闹钟，id 只在单台设备内
+     * 有意义；导入时拿 id 去重会把别人的闹钟当成自己的。
+     *
+     * 课程闹钟的 `courseId` 也是**本机的**，所以先按自然键把课程闹钟重绑到
+     * 新课程上（[remapCourseAlarms]），再拿这个键去重 —— 顺序反了就会
+     * 把同一门课的闹钟判成两条。
+     */
+    fun naturalKey(a: Alarm): String = buildString {
+        append(a.source.name).append('|')
+        append(a.hour).append(':').append(a.minute).append('|')
+        append(a.days.sorted().joinToString(",")).append('|')
+        append(a.label).append('|')
+        append(a.courseId).append('|')
+        append(a.momentTitle).append('|')
+        append(a.momentKind?.name ?: "").append('|')
+        append(a.momentDayType?.id ?: "").append('|')
+        append(a.onceDate?.toString() ?: "")
+    }
+
+    /** 合并结果：新列表 + 实际新增了几条 */
+    data class MergeResult(val alarms: List<Alarm>, val added: Int)
+
+    /**
+     * 把 [incoming] 里现有列表没有的追加进来。
+     *
+     * 去重看 [naturalKey]（时间 / 重复 / 名字 / 绑定对象），不看 id。
+     * 新增的条目重新编号，避免和本机已有的 `a001` 撞车。
+     */
+    fun merge(existing: List<Alarm>, incoming: List<Alarm>): MergeResult {
+        if (incoming.isEmpty()) return MergeResult(existing, 0)
+        val seen = existing.mapTo(HashSet()) { naturalKey(it) }
+        val out = existing.toMutableList()
+        var next = (existing.mapNotNull { it.id.removePrefix("a").toIntOrNull() }.maxOrNull() ?: 0) + 1
+        var added = 0
+        for (a in incoming) {
+            if (!seen.add(naturalKey(a))) continue
+            out += a.copy(id = "a%03d".format(next++))
+            added++
+        }
+        return MergeResult(out, added)
+    }
+
     /**
      * 课表被替换后，把课程闹钟按自然键接到新课程上。
      *

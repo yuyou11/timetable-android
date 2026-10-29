@@ -703,17 +703,25 @@ class Store(context: Context) {
         )
     }
 
+    /**
+     * 导出一整份 JSON。
+     *
+     * @param includeScheduleConfig true = 完整备份（作息模板 / 日型 / 闹钟 / 日程），
+     *        false = 只导课表（给别人抄课表用，不该把私人闹钟和日程一起发出去）
+     */
     fun exportJson(includeScheduleConfig: Boolean = false): String =
         ScheduleFormat.serialize(
-            termName,
-            termStart,
-            totalWeeks,
-            courses(),
-            if (includeScheduleConfig) templates().expanded() else emptyMap(),
-            null,
-            periods,
-            if (includeScheduleConfig) dayTypeNames().ifEmpty { null } else null,
-            if (includeScheduleConfig) dayTypeConfig() else null
+            termName = termName,
+            startDate = termStart,
+            totalWeeks = totalWeeks,
+            courses = courses(),
+            templates = if (includeScheduleConfig) templates().expanded() else emptyMap(),
+            dayTypes = null,
+            periods = periods,
+            dayTypeNames = if (includeScheduleConfig) dayTypeNames().ifEmpty { null } else null,
+            dayTypeConfig = if (includeScheduleConfig) dayTypeConfig() else null,
+            alarms = if (includeScheduleConfig) alarms() else emptyList(),
+            events = if (includeScheduleConfig) events() else emptyList()
         )
 
     /**
