@@ -620,6 +620,36 @@ class Store(context: Context) {
     /** 生效中的节假日表 = 内置那份 + 用户手动那份 */
     fun holidayTable(): HolidayTable = HolidayTable(customHolidays())
 
+    // ------------------------------------------------------------------
+    //  日历日程
+    //
+    //  存在本地（SharedPreferences 里一串 JSON），**不进课表导出** ——
+    //  导出格式 v5 描述的是「课表 + 作息」，日程是这台手机上的私人安排；
+    //  塞进去就得升格式版本、改电脑版的解析，收益不值当。代价是换机 / 卸载会丢，
+    //  将来要做的话是在 v6 里加一个 events 段。
+    // ------------------------------------------------------------------
+
+    fun events(): MutableList<CalEvent> {
+        val raw = sp.getString(KEY_EVENTS, "") ?: ""
+        if (raw.isBlank()) return mutableListOf()
+        val parsed = Events.parse(raw)
+        if (parsed.bad > 0) noteLoadError("日程", "${parsed.bad} 条解析失败，已跳过")
+        return parsed.events.toMutableList()
+    }
+
+    fun saveEvents(list: List<CalEvent>) {
+        sp.edit().putString(KEY_EVENTS, Events.toJson(list)).apply()
+    }
+
+    /**
+     * 下一条日程的编号。和 [nextAlarmId] 同一套：现有最大号 +1，
+     * 而不是「条数 +1」—— 删掉中间一条之后，条数会撞上现有 id。
+     */
+    fun nextEventId(): String {
+        val max = events().mapNotNull { it.id.removePrefix("e").toIntOrNull() }.maxOrNull() ?: 0
+        return "e%03d".format(max + 1)
+    }
+
     private fun toAlarmJson(a: Alarm): JSONObject = JSONObject().apply {
         put("id", a.id)
         put("h", a.hour)
@@ -835,6 +865,9 @@ class Store(context: Context) {
 
         /** 节数信息在 SharedPreferences 里的键 */
         private const val KEY_PERIODS = "periods"
+
+        /** 日历日程的本地存储键（一串 JSON 数组，见 [Events]） */
+        private const val KEY_EVENTS = "calendar_events"
 
         /** 最近一次读取失败的记录（`对象|原因`），见 [lastLoadError] */
         private const val KEY_LOAD_ERROR = "load_error"

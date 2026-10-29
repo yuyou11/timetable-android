@@ -13,6 +13,8 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yxz.timetable.R
+import com.yxz.timetable.data.CalEvent
+import com.yxz.timetable.data.Events
 import com.yxz.timetable.data.Festivals
 import com.yxz.timetable.data.Lunar
 import com.yxz.timetable.data.Store
@@ -50,6 +52,11 @@ class CalendarFragment : Fragment() {
 
     private var month: YearMonth = YearMonth.now()
 
+    private lateinit var store: Store
+
+    /** 全部日程。每次增删改之后重新读一遍（数据量是「几十条」级别，不必做增量） */
+    private var events: List<CalEvent> = emptyList()
+
     /** P3 彩蛋打开时才有值；普通外观下是 null。见 [showPersona3] */
     private var p3: PersonaCalendarView? = null
 
@@ -61,7 +68,8 @@ class CalendarFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val store = Store(requireContext())
+        store = Store(requireContext())
+        events = store.events()
         if (store.p3Mode) {
             showPersona3()
         } else {
@@ -69,6 +77,28 @@ class CalendarFragment : Fragment() {
             binding.btnNext.setOnClickListener { showMonth(month.plusMonths(1)) }
             showMonth(month)
         }
+    }
+
+    /**
+     * 重新读日程并重画。
+     *
+     * 日程只在「这一天」有意义，所以格子上只放一行摘要（时刻 + 标题），
+     * 完整列表在 [DayEventsDialog] 里 —— 一个 58dp 的格子里塞两条日程
+     * 只会把日期和农历挤没。
+     */
+    private fun reloadEvents() {
+        events = store.events()
+        val persona = p3
+        if (persona != null) {
+            persona.events = events
+        } else {
+            buildGrid(month)
+        }
+    }
+
+    /** 点某一天：两套外观都走这个对话框 */
+    private fun openDay(date: LocalDate) {
+        DayEventsDialog(requireContext(), store, date) { reloadEvents() }.show()
     }
 
     /**
@@ -91,21 +121,21 @@ class CalendarFragment : Fragment() {
 
         view.yearMonth = month
         view.selectedDate = LocalDate.now()
+        view.events = events
         view.onMonthStep = { delta -> showMonth(month.plusMonths(delta.toLong())) }
-        view.onDayClick = { date -> view.selectedDate = date }
+        view.onDayClick = { date ->
+            view.selectedDate = date
+            openDay(date)
+        }
         p3 = view
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
-        // 从别的页切回来时重画：「今天」可能已经变了（App 在后台放了一夜）
+        // 从别的页切回来时重画：「今天」可能已经变了（App 在后台放了一夜），
+        // 日程也重新读一遍 —— 反正只有几十条，比维护一份缓存省心
         if (hidden) return
-        val p3View = p3
-        if (p3View != null) {
-            p3View.invalidate()
-            return
-        }
-        showMonth(month)
+        reloadEvents()
     }
 
     private fun showMonth(ym: YearMonth) {
@@ -154,10 +184,11 @@ class CalendarFragment : Fragment() {
         }
     }
 
-    /** 一格：日期 + 农历/节日，下方留白给以后的日程条目 */
+    /** 一格：日期 + 农历/节日，有日程时再加一行摘要 */
     private fun dayCell(ctx: Context, date: LocalDate, inMonth: Boolean, isToday: Boolean): View {
         val lunar = Lunar.of(date)
         val festival = Festivals.of(date, lunar)
+        val dayEvents = Events.on(events, date)
 
         val dim = if (inMonth) 1f else 0.35f
 
@@ -165,9 +196,15 @@ class CalendarFragment : Fragment() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(ctx.dp(2), ctx.dp(6), ctx.dp(2), ctx.dp(4))
+            setPadding(ctx.dp(2), ctx.dp(5), ctx.dp(2), ctx.dp(3))
             // 今天整格上底色，和课表页「今天那一列」同一个思路
             if (isToday) setBackgroundColor(ctx.accentSoftColor())
+            // 点格子看这一天的日程（上下月的格子也点得动 —— 它会先把月份切过去）
+            isClickable = true
+            setOnClickListener {
+                if (YearMonth.from(date) != month) showMonth(YearMonth.from(date))
+                openDay(date)
+            }
 
             addView(TextView(ctx).apply {
                 text = date.dayOfMonth.toString()
@@ -194,10 +231,31 @@ class CalendarFragment : Fragment() {
                 maxLines = 1
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = ctx.dp(3) }
+                ).apply { topMargin = ctx.dp(2) }
             })
+
+            if (dayEvents.isNotEmpty()) {
+                addView(TextView(ctx).apply {
+                    // 一条就写「时刻 标题」，多条写「时刻 等 N 条」—— 格子只够一行
+                    val first = dayEvents.first()
+                    text = if (dayEvents.size == 1) "${clock(first.start)} ${first.title}"
+                    else "${clock(first.start)} 等 ${dayEvents.size} 条"
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 8.5f)
+                    setTextColor(ctx.accentColor())
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    alpha = dim
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = ctx.dp(2) }
+                })
+            }
         }
     }
+
+    private fun clock(minute: Int): String = "%02d:%02d".format(minute / 60, minute % 60)
 
     private fun hLine(ctx: Context, color: Int) = View(ctx).apply {
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, ctx.dp(1))

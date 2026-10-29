@@ -14,6 +14,8 @@ import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import com.yxz.timetable.data.CalEvent
+import com.yxz.timetable.data.Events
 import com.yxz.timetable.data.Festivals
 import com.yxz.timetable.data.Lunar
 import java.time.LocalDate
@@ -67,6 +69,18 @@ class PersonaCalendarView @JvmOverloads constructor(
     var selectedDate: LocalDate = LocalDate.now()
         set(value) {
             if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+
+    /**
+     * 全部日程（不筛月份）。日期格上的小标记、右下角那几行摘要都从这里现算 ——
+     * 数据量是几十条，而且筛选逻辑在 [Events] 里（有单测），这边不缓存。
+     */
+    var events: List<CalEvent> = emptyList()
+        set(value) {
+            if (field !== value) {
                 field = value
                 invalidate()
             }
@@ -458,6 +472,9 @@ class PersonaCalendarView @JvmOverloads constructor(
 
                 if (date == today) {
                     drawToday(canvas, date, cx, cy)
+                    if (inMonth && Events.hasAny(events, date)) {
+                        drawEventDot(canvas, cx, cy)
+                    }
                     continue
                 }
 
@@ -479,6 +496,12 @@ class PersonaCalendarView @JvmOverloads constructor(
                     canvas.drawCircle(cx, cy + dp(15f), dp(1.7f), fill)
                 }
 
+                // 有日程：数字左下角一枚青色小方块。和节日那枚白点错开位置 ——
+                // 两个标记摞在一起就分不清哪个是哪个了
+                if (inMonth && Events.hasAny(events, date)) {
+                    drawEventDot(canvas, cx, cy)
+                }
+
                 if (inMonth && date == selectedDate) {
                     stroke.color = cGold
                     stroke.strokeWidth = dp(1.4f)
@@ -486,6 +509,15 @@ class PersonaCalendarView @JvmOverloads constructor(
                 }
             }
         }
+    }
+
+    /** 「这天有日程」的小标记：3dp 见方的青色块，压在日期的左下角 */
+    private fun drawEventDot(canvas: Canvas, cx: Float, cy: Float) {
+        val s = dp(3f)
+        val left = cx - dp(14f)
+        val top = cy + dp(12.5f)
+        fill.color = cCyan
+        canvas.drawRect(left, top, left + s, top + s, fill)
     }
 
     /**
@@ -599,24 +631,31 @@ class PersonaCalendarView @JvmOverloads constructor(
         }
 
 
-        // 白纸上那个巨号日期 —— 原图里「5」就是骑在白纸上的，
-        // 竖屏把整个网格铺满宽度后，只有这块白纸还有地方放得下它。
-        // 字号按「日期条下沿到 Guide 上沿」的可用高度算；空间不够就不画，
-        // 而不是硬塞一个压住 Guide 的大字（矮屏上会糊成一团）。
-        val numberTop = barTop + dp(50f)
+        val dayEvents = Events.on(events, date)
         val guideY = h - dp(46f)
-        val room = guideY - numberTop - dp(14f)
-        if (room > dp(36f)) {
-            text.typeface = heavyFace
-            text.textSize = (room / 1.16f).coerceIn(sp(44f), sp(150f))
-            text.textAlign = Paint.Align.RIGHT
-            text.color = Color.argb(238, 1, 13, 100)
-            val fm = text.fontMetrics
-            canvas.drawText(date.dayOfMonth.toString(), w - dp(16f), numberTop - fm.ascent, text)
+        if (dayEvents.isNotEmpty()) {
+            // 有日程时，白纸上那块地方让给日程列表（巨号日期不画）：
+            // 日期右边那条青色条里已经有了，再压一个比列表还显眼的大数字没意义
+            drawDayEvents(canvas, w, barTop, guideY, dayEvents)
+        } else {
+            // 白纸上那个巨号日期 —— 原图里「5」就是骑在白纸上的，
+            // 竖屏把整个网格铺满宽度后，只有这块白纸还有地方放得下它。
+            // 字号按「日期条下沿到 Guide 上沿」的可用高度算；空间不够就不画，
+            // 而不是硬塞一个压住 Guide 的大字（矮屏上会糊成一团）。
+            val numberTop = barTop + dp(50f)
+            val room = guideY - numberTop - dp(14f)
+            if (room > dp(36f)) {
+                text.typeface = heavyFace
+                text.textSize = (room / 1.16f).coerceIn(sp(44f), sp(150f))
+                text.textAlign = Paint.Align.RIGHT
+                text.color = Color.argb(238, 1, 13, 100)
+                val fm = text.fontMetrics
+                canvas.drawText(date.dayOfMonth.toString(), w - dp(16f), numberTop - fm.ascent, text)
+            }
         }
 
         // Guide：字号必须自己设回来，绝不能沿用上面那段的
-        val guide = "要查看什么时候的日程安排？"
+        val guide = "点日期看日程 · 在那里新建"
         text.typeface = textFace
         text.textSize = sp(12f)
         text.color = cGuide
@@ -633,6 +672,58 @@ class PersonaCalendarView @JvmOverloads constructor(
         canvas.drawText("Guide", w - dp(22f), guideY + dp(12f), text)
         text.textAlign = Paint.Align.LEFT
     }
+
+    /**
+     * 白纸上的日程列表：时刻 + 标题，一行一条，画到 Guide 上方为止。
+     *
+     * 放不下的用「还有 N 条…」收尾 —— 这一块是**摘要**，完整列表（能改能删）
+     * 在点开的那张卡里。所以这里不做滚动、也不做命中。
+     */
+    private fun drawDayEvents(
+        canvas: Canvas, w: Float, barTop: Float, bottomLimit: Float, list: List<CalEvent>
+    ) {
+        val left = dp(28f)
+        val right = w - dp(24f)
+        var y = barTop + dp(96f)
+        val lineH = dp(25f)
+        var shown = 0
+
+        for (ev in list) {
+            if (y > bottomLimit) break
+            text.typeface = Typeface.DEFAULT_BOLD
+            text.textSize = sp(12.5f)
+            text.textAlign = Paint.Align.LEFT
+            text.style = Paint.Style.FILL
+            text.color = cInk
+            val hm = clock(ev.start)
+            canvas.drawText(hm, left, y, text)
+            val timeW = text.measureText(hm) + dp(8f)
+
+            text.typeface = textFace
+            canvas.drawText(fitText(ev.title, right - left - timeW), left + timeW, y, text)
+            y += lineH
+            shown++
+        }
+
+        val rest = list.size - shown
+        if (rest > 0 && y <= bottomLimit + dp(6f)) {
+            text.typeface = textFace
+            text.textSize = sp(11f)
+            text.color = cGray
+            canvas.drawText("还有 $rest 条…", left, y, text)
+        }
+    }
+
+    /** 按当前画笔的宽度截断，超出补省略号（Paint 没有现成的 ellipsize） */
+    private fun fitText(s: String, maxW: Float): String {
+        if (maxW <= 0f) return ""
+        if (text.measureText(s) <= maxW) return s
+        var end = s.length
+        while (end > 1 && text.measureText(s.substring(0, end) + "…") > maxW) end--
+        return s.substring(0, end) + "…"
+    }
+
+    private fun clock(minute: Int): String = "%02d:%02d".format(minute / 60, minute % 60)
 
     // ---------------------------------------------------------------- 小工具
 
