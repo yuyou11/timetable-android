@@ -457,7 +457,7 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 app/src/main/java/com/yxz/timetable/          共 68 个 .kt / 21,323 行
 ├── MainActivity.kt            616 行 五个页面的容器（hide/show 保状态）；换主题；闹钟响时弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
 ├── data/                        数据层（19 个）★ = 核心
-│   ├── ScheduleFormat.kt        ★ 1804 行 数据格式标准 v5：解析、校验、生成、错误信息
+│   ├── ScheduleFormat.kt        ★ 1804 行 数据格式标准 v6：解析、校验、生成、错误信息（v3–v5 老文件照常读）
 │   ├── Store.kt                 ★ 886 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日 / P3 开关；读取失败会留痕）
 │   ├── Alarms.kt                ★ 599 行 闹钟纯逻辑：周几、工作日、节假日、只响一次、跳过下一次、课程闹钟、按格子响、明天的起床闹钟、下次触发
 │   ├── Templates.kt              398 行 七套内置模板（含休息日）+ TemplateSet（含按日型查占位格）

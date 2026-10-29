@@ -8,7 +8,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 /**
- * 《时间规划表》数据格式标准（当前 v5）—— 解析与生成
+ * 《时间规划表》数据格式标准（当前 v6）—— 解析与生成
  *
  * 这个文件就是「标准」的可执行版本：文档写在 docs/数据格式标准.md，
  * 但真正说了算的是这里的代码。文档和代码不一致时，以代码为准。
