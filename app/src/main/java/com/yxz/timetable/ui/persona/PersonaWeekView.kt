@@ -45,8 +45,9 @@ data class SlotClock(val node: Int, val start: Int, val end: Int)
  * （17）是分界：17 节以内继续压行高也要铺满；超过 17 就锁在「17 行刚好铺满」的高度，
  * 整张表改为在网格区里上下滑（带惯性和右缘细滚动条），密度卡不跟着动。
  *
- * 但「铺满」不等于「贴死」：密度卡离屏幕底 12dp、离网格 10dp，课块四周各留 3dp ——
- * 每块之间都有空隙，边界才看得清是一块一块的，而不是页面被裁成了几截。
+ * 但「铺满」不等于「贴死」：密度卡离屏幕底 12dp、离网格 10dp —— 每块之间都有
+ * 空隙，边界才看得清是一块一块的，而不是页面被裁成了几截。**课块是例外**：
+ * 它贴着格子边画（格线就是分界），填满一格的观感和「浮在格子里的一张卡」不一样。
  *
  * 为什么不无限压下去：再压课名和教室就叠在一起了，宁可让人自己滑。
  *
@@ -591,10 +592,10 @@ class PersonaWeekView @JvmOverloads constructor(
 
         val course = span.course ?: return
 
-        // 课块四周留 3dp：相邻两门课之间就有 6dp 的空隙，一行变高之后
-        // 2dp 会显得两块粘在一起（同一门课的连堂仍然合并成一整块，只在最外沿缩）
-        val inset = dp(3f)
-        val rect = RectF(l + inset, top + inset, r - inset, bottom - inset)
+        // 课块**贴着格子边**画（不再内缩）：格子边本身就是 1dp 的分隔线，
+        // 两块相邻时只隔那一条线 —— 这是原稿的样子，课块是「填满一格」，
+        // 不是浮在格子里的一张卡。连堂仍然合并成一整块，只在最外沿描边。
+        val rect = RectF(l, top, r, bottom)
         if (rect.height() < dp(4f) || rect.width() < dp(6f)) return
         val isToday = span.day == todayDay
 
