@@ -33,17 +33,20 @@ data class SlotClock(val node: Int, val start: Int, val end: Int)
  *   · 原稿里**没有竖格线**，课是浮在蓝底上的玻璃块 —— 留着格线就不是 P3 的样子；
  *   · 今天不是一格淡底，是一条**青色光柱**，表头上还钉着一条品红胶带；
  *   · 巨号 `WEEK` + 幽灵周次压在标题后面，周次选择收进标题区（两个键帽）；
- *   · 近五周点阵从顶部卡片挪到底部一条密度条，**钉在屏幕最下面**。
+ *   · 近五周点阵从顶部卡片挪到底部一张密度卡，**浮在屏幕下方**（离底 12dp，不贴边）。
  *
  * 这些都不是「改颜色」，所以只能自绘。原网格仍然保留（默认外观走它），
  * 两者按 `Store.p3Mode` 二选一挂载 —— 和日历页同一套做法。
  *
- * ## 竖向版式：铺满，装不下才滚
+ * ## 竖向版式：铺满，但每块之间留空档
  *
- * 表头固定、密度条贴底，中间那段全部给网格：**一行 = 可用高度 ÷ 节数**，
+ * 表头固定、密度卡在下、中间那段全部给网格：**一行 = 可用高度 ÷ 节数**，
  * 十行就十等分，不再乘 2/3、也不再夹在 24~56dp。[PersonaWeekLayout.MAX_FIT_ROWS]
  * （17）是分界：17 节以内继续压行高也要铺满；超过 17 就锁在「17 行刚好铺满」的高度，
- * 整张表改为在网格区里上下滑（带惯性和右缘细滚动条），密度条不跟着动。
+ * 整张表改为在网格区里上下滑（带惯性和右缘细滚动条），密度卡不跟着动。
+ *
+ * 但「铺满」不等于「贴死」：密度卡离屏幕底 12dp、离网格 10dp，课块四周各留 3dp ——
+ * 每块之间都有空隙，边界才看得清是一块一块的，而不是页面被裁成了几截。
  *
  * 为什么不无限压下去：再压课名和教室就叠在一起了，宁可让人自己滑。
  *
@@ -142,7 +145,12 @@ class PersonaWeekView @JvmOverloads constructor(
     private val sidePad = 12f
     private val timeColW = 34f
     private val densityH = 50f
-    private val densityGap = 6f
+
+    /** 网格区与密度卡之间的空档 */
+    private val densityGap = 10f
+
+    /** 密度卡与屏幕底之间的空档 —— 不贴边，卡片要像「浮」在页面上 */
+    private val densityMargin = 12f
 
     /** WEEK 的基线。CSS 是 `font-size:78 / line-height:.82 / top:20`，换算成基线约在 83 */
     private val titleBase = 83f
@@ -213,7 +221,9 @@ class PersonaWeekView @JvmOverloads constructor(
 
         val rows = slots.size.coerceAtLeast(1)
         val densH = if (dotsEnabled && densityWeeks.isNotEmpty()) dp(densityH) else 0f
-        val densTop = h - densH
+        // 密度卡**不贴边**：离屏幕底留一道呼吸，和网格之间也留一道 ——
+        // 完全贴死会显得是页面被裁掉了一块，而不是一张独立的卡片。
+        val densTop = h - densH - (if (densH > 0f) dp(densityMargin) else 0f)
         gridBottom = densTop - (if (densH > 0f) dp(densityGap) else 0f)
 
         val available = (gridBottom - gridTop).coerceAtLeast(1f)
@@ -581,7 +591,9 @@ class PersonaWeekView @JvmOverloads constructor(
 
         val course = span.course ?: return
 
-        val inset = dp(2f)
+        // 课块四周留 3dp：相邻两门课之间就有 6dp 的空隙，一行变高之后
+        // 2dp 会显得两块粘在一起（同一门课的连堂仍然合并成一整块，只在最外沿缩）
+        val inset = dp(3f)
         val rect = RectF(l + inset, top + inset, r - inset, bottom - inset)
         if (rect.height() < dp(4f) || rect.width() < dp(6f)) return
         val isToday = span.day == todayDay
