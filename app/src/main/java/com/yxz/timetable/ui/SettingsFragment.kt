@@ -17,9 +17,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
+import com.yxz.timetable.BuildConfig
 import com.yxz.timetable.R
 import com.yxz.timetable.data.Holidays
 import com.yxz.timetable.data.ScheduleFormat
@@ -32,10 +36,16 @@ import com.yxz.timetable.databinding.FragmentSettingsBinding
 import com.yxz.timetable.databinding.ItemCourseCheckBinding
 import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
+import com.yxz.timetable.ui.persona.PersonaMenuView
+import com.yxz.timetable.ui.persona.PersonaSettingsSkin
 import java.time.LocalDate
 
 /**
  * 设置页。
+ *
+ * 落地面是**分类列表**（pageHome：数据 / 功能 / 主题 / 关于 各一张卡），
+ * 点卡片进入对应分类页；分类页里靠标题边的「‹」或系统返回键回列表，
+ * 抽屉（右滑 / 「≡ 分类」）降级为分类页之间的快速切换器。
  *
  * 本体只保留「界面绑定 + 状态刷新 + 课程/学期/提醒/主题的直接编辑」；
  * 两块大而独立的流程拆了出去：
@@ -48,11 +58,21 @@ class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
 
+    /** 当前显示的分类页。旋转重建时从 savedInstanceState 里恢复。 */
+    private var currentPage = Page.HOME
+
     private lateinit var store: Store
     private lateinit var guide: PermissionGuide
     private lateinit var io: ImportExport
     private var suppressSwitch = false
     private var suppressLockscreen = false
+
+    /**
+     * 「返回分类列表」的返回键拦截。只在**设置页可见**且不在分类列表时启用 ——
+     * 回调注册在 viewLifecycleOwner 上，切到别的页签后 Fragment 视图还活着，
+     * 不按可见性拦一下的话，在别的页签按返回会被它吞掉。
+     */
+    private var backToHome: OnBackPressedCallback? = null
 
     /**
      * 文件选择器 / 保存器。
@@ -177,12 +197,179 @@ class SettingsFragment : Fragment() {
             store.weekDotsEnabled = checked
         }
 
+        // P3 彩蛋。换的是整页外观、不是色值，所以没有「运行时改颜色」那条路，
+        // 只能像换主题一样重建 Activity：那边 setTheme 也只在 onCreate 之前生效。
+        binding.swPersona3.isChecked = store.p3Mode
+        binding.swPersona3.setOnCheckedChangeListener { _, checked ->
+            if (store.p3Mode == checked) return@setOnCheckedChangeListener
+            store.p3Mode = checked
+            requireActivity().recreate()
+        }
+
         binding.btnRemindMinus.setOnClickListener { changeRemindLead(-1) }
         binding.btnRemindPlus.setOnClickListener { changeRemindLead(+1) }
 
         binding.tvTemplateState.setOnClickListener { resetTemplates() }
 
+        setupPages(savedInstanceState)
+
         renderCourses()
+    }
+
+    // ------------------------------------------------------------------
+    // 四个分类页
+    //
+    // 为什么是「四块 view 互斥显示」而不是四个 Fragment：
+    // 这些设置共享同一份 Store、同一套刷新（refresh() 里一次读盘、一起更新），
+    // 拆成四个 Fragment 就得把刷新拆散，还会在切页时重复读盘。
+    // 现在只是切 visibility，所有 view 一直存在，绑定和刷新逻辑一行没动。
+    // ------------------------------------------------------------------
+
+    private fun setupPages(savedInstanceState: Bundle?) {
+        // P3 分类菜单：英文大字是装饰，中文功能名跟在词尾；点字跳分类
+        binding.personaMenu.entries = listOf(
+            PersonaMenuView.Entry("DATA", getString(R.string.group_data)),
+            PersonaMenuView.Entry("FEATURE", getString(R.string.group_features)),
+            PersonaMenuView.Entry("THEME", getString(R.string.group_theme)),
+            PersonaMenuView.Entry("SYSTEM", getString(R.string.group_about)),
+        )
+        binding.personaMenu.onPick = { i ->
+            showPage(
+                when (i) {
+                    0 -> Page.DATA
+                    1 -> Page.FEATURES
+                    2 -> Page.THEME
+                    else -> Page.ABOUT
+                }
+            )
+        }
+        binding.personaMenu.contentDescription =
+            "设置分类菜单：${getString(R.string.group_data)}、${getString(R.string.group_features)}、" +
+                    "${getString(R.string.group_theme)}、${getString(R.string.group_about)}"
+
+        // 分类列表（落地面）：点卡片进入对应分类页
+        binding.catData.setOnClickListener { showPage(Page.DATA) }
+        binding.catFeatures.setOnClickListener { showPage(Page.FEATURES) }
+        binding.catTheme.setOnClickListener { showPage(Page.THEME) }
+        binding.catAbout.setOnClickListener { showPage(Page.ABOUT) }
+        // 抽屉里的同名条目：分类页之间的快速切换器
+        binding.navData.setOnClickListener { showPage(Page.DATA) }
+        binding.navFeatures.setOnClickListener { showPage(Page.FEATURES) }
+        binding.navTheme.setOnClickListener { showPage(Page.THEME) }
+        binding.navAbout.setOnClickListener { showPage(Page.ABOUT) }
+
+        // 返回分类列表的两条路：标题左边的「‹」，或系统返回键。
+        // 系统返回比照抽屉那条的写法：回调常驻注册，开不开随页面状态同步。
+        binding.btnBackToCategories.setOnClickListener { showPage(Page.HOME) }
+        val backToHome = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = showPage(Page.HOME)
+        }
+        this.backToHome = backToHome
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backToHome)
+
+        // 打开分类栏的两条路：内容区右滑（主力），或点标题右边那行字。
+        // 不用 DrawerLayout 自带的边缘滑动 —— 手势导航下屏幕边缘是系统的返回区，
+        // 从边缘滑会被系统先吃掉，抽屉收不到事件。
+        binding.content.onSwipeRight = { binding.drawer.openDrawer(GravityCompat.START) }
+        binding.tvSwipeHint.setOnClickListener { binding.drawer.openDrawer(GravityCompat.START) }
+
+        // 抽屉开着时按返回键先关抽屉，而不是直接退出设置页。
+        // 回调必须跟着开合状态开关 —— 常开的话会把系统返回整个吞掉。
+        val backToClose = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = binding.drawer.closeDrawers()
+        }
+        binding.drawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) {
+                backToClose.isEnabled = true
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                backToClose.isEnabled = false
+            }
+        })
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backToClose)
+
+        val saved = savedInstanceState?.getString(KEY_PAGE)
+        showPage(Page.values().firstOrNull { it.key == saved } ?: Page.HOME, scrollTop = false)
+    }
+
+    private fun showPage(page: Page, scrollTop: Boolean = true) {
+        currentPage = page
+
+        // 落地面有两种皮：P3 模式是整幅的游戏菜单（PersonaMenuView，连标题栏都
+        // 让位给它），普通模式是四张分类卡。分类页永远走普通皮。
+        val onHome = page == Page.HOME
+        val p3Home = onHome && store.p3Mode
+        binding.pageHome.visibility = if (onHome && !p3Home) View.VISIBLE else View.GONE
+        binding.personaMenu.visibility = if (p3Home) View.VISIBLE else View.GONE
+        binding.titleBar.visibility = if (p3Home) View.GONE else View.VISIBLE
+        // 菜单要左右通铺到屏幕两岸，内容区的横向内边距在 P3 落地面时退出
+        val pad = resources.getDimensionPixelSize(R.dimen.page_padding)
+        val hp = if (p3Home) 0 else pad
+        (binding.scroll.getChildAt(0) as? LinearLayout)?.setPadding(hp, 0, hp, 0)
+
+        binding.pageData.visibility = if (page == Page.DATA) View.VISIBLE else View.GONE
+        binding.pageFeatures.visibility = if (page == Page.FEATURES) View.VISIBLE else View.GONE
+        binding.pageTheme.visibility = if (page == Page.THEME) View.VISIBLE else View.GONE
+        binding.pageAbout.visibility = if (page == Page.ABOUT) View.VISIBLE else View.GONE
+
+        // P3：分类页不再是「蓝底菜单 + 白卡」的混搭 —— 整页铺同一张手绘天空，
+        // 卡片 / 开关 / 按钮 / 文字统一换成深色皮肤（见 PersonaSettingsSkin）。
+        // 落地面那张菜单自己会画天空，这里多铺一层也无妨（菜单盖在上面）。
+        if (store.p3Mode && binding.content.background == null) {
+            binding.content.background =
+                ContextCompat.getDrawable(requireContext(), R.drawable.bg_alarm_page)
+        }
+
+        binding.tvPageTitle.setText(page.titleRes)
+
+        // 分类列表本身就是分类，右侧的「≡ 分类」和返回箭头都只服务分类页
+        binding.tvSwipeHint.visibility = if (onHome) View.GONE else View.VISIBLE
+        binding.btnBackToCategories.visibility = if (onHome) View.GONE else View.VISIBLE
+
+        // 选中态：文字用主题强调色 + 浅底，其余保持普通；分类列表上没有选中项
+        val items = listOf(
+            binding.navData to Page.DATA,
+            binding.navFeatures to Page.FEATURES,
+            binding.navTheme to Page.THEME,
+            binding.navAbout to Page.ABOUT
+        )
+        for ((view, p) in items) {
+            val on = p == page
+            view.setTextColor(if (on) requireContext().accentColor() else ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            view.setBackgroundResource(if (on) R.drawable.bg_nav_selected else 0)
+            view.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        }
+
+        // 返回键的分界：在分类页上按返回回分类列表，在分类列表上按返回交给系统
+        backToHome?.isEnabled = !isHidden && !onHome
+
+        // 换页要回到顶部，否则从长页切到短页会停在半空
+        if (scrollTop) binding.scroll.scrollTo(0, 0)
+
+        // P3 皮肤：放在最后 —— 上面刚改过抽屉里那几个导航项的颜色/背景，
+        // 皮肤要按「当前这套颜色」去认，先刷就会被覆盖回去
+        if (store.p3Mode) PersonaSettingsSkin.apply(binding.root)
+
+        binding.drawer.closeDrawers()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_PAGE, currentPage.key)
+    }
+
+    /** 设置页的五个状态：分类列表（落地面）+ 四个分类。key 存进 Bundle，所以别随便改字符串。 */
+    private enum class Page(val key: String, val titleRes: Int) {
+        HOME("home", R.string.settings_title),
+        DATA("data", R.string.group_data),
+        FEATURES("features", R.string.group_features),
+        THEME("theme", R.string.group_theme),
+        ABOUT("about", R.string.group_about)
+    }
+
+    private companion object {
+        const val KEY_PAGE = "settings_page"
     }
 
     override fun onResume() {
@@ -193,6 +380,8 @@ class SettingsFragment : Fragment() {
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (!hidden) refresh()
+        // 切走时把「返回分类列表」的返回键拦截关掉，别吞掉别的页签的系统返回
+        backToHome?.isEnabled = !hidden && currentPage != Page.HOME
     }
 
     override fun onDestroyView() {
@@ -224,6 +413,9 @@ class SettingsFragment : Fragment() {
         refreshData()
         // 放在最后：上面几块自己会读存储，读坏了才轮到这一条提示
         refreshLoadWarning()
+        // P3：课程行是代码现搭的（renderCourses），每次刷新都会重建 —— 重建出来的
+        // 还是白卡，所以皮肤必须跟着再刷一遍
+        if (store.p3Mode) PersonaSettingsSkin.apply(binding.root)
     }
 
     /**
@@ -386,7 +578,12 @@ class SettingsFragment : Fragment() {
         // 写死的话格式升级时这行必然被忘掉（实际上它就一直停在 v1）
         binding.tvDataDesc.text =
             getString(R.string.data_desc, ScheduleFormat.VERSION.toString())
-        binding.tvFooter.text = "${store.termName} · timetable v${ScheduleFormat.VERSION}"
+        // 「关于」只写版本号，不写学期名 —— 学期名在上面的「学期」卡里已经有了，
+        // 放在这里会让人以为它是版本信息的一部分。
+        // App 版本取 BuildConfig.VERSION_NAME（跟 build.gradle 走），
+        // 数据格式版本取 ScheduleFormat.VERSION（跟 JSON 结构走），两个不是一回事。
+        binding.tvFooter.text =
+            "Time Machine v${BuildConfig.VERSION_NAME} · 数据格式 v${ScheduleFormat.VERSION}"
 
         // ---- 外观 ----
         binding.tvThemeStatus.text = "${AppTheme.from(store.themeKey).label} · 点此切换"

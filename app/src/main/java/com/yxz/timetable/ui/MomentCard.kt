@@ -2,6 +2,7 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.RectF
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +21,7 @@ import com.yxz.timetable.data.dayTypeName
 import com.yxz.timetable.databinding.DialogSlotCoursesBinding
 import com.yxz.timetable.databinding.ItemCourseCardBinding
 import com.yxz.timetable.notify.AlarmScheduler
+import com.yxz.timetable.ui.persona.PersonaCardSkin
 import java.time.LocalDate
 
 /**
@@ -62,7 +64,9 @@ object MomentCard {
         week: Int,
         course: Course?,
         dayType: DayType,
-        dayTypeLabel: String
+        dayTypeLabel: String,
+        /** P3 自绘页给的动画圆心（屏幕坐标）；null 时按 [anchor] 的位置算 */
+        pivot: RectF? = null
     ): Dialog {
         val ctx = anchor.context
         val inflater = LayoutInflater.from(ctx)
@@ -115,8 +119,15 @@ object MomentCard {
         dialog.setContentView(binding.root)
         dialog.setCanceledOnTouchOutside(true)
         dialog.applyCardWindow()
+        // P3 模式：和课表页的弹卡同一套皮肤（黑卡 + 青字 + 描边按钮）
+        if (store.p3Mode) {
+            PersonaCardSkin.apply(binding.root)
+            dialog.window?.setDimAmount(0.62f)
+        }
         wireCardDialog(dialog, binding)
-        binding.card.doOnLayout { popInFrom(it, anchor) }
+        binding.card.doOnLayout { card ->
+            if (pivot != null) popInFrom(card, pivot) else popInFrom(card, anchor)
+        }
         dialog.show()
         return dialog
     }

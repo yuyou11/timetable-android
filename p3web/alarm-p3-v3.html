@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ALARM · Persona 3 · 整页优化样稿</title>
+<!--
+  闹钟页 P3 优化样稿（和 week / today 同一套语言）。
+
+  ⚠️ 硬性约束：底部「＋ 新建闹钟」按钮卡是**唯一保留原设计**的元素 ——
+  它的斜切四边形、蓝色实底、白字、48dp 高度、文字内容全部照旧，
+  不套用这轮的「直角矩形」规则；样稿里由 .add 的 SVG path 一比一复刻。
+
+  其余部分全部重排：
+    · 上半屏：P3 表盘 + 极简的 ALARM 标题；
+    · 下半屏白纸：把「下次响铃」做成大字头条（原来只是一行 12.5sp 小字），
+      闹钟列表改成紧凑的直角矩形卡；
+    · 响铃状态单独一屏：表盘转绿（影时间），浮层只留「停止 / 贪睡 / 解锁」。
+-->
+<style>
+  :root{
+    --blue1:#1EA7FE;
+    --blue2:#0E49BE;
+    --blue3:#0524B1;
+    --ink:#04106B;
+    --cyan:#18D8F8;
+    --magenta:#FF3FD8;
+    --green:#5BE38A;
+    --text:#F4F8FF;
+    --dim:#9FBCF2;
+    --paper:#F2F7FF;
+    --pink:#071033;
+    --psub:#5C6D8E;
+    --pline:#D5DFEF;
+    --card:#0C1A46;
+    --card-stroke:#4660DC;
+    --card-blue:#4884FF;
+    --clock:#EAF6FF;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;width:850px;height:854px;overflow:hidden;
+    background:#0B0E16;
+    font-family:"Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .stage{width:850px;padding:14px 16px 16px;display:flex;gap:26px;}
+  .art{width:393px;}
+  .cap{height:24px;display:flex;align-items:baseline;gap:8px;color:#8A93A6;font-size:10px;letter-spacing:.06em;}
+  .cap b{color:#E8EDF7;font-family:Impact,"Arial Black",sans-serif;font-weight:400;font-size:15px;letter-spacing:.08em;transform:skewX(-8deg);}
+  .cap span{font-size:9px;}
+
+  .phone{
+    position:relative;width:393px;height:800px;border-radius:22px;overflow:hidden;
+    color:var(--text);background:#0524B1;
+    box-shadow:0 24px 60px rgba(0,0,0,.62), 0 0 0 1px #0A1B5E;
+  }
+  .phone::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(120% 62% at 82% -8%, rgba(30,167,254,.98), transparent 62%),
+      radial-gradient(90% 55% at 4% 38%, rgba(9,80,220,.55), transparent 72%),
+      linear-gradient(180deg,var(--blue1) 0%,var(--blue2) 46%,var(--blue3) 100%);
+  }
+  .phone::after{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(116deg,rgba(255,255,255,.045) 0 1px,transparent 1px 13px);
+    opacity:.5;pointer-events:none;
+  }
+
+  .status{
+    position:relative;z-index:5;height:22px;padding:0 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:9px;letter-spacing:.04em;color:#EAF4FF;
+    text-shadow:0 1px 2px rgba(0,15,60,.5);
+  }
+
+  /* ============================================================
+     上半屏：表盘
+     ============================================================ */
+  .hero{position:relative;z-index:3;height:266px;}
+  .kicker{
+    position:absolute;left:16px;top:28px;
+    font-family:"Segoe UI",sans-serif;font-size:8px;font-weight:700;
+    letter-spacing:.30em;color:var(--cyan);
+  }
+  .hero .count{
+    position:absolute;right:16px;top:28px;
+    font-size:8px;letter-spacing:.14em;color:#DDEBFF;
+  }
+  .hero .count b{color:var(--cyan);font-weight:800;}
+
+  .clock{
+    position:absolute;left:50%;top:30px;width:228px;height:228px;
+    transform:translateX(-50%);
+    color:var(--clock);
+    filter:drop-shadow(0 3px 6px rgba(0,10,50,.35));
+  }
+  .phone.ringing .clock{color:var(--green);}
+  .phone.ringing .paper{filter:blur(1.5px);}
+  .scrim{display:none;position:absolute;inset:0;z-index:15;background:rgba(2,8,30,.58);}
+  .phone.ringing .scrim{display:block;}
+  .phone.ringing .hero{z-index:16;}
+  .phone.ringing .status{z-index:17;}
+
+  /* ============================================================
+     下半屏：白纸
+     ============================================================ */
+  .paper{
+    position:absolute;left:0;right:0;top:266px;bottom:56px;z-index:2;
+    padding:18px 16px 0;color:var(--pink);
+    background:linear-gradient(180deg,var(--paper) 0%, #EDF4FF 100%);
+    box-shadow:0 -12px 30px rgba(0,0,0,.24);
+  }
+  .paper::before{
+    content:"";position:absolute;left:0;right:0;top:0;height:2px;
+    background:var(--cyan);opacity:.9;
+  }
+
+  .next-head{position:relative;height:88px;border-bottom:1px solid var(--pline);}
+  .next-head .k{
+    font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:700;
+    letter-spacing:.22em;color:#1565C0;
+  }
+  .next-head .time{
+    margin-top:6px;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:46px;line-height:.9;letter-spacing:1px;color:var(--pink);
+  }
+  .next-head .meta{
+    position:absolute;right:0;top:34px;text-align:right;
+  }
+  .next-head .meta b{display:block;font-size:10px;font-weight:800;color:var(--pink);}
+  .next-head .meta span{display:block;margin-top:3px;font-size:7.5px;letter-spacing:.04em;color:#0B7FB0;}
+
+  .listhead{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-top:10px;margin-bottom:9px;
+  }
+  .listhead span{font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--pink);}
+  .listhead i{font-style:normal;font-size:7px;letter-spacing:.04em;color:#8A9AB8;}
+
+  .arow{
+    position:relative;
+    display:flex;align-items:center;gap:10px;
+    height:76px;margin-bottom:8px;padding:0 14px;
+    color:#fff;
+    background:linear-gradient(150deg,#12245E 0%,#0A1740 100%);
+    border:1px solid var(--card-stroke);
+  }
+  .arow .l{flex:1;min-width:0;}
+  .tbar{
+    display:inline-block;
+    padding:3px 10px 4px;
+    background:#fff;border-radius:7px;
+    font-family:"Microsoft YaHei",sans-serif;font-weight:900;
+    font-size:22px;line-height:1;color:#101E96;
+    white-space:nowrap;
+  }
+  .arow.course .tbar{font-size:17px;padding:4px 9px 5px;}
+  .arow .sub{
+    margin-top:5px;font-size:9px;letter-spacing:.02em;color:#A9BEE8;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .arow .nx{
+    margin-top:3px;font-size:7.5px;letter-spacing:.02em;color:#7FA6E8;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+
+  /* P3 的开关：矩形底座 + 圆钮；这里是列表里唯一保留的圆角小件 */
+  .sw{
+    position:relative;flex:none;width:40px;height:22px;border-radius:11px;
+    background:var(--cyan);box-shadow:inset 0 0 0 1px rgba(2,18,79,.18);
+  }
+  .sw::after{
+    content:"";position:absolute;right:2px;top:2px;
+    width:18px;height:18px;border-radius:50%;background:#06237A;
+  }
+  .sw.off{background:#C9D4E6;}
+  .sw.off::after{left:2px;right:auto;background:#fff;}
+
+  /* ============================================================
+     「＋ 新建闹钟」—— 硬性保留的原设计
+     照 PersonaButtonBackground(slant=7dp, fill #4884FF, stroke #4660DC)
+     一比一复刻：斜切四边形、蓝底、白字、48dp。不要改这个块。
+     ============================================================ */
+  .add{
+    position:relative;height:48px;margin-top:16px;
+  }
+  .add svg{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .add span{
+    position:relative;z-index:1;
+    display:flex;align-items:center;justify-content:center;
+    height:100%;
+    font-family:"Microsoft YaHei",sans-serif;font-weight:900;
+    font-size:14px;letter-spacing:.02em;color:#fff;
+  }
+
+  .last{
+    margin-top:10px;text-align:center;
+    font-size:7.5px;letter-spacing:.04em;color:#8A9AB8;
+  }
+
+  /* ============================================================
+     响铃浮层
+     ============================================================ */
+  .ring{
+    position:absolute;left:12px;right:12px;top:250px;z-index:20;
+    padding:14px 14px 12px;
+    color:#fff;
+    background:linear-gradient(155deg,#152963 0%,#0A1740 100%);
+    border:2px solid var(--magenta);
+    box-shadow:0 18px 44px rgba(0,0,0,.55);
+  }
+  .ring .rtab{
+    position:absolute;left:-2px;top:-2px;
+    padding:3px 10px 4px;
+    background:var(--magenta);color:#18002F;
+    font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:800;
+    letter-spacing:.22em;
+  }
+  .ring .rtime{
+    margin-top:12px;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:38px;line-height:.9;letter-spacing:1px;
+  }
+  .ring .rsub{margin-top:5px;font-size:9px;color:#C9DBFF;letter-spacing:.03em;}
+  .ring .rsub b{color:var(--cyan);}
+  .ring .rbtns{display:flex;gap:8px;margin-top:14px;}
+  .ring .rbtns .stop,
+  .ring .rbtns .snooze{
+    flex:1;height:48px;display:grid;place-items:center;
+    font-size:13px;font-weight:800;letter-spacing:.04em;
+  }
+  .ring .stop{background:var(--magenta);color:#18002F;}
+  .ring .snooze{border:1px solid #6FA8FF;color:#fff;background:rgba(72,132,255,.18);}
+  .ring .runlock{
+    margin-top:6px;text-align:center;
+    font-size:8px;letter-spacing:.04em;color:#9FC0FF;
+  }
+
+  /* ============================================================
+     底部导航
+     ============================================================ */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;z-index:6;height:56px;
+    display:flex;align-items:center;padding:0 4px;
+    background:linear-gradient(180deg,#F4F7FD,#E9EFFA);
+    border-top:1px solid #C7D5EE;
+  }
+  .nitem{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+    font-size:8px;letter-spacing:.03em;color:#7C8BAE;
+  }
+  .nitem svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .nitem.active{color:#0B2EA8;font-weight:700;}
+  .nitem.today{position:relative;color:#0B2EA8;}
+  .nitem.today .bubble{
+    position:absolute;top:-17px;width:50px;height:50px;border-radius:50%;
+    background:#0B2EA8;display:grid;place-items:center;color:#fff;
+    box-shadow:0 4px 12px rgba(11,46,168,.38);
+  }
+  .nitem.today .bubble svg{width:19px;height:19px;stroke:#fff;}
+  .nitem.today .lbl{margin-top:34px;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="art">
+    <div class="cap"><b>ALARM</b><span>闹钟页 · 下次 06:40</span></div>
+    <div class="phone" id="p1"></div>
+  </div>
+  <div class="art">
+    <div class="cap"><b>ALARM</b><span>正在响铃 · 表盘转绿</span></div>
+    <div class="phone ringing" id="p2"></div>
+  </div>
+</div>
+
+<script>
+  const svg = {
+    week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M9 9v11M15 9v11"/></svg>',
+    cal:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>',
+    clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    today:'<svg viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10"/><circle cx="19" cy="17.5" r="1.8"/></svg>',
+    gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg>'
+  };
+
+  // 22:07:30 —— 时针 303.5°、分针 42°、秒针 180°
+  const ROMAN = ["XII","I","II","III","IV","V","VI","VII","VIII","IX","X","XI"];
+
+  function clockSVG(){
+    const spikes = Array.from({length:12}, (_, i) => {
+      const tip = i === 0 ? -121 : -113;
+      return `<path d="M0,-98 L2.3,-110 L0,${tip} L-2.3,-110 Z"
+        transform="rotate(${i * 30})" fill="currentColor"/>`;
+    }).join("");
+
+    const nums = ROMAN.map((n, i) =>
+      `<text transform="rotate(${i * 30}) translate(0,-91)" dy="4.5">${n}</text>`
+    ).join("");
+
+    return `
+      <svg class="clock" viewBox="-110 -126 220 252" fill="none">
+        <g stroke="currentColor" stroke-linecap="round">
+          <circle r="98" stroke-width="2.2"/>
+          <circle r="84" stroke-width="1.4" opacity=".9"/>
+        </g>
+        <g>${spikes}</g>
+        <g fill="currentColor" font-family="'Times New Roman',serif" font-size="13"
+           text-anchor="middle">${nums}</g>
+        <g fill="currentColor">
+          <path transform="rotate(303.5)"
+                d="M0,-10 L3.4,-3 L1.7,42 L0,50 L-1.7,42 L-3.4,-3 Z"/>
+          <path transform="rotate(42)"
+                d="M0,-12 L2.5,-5 L1.1,64 L0,73 L-1.1,64 L-2.5,-5 Z"/>
+        </g>
+        <line x1="0" y1="14" x2="0" y2="-78"
+              stroke="currentColor" stroke-width="1.2" opacity=".9"
+              transform="rotate(180)"/>
+        <circle r="3.2" fill="#0B3BB8" stroke="currentColor" stroke-width="2"/>
+      </svg>`;
+  }
+
+  const ALARMS = [
+    {time:"06:40", sub:"工作日 · 起床", next:"下次：周三 06:40", course:false},
+    {time:"07:10", sub:"只响一次 · 10 月 28 日", next:"下次：周三 07:10", course:false},
+    {time:"课前 10 分钟", sub:"高等数学 · 周三 第 1-2 节", next:"下次：周三 08:20", course:true}
+  ];
+
+  function rowsHTML(){
+    return ALARMS.map(a => `
+      <div class="arow${a.course ? " course" : ""}">
+        <div class="l">
+          <span class="tbar">${a.time}</span>
+          <div class="sub">${a.sub}</div>
+          <div class="nx">${a.next}</div>
+        </div>
+        <div class="sw"></div>
+      </div>`).join("");
+  }
+
+  function phoneHTML(ringing){
+    return `
+      <div class="status"><span>22:07</span><span>5G&nbsp;&nbsp;▮▮▮&nbsp;100%</span></div>
+
+      <div class="hero">
+        <div class="kicker">ALARM</div>
+        <div class="count"><b>3</b> 个闹钟</div>
+        ${clockSVG()}
+      </div>
+
+      <div class="paper">
+        <div class="next-head">
+          <div class="k">NEXT ALARM</div>
+          <div class="time">06:40</div>
+          <div class="meta">
+            <b>明天 · 周三</b>
+            <span>还有 8 小时 33 分</span>
+          </div>
+        </div>
+
+        <div class="listhead"><span>闹钟</span><i>长按跳过下一次</i></div>
+        ${rowsHTML()}
+
+        <!-- 硬性保留：原「＋ 新建闹钟」按钮卡 -->
+        <div class="add">
+          <svg viewBox="0 0 361 48" preserveAspectRatio="none">
+            <path d="M0 5.6 L356.8 0 L361 43.1 L3.5 48 Z"
+                  fill="#4884FF" stroke="#4660DC" stroke-width="1.4"/>
+          </svg>
+          <span>＋ 新建闹钟</span>
+        </div>
+
+        <div class="last">上次响铃 06:40 · 起床</div>
+      </div>
+
+      <div class="nav">
+        <div class="nitem">${svg.week}<span>课表</span></div>
+        <div class="nitem">${svg.cal}<span>日历</span></div>
+        <div class="nitem today">${svg.today}<span>今天</span></div>
+        <div class="nitem active">${svg.clock}<span>闹钟</span></div>
+        <div class="nitem">${svg.gear}<span>设置</span></div>
+      </div>
+
+      ${ringing ? `
+      <div class="scrim"></div>
+      <div class="ring">
+        <div class="rtab">RINGING</div>
+        <div class="rtime">06:40</div>
+        <div class="rsub"><b>起床</b> · 工作日 · 已响 00:12</div>
+        <div class="rbtns">
+          <div class="stop">停止</div>
+          <div class="snooze">贪睡 10 分钟</div>
+        </div>
+        <div class="runlock">解锁手机（响铃继续）</div>
+      </div>` : ""}
+    `;
+  }
+
+  document.getElementById("p1").innerHTML = phoneHTML(false);
+  document.getElementById("p2").innerHTML = phoneHTML(true);
+</script>
+</body>
+</html>

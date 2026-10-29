@@ -5,10 +5,17 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -20,6 +27,7 @@ import com.yxz.timetable.notify.AlarmScheduler
 import com.yxz.timetable.notify.Notifier
 import com.yxz.timetable.ui.AppTheme
 import com.yxz.timetable.ui.AlarmFragment
+import com.yxz.timetable.ui.CalendarFragment
 import com.yxz.timetable.ui.CardAlertDialogBuilder
 import com.yxz.timetable.ui.SettingsFragment
 import com.yxz.timetable.ui.TodayFragment
@@ -29,6 +37,12 @@ import com.yxz.timetable.ui.accentColor
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    /** 当前停在哪个 tab（R.id.nav_*）。重建时用它把底部导航的高亮补回来。 */
+    private var currentTab = R.id.nav_today
+
+    /** P3 模式下底部导航换了画法（纸 + 斜块 + 圆），着色规则也不一样。见 [applyPersona3Nav] */
+    private var p3Nav = false
 
     /**
      * 这次窗口是不是「被闹钟拉起来的」。
@@ -47,6 +61,24 @@ class MainActivity : AppCompatActivity() {
      * 一个压着锁屏的窗口 —— 那正是「解不开锁」的成因。
      */
     private val onRingingEnd = { onAlarmStopped() }
+
+    /**
+     * 闹钟开始响、而 App 已经在前台时走这里：把页面切到闹钟页。
+     *
+     * 为什么需要它：full-screen intent 只对「后台 / 锁屏」生效，用户就停在
+     * App 里时系统不会再拉起一次 Activity，`onNewIntent` 也就不会来 ——
+     * 表现是「闹钟在响，但页面上什么都没有」，非得手动切页才刷新。
+     *
+     * 这里只切页 + 让闹钟页重画，不做窗口相关的操作（那些仍由
+     * [onAlarmStopped] 和 full-screen intent 那条路负责）。
+     */
+    private val onRingingStart = {
+        if (!isFinishing && !isDestroyed) {
+            selectTab(R.id.nav_alarm)
+            (supportFragmentManager.findFragmentByTag(TAG_ALARM) as? AlarmFragment)
+                ?.onAlarmLaunched()
+        }
+    }
 
     /**
      * 通知权限的申请回调。
@@ -81,12 +113,16 @@ class MainActivity : AppCompatActivity() {
         // 底部导航的选中色跟着主题走（蓝 / 绿）。
         // 用代码设而不是写 color selector：?attr 在 color 资源里要靠主题解析，
         // 这里直接取当前主题的 accentColor 更直白；换主题 recreate 时会重新执行。
-        val navTint = ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(accentColor(), ContextCompat.getColor(this, R.color.text_secondary))
-        )
-        binding.bottomNav.itemIconTintList = navTint
-        binding.bottomNav.itemTextColor = navTint
+        // 中间那颗「今天」永远白图标白字（外面是强调色实心圆），所以不参与着色。
+        binding.navWeek.setOnClickListener { selectTab(R.id.nav_week) }
+        binding.navCalendar.setOnClickListener { selectTab(R.id.nav_calendar) }
+        binding.navToday.setOnClickListener { selectTab(R.id.nav_today) }
+        binding.navAlarm.setOnClickListener { selectTab(R.id.nav_alarm) }
+        binding.navSettings.setOnClickListener { selectTab(R.id.nav_settings) }
+
+        // P3 彩蛋：底部导航只动两处 —— 字体、中间那颗圆。
+        // 背景色 / 图标 / 选中色都沿用原来的，免得和用户选的主题色打架。
+        if (Store(this).p3Mode) applyPersona3Nav()
 
         // 是不是被闹钟拉起来的？是的话这次要:停在闹钟页 + 锁屏上也能显示 + 屏幕别灭
         val fromAlarm = intent?.getBooleanExtra(EXTRA_FROM_ALARM, false) == true
@@ -104,19 +140,16 @@ class MainActivity : AppCompatActivity() {
         // 四个页面各用一个固定 tag 装着，切页只 hide/show ——
         // 用 replace 会把页面整个重建：课表翻到第 12 周、切去设置再回来就回到本周，
         // 设置页滚到一半的位置也会丢。hide/show 保住实例，页面状态跟着一起保住。
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            showTab(item.itemId)
-            true
-        }
 
         // savedInstanceState == null 表示这是「全新启动」而不是「屏幕旋转后重建」。
-        // 旋转时系统会自动恢复原来的 Fragment，这时再设一次 selectedItemId
-        // 会导致页面被创建两遍。
+        // 旋转时系统会自动恢复原来的 Fragment，这时再选一次 tab
+        // 会导致页面被创建两遍 —— 但高亮得补回来，否则停在设置页、
+        // 底部却亮着「今天」。
         if (savedInstanceState == null) {
-            binding.bottomNav.selectedItemId =
-                if (fromAlarm || openAlarmTab) R.id.nav_alarm else R.id.nav_today
-            // 部分版本 setSelectedItemId 不一定回调监听器，补一次（showTab 是幂等的）
-            showTab(binding.bottomNav.selectedItemId)
+            selectTab(if (fromAlarm || openAlarmTab) R.id.nav_alarm else R.id.nav_today)
+        } else {
+            currentTab = savedInstanceState.getInt(STATE_TAB, R.id.nav_today)
+            paintTabs(currentTab)
         }
 
         askNotificationPermission()
@@ -137,17 +170,159 @@ class MainActivity : AppCompatActivity() {
             alarmLaunch = true
             showOverLockScreen()
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            binding.bottomNav.selectedItemId = R.id.nav_alarm
-            // 如果本来就停在闹钟页，selectedItemId 不会再回调监听器 ——
+            selectTab(R.id.nav_alarm)
+            // 如果本来就停在闹钟页，再选一次也不会重建页面 ——
             // 这里主动补一次，让「正在响铃」那条立刻出现。
             // 它是响铃时唯一一定停得掉声音的入口，不能等下一次 onResume。
             (supportFragmentManager.findFragmentByTag(TAG_ALARM) as? AlarmFragment)
                 ?.onAlarmLaunched()
         } else if (intent.getBooleanExtra(EXTRA_OPEN_ALARM_TAB, false)) {
             // 状态栏闹钟图标：只切页，不做任何「响铃」相关的事
-            binding.bottomNav.selectedItemId = R.id.nav_alarm
+            selectTab(R.id.nav_alarm)
         }
     }
+
+    /** 切到某个 tab：更新底部导航的高亮，再切页面。 */
+    private fun selectTab(itemId: Int) {
+        currentTab = itemId
+        paintTabs(itemId)
+        showTab(itemId)
+    }
+
+    /**
+     * 底部导航的高亮。
+     *
+     * 中间那颗「今天」不参与：它外面是强调色实心圆，图标和文字永远是白的，
+     * 选不选中都长一样 —— 它是「回今天」的常驻入口，不是普通 tab。
+     */
+    private fun paintTabs(selected: Int) {
+        val on = accentColor()
+        val off = ContextCompat.getColor(this, R.color.text_secondary)
+
+        fun paint(item: View, icon: ImageView, label: TextView) {
+            val on_ = item.id == selected
+            val c = when {
+                // 浅灰底：未选中用默认的次要灰；P3 的选中不跟主题强调色走，固定墨蓝
+                !on_ -> off
+                p3Nav -> P3_NAV_INK
+                else -> on
+            }
+            icon.setColorFilter(c)
+            label.setTextColor(c)
+        }
+
+        paint(binding.navWeek, binding.iconWeek, binding.labelWeek)
+        paint(binding.navCalendar, binding.iconCalendar, binding.labelCalendar)
+        paint(binding.navAlarm, binding.iconAlarm, binding.labelAlarm)
+        paint(binding.navSettings, binding.iconSettings, binding.labelSettings)
+        // 默认外观下「今天」不参与着色：它外面是实心强调色圆，图标和文字永远白。
+        // P3 下那块底板已经撤掉了，它就和其他项一样按「选中 / 未选中」上色
+        if (p3Nav) {
+            paint(binding.navToday, binding.iconToday, binding.labelToday)
+        }
+    }
+
+    /**
+     * P3 彩蛋下的底部导航。
+     *
+     * 现在只有两处改动，**没有装饰**：
+     *
+     * 1. 五个标签换成 P3 那种窄体粗斜（`sans-serif-condensed` + `BOLD_ITALIC`）；
+     * 2. 底色和栏顶那条墨蓝硬线交给 [PersonaNavBackdrop] 画（导航栏自己的背景置空，
+     *    否则那份 `card_bg` 会盖住页面的最下沿）。
+     *
+     * 曾经画过、已经撤掉的：中间「今天」那颗探出栏顶的圆 / 裁角方板 / 扁矩形，
+     * 以及选中项背后的深藏青斜块。要恢复的话看 git 历史，
+     * 尺寸比例当时是 `PLATE_W_RATIO` / `PLATE_H_RATIO` / `CHAMFER_RATIO` 那组常量。
+     */
+    private fun applyPersona3Nav() {
+        p3Nav = true
+        val face = Typeface.create("sans-serif-condensed", Typeface.BOLD_ITALIC)
+        listOf(
+            binding.labelWeek, binding.labelCalendar,
+            binding.labelToday, binding.labelAlarm, binding.labelSettings
+        ).forEach { label ->
+            label.typeface = face
+            label.letterSpacing = 0.06f
+            label.includeFontPadding = true
+
+            // ⚠️ 宽度必须撑满整格，不能用 wrap_content。
+            //
+            // 中文在 sans-serif-condensed 里没有字形，会落到后备字体上，而
+            // BOLD_ITALIC 是**合成**出来的：斜体靠切变把墨迹往右推，但 TextView
+            // 的 wrap_content 是按字符的「步进宽度」量的 —— 量出来的盒子比实际
+            // 墨迹窄，右边那一截就被自己的边界切掉（真机上「表」「置」的右缘
+            // 是一条直线）。撑满整格再居中，左右都有富余，怎么斜都不会碰到边界。
+            label.layoutParams = label.layoutParams.apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+            label.gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        // 导航项的水波纹要撤掉。原来用的 selectableItemBackgroundBorderless 是
+        // 「无边界」水波：它会按视图的最大边长向外扩散，而 P3 模式下导航栏自己
+        // 没有底色（底色和大圆都由下面那层 backdrop 画），水波就会在蓝圆上面
+        // 摊开一个同样大的灰圆，还会溢出到栏外。
+        // 换成最简单的按压反馈：按下时整项淡一点，松手复原。
+        listOf(
+            binding.navWeek, binding.navCalendar, binding.navToday,
+            binding.navAlarm, binding.navSettings
+        ).forEach { item ->
+            item.background = null
+            item.setOnTouchListener { v, e ->
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> v.alpha = 0.55f
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.alpha = 1f
+                }
+                false
+            }
+        }
+
+        // 原来那圈 54dp 的实心圆也撤掉：底栏回到「一条底 + 五个图标文字」的朴素样子
+        binding.todayBubble.background = null
+        // XML 里给「今天」图标留的是白色 tint（原来衬在实心圆上）。现在它和别的项
+        // 一样按选中态上色，白 tint 会压住 setColorFilter，必须先清掉
+        binding.iconToday.imageTintList = null
+
+        // 「今天」这一项原来是为**实心圆**配的：图标 20dp、字号 10sp，都比旁边四个
+        // （22dp / 11sp）小一号。圆撤掉之后五颗并排，大小不一致非常显眼，所以拉齐。
+        binding.iconToday.layoutParams = binding.iconToday.layoutParams.apply {
+            width = dp(22f).toInt()
+            height = dp(22f).toInt()
+        }
+        binding.iconToday.requestLayout()
+        binding.labelToday.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_PX, binding.labelWeek.textSize
+        )
+
+        // 导航栏的底色与阴影交给下面那层 backdrop
+        binding.bottomBar.background = null
+        binding.bottomBar.elevation = 0f
+
+        binding.bottomBar.post {
+            val barH = binding.bottomBar.height
+            if (barH <= 0) return@post
+            val poke = dp(POKE_DP)
+            val backdrop = binding.personaBackdrop
+
+            backdrop.barHeight = barH.toFloat()
+            backdrop.poke = poke
+            // 底栏底色：P3 用浅灰（比白纸深一档，页签区和页面白纸之间有条边）；
+            // 默认外观仍是 card_bg 的白
+            backdrop.barColor = P3_NAV_BAR
+            backdrop.visibility = View.VISIBLE
+
+            // 高度 = 栏高 + 预留高度。宿主是一个 0 高度、位置正好在栏顶的容器，
+            // 所以孩子 bottom 对齐后顶端在 -高度 处；再下移一个栏高，
+            // 就变成「顶端高出栏顶 poke、底端正好落在屏幕底」。
+            val lp = backdrop.layoutParams
+            lp.height = (barH + poke).toInt()
+            backdrop.layoutParams = lp
+            backdrop.translationY = barH.toFloat()
+        }
+    }
+
+    private fun dp(v: Float) = v * resources.displayMetrics.density
 
     /**
      * 切页：只 hide 其它、show 目标，不销毁实例。
@@ -184,12 +359,14 @@ class MainActivity : AppCompatActivity() {
     private fun newTab(itemId: Int): Fragment = when (itemId) {
         R.id.nav_week -> WeekFragment()
         R.id.nav_alarm -> AlarmFragment()
+        R.id.nav_calendar -> CalendarFragment()
         R.id.nav_settings -> SettingsFragment()
         else -> TodayFragment()
     }
 
     private fun tagOf(itemId: Int): String = when (itemId) {
         R.id.nav_week -> TAG_WEEK
+        R.id.nav_calendar -> TAG_CALENDAR
         R.id.nav_alarm -> TAG_ALARM
         R.id.nav_settings -> TAG_SETTINGS
         else -> TAG_TODAY
@@ -256,19 +433,27 @@ class MainActivity : AppCompatActivity() {
         recreate()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_TAB, currentTab)
+    }
+
     override fun onStart() {
         super.onStart()
         // 兜底：进程被回收后重建，理论上 FragmentManager 会恢复页面；
         // 万一没有（比如系统只恢复了 Activity），至少别留一个空容器。
         if (supportFragmentManager.findFragmentById(R.id.container) == null) {
-            showTab(binding.bottomNav.selectedItemId)
+            selectTab(currentTab)
         }
         // 窗口在前台时才值得收尾：在后台时窗口本来就不显示，标签也就不用跟着改
         AlarmRinger.addStopListener(onRingingEnd)
+        // 同理，只有在前台才需要「响了就把页面切到闹钟页」这件事
+        AlarmRinger.addStartListener(onRingingStart)
     }
 
     override fun onStop() {
         AlarmRinger.removeStopListener(onRingingEnd)
+        AlarmRinger.removeStartListener(onRingingStart)
         super.onStop()
     }
 
@@ -395,12 +580,25 @@ class MainActivity : AppCompatActivity() {
         /** 从状态栏闹钟图标打开：只停在闹钟页，不亮屏、不盖锁屏 */
         const val EXTRA_OPEN_ALARM_TAB = "com.yxz.timetable.extra.OPEN_ALARM_TAB"
 
+        private const val STATE_TAB = "state_tab"
+
+        /** 底板比导航栏多留出来的高度（dp）。现在没东西往上画，留着只是为了不改布局 */
+        private const val POKE_DP = 8f
+
+        /** P3 的墨蓝：选中页签的字与图标 */
+        private val P3_NAV_INK = Color.rgb(4, 16, 107)
+
+        /** P3 底栏的底色：浅灰（比白纸深一档，页签区不会和页面白纸糊成一片） */
+        private val P3_NAV_BAR = Color.rgb(228, 231, 236)
+
         private const val TAG_TODAY = "tab_today"
         private const val TAG_WEEK = "tab_week"
+        private const val TAG_CALENDAR = "tab_calendar"
         private const val TAG_ALARM = "tab_alarm"
         private const val TAG_SETTINGS = "tab_settings"
 
-        private val TAB_TAGS = listOf(TAG_TODAY, TAG_WEEK, TAG_ALARM, TAG_SETTINGS)
+        private val TAB_TAGS =
+            listOf(TAG_TODAY, TAG_WEEK, TAG_CALENDAR, TAG_ALARM, TAG_SETTINGS)
 
         /**
          * 闹钟响时用来拉起窗口的 Intent。

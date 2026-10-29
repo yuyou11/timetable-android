@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>WEEK · Persona 3 · 整页重画样稿 v2</title>
+<!--
+  课表页 P3 皮肤的网页样稿（方案 B：整页重画）。
+
+  和 week-p3.html（v1，换皮思路）的区别：
+    · v1 保留原版的「周次选择大卡 + 表格」，只换颜色；
+    · v2 按 P3 的版式重新排：巨号 WEEK / 08 压在头上，周次选择收进标题区，
+      网格去掉格线，课程变成浮在蓝底上的玻璃块，今天是一条青色光柱 + 品红胶带。
+  这一版是给 Android 端 PersonaWeekView 做尺寸/坐标参照的，所以：
+    · 画布 393×800dp（和 docs/persona3 的 k 基准一致）；
+    · 所有坐标都是 CSS px，量出来直接除以 1 就是 dp；
+    · 颜色和 PersonaAlarmPalette / PersonaCalendarView 同源，改一处要同步。
+-->
+<style>
+  :root{
+    --blue1:#1EA7FE;
+    --blue2:#0E49BE;
+    --blue3:#0524B1;
+    --ink:#04106B;
+    --cyan:#18D8F8;
+    --magenta:#FF3FD8;
+    --red:#FF5470;
+    --text:#F4F8FF;
+    --dim:#9FBCF2;
+    --stroke:#5E8BFF;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    width:850px;
+    height:854px;
+    overflow:hidden;
+    background:#0B0E16;
+    font-family:"Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .stage{width:850px;padding:14px 16px 16px;display:flex;gap:26px;}
+  .art{width:393px;}
+  .cap{height:24px;display:flex;align-items:baseline;gap:8px;color:#8A93A6;font-size:10px;letter-spacing:.06em;}
+  .cap b{color:#E8EDF7;font-family:Impact,"Arial Black",sans-serif;font-weight:400;font-size:15px;letter-spacing:.08em;transform:skewX(-8deg);}
+  .cap span{font-size:9px;}
+
+  /* ============================================================
+     手机壳
+     ============================================================ */
+  .phone{
+    position:relative;
+    width:393px;
+    height:800px;
+    border-radius:22px;
+    overflow:hidden;
+    color:var(--text);
+    background:#0524B1;
+    box-shadow:0 24px 60px rgba(0,0,0,.62), 0 0 0 1px #0A1B5E;
+  }
+  .phone::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(120% 62% at 82% -8%, rgba(30,167,254,.98), transparent 62%),
+      radial-gradient(90% 55% at 4% 38%, rgba(9,80,220,.55), transparent 72%),
+      linear-gradient(180deg, var(--blue1) 0%, var(--blue2) 46%, var(--blue3) 100%);
+  }
+  /* 全页极淡的斜向布纹：只在大面积蓝底上看得出来，不抢网格 */
+  .phone::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:repeating-linear-gradient(116deg, rgba(255,255,255,.045) 0 1px, transparent 1px 13px);
+    opacity:.5;
+    pointer-events:none;
+  }
+
+  .status{
+    position:relative;
+    z-index:5;
+    height:22px;
+    padding:0 16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-size:9px;
+    letter-spacing:.04em;
+    color:#EAF4FF;
+    text-shadow:0 1px 2px rgba(0,15,60,.5);
+  }
+
+  /* ============================================================
+     头部：WEEK + 巨号周次 + 日期条
+     ============================================================ */
+  .head{position:relative;z-index:4;height:140px;padding:0 14px;}
+
+  .tide{position:absolute;border-radius:50%;background:#0F86FF;mix-blend-mode:screen;pointer-events:none;}
+  .tide.t1{width:210px;height:210px;left:-90px;top:-50px;opacity:.24;}
+  .tide.t2{width:250px;height:250px;left:130px;top:-120px;opacity:.20;}
+  .tide.t3{width:160px;height:160px;left:255px;top:46px;opacity:.18;}
+
+  .half{
+    position:absolute;
+    right:-2px;top:-4px;
+    width:118px;height:104px;
+    background-image:radial-gradient(#03125C 1.1px, transparent 1.2px);
+    background-size:5px 5px;
+    opacity:.42;
+    transform:skewX(-10deg);
+    pointer-events:none;
+  }
+
+  .ghost{
+    position:absolute;
+    right:-8px;top:-40px;
+    z-index:0;
+    font-family:Impact,"Arial Black",sans-serif;
+    font-size:172px;
+    line-height:.9;
+    letter-spacing:-6px;
+    color:var(--ink);
+    opacity:.92;
+    transform:skewX(-10deg);
+    text-shadow:0 5px 0 rgba(0,0,0,.10);
+    pointer-events:none;
+    user-select:none;
+  }
+
+  .slash{
+    position:absolute;
+    left:2px;top:79px;
+    z-index:1;
+    width:236px;height:8px;
+    background:linear-gradient(90deg,var(--magenta) 0%, #FF7A6A 100%);
+    transform:skewX(-32deg) rotate(-2.5deg);
+    clip-path:polygon(0 0,100% 0,96% 100%,0 100%);
+    opacity:.95;
+  }
+
+  .title{
+    position:absolute;
+    left:9px;top:20px;
+    z-index:2;
+    margin:0;
+    font-family:Impact,"Arial Black",sans-serif;
+    font-weight:400;
+    font-size:78px;
+    line-height:.82;
+    letter-spacing:2px;
+    color:#fff;
+    transform:skewX(-8deg);
+    -webkit-text-stroke:2.5px var(--ink);
+    text-shadow:6px 6px 0 rgba(2,12,66,.32);
+  }
+
+  .datebar{
+    position:absolute;
+    left:12px;top:92px;
+    z-index:3;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .chip{
+    display:inline-block;
+    padding:3px 8px 4px;
+    background:var(--cyan);
+    color:#02124F;
+    font-family:"Segoe UI",sans-serif;
+    font-weight:800;
+    font-size:12px;
+    letter-spacing:.04em;
+    transform:skewX(-8deg);
+    box-shadow:3px 3px 0 rgba(2,18,79,.34);
+  }
+  .wk{
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.08em;
+    color:#EAF4FF;
+    text-shadow:0 1px 2px rgba(0,10,50,.55);
+  }
+  .meta{
+    position:absolute;
+    left:13px;top:116px;
+    z-index:3;
+    font-size:9.5px;
+    letter-spacing:.06em;
+    color:#DDEBFF;
+    text-shadow:0 1px 2px rgba(0,10,50,.55);
+  }
+  .meta b{color:var(--cyan);font-weight:700;}
+  .meta i{color:var(--magenta);font-style:normal;font-weight:700;}
+
+  .keys{position:absolute;right:12px;top:92px;z-index:5;display:flex;gap:7px;}
+  .key{
+    width:31px;height:31px;
+    display:grid;place-items:center;
+    background:#F4F8FF;
+    border:2px solid var(--ink);
+    border-radius:5px;
+    box-shadow:3px 3px 0 var(--cyan);
+  }
+  .key svg{width:13px;height:13px;stroke:var(--ink);stroke-width:3.2;fill:none;stroke-linecap:square;}
+
+  /* ============================================================
+     星期表头
+     ============================================================ */
+  .days{
+    position:relative;
+    z-index:3;
+    display:grid;
+    grid-template-columns:34px repeat(7,1fr);
+    align-items:end;
+    height:46px;
+    margin:0 12px;
+    padding-bottom:3px;
+  }
+  .th-time{font-size:7px;color:#7FA6E8;letter-spacing:.10em;text-align:left;padding:0 0 4px 2px;}
+  .dhead{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    gap:1px;
+    height:42px;
+  }
+  .dhead .en{
+    font-family:"Segoe UI",sans-serif;
+    font-size:7px;
+    font-weight:700;
+    letter-spacing:.12em;
+    color:#8FB7FF;
+  }
+  .dhead .cn{
+    font-size:17px;
+    font-weight:900;
+    line-height:1;
+    color:#fff;
+    text-shadow:0 1px 3px rgba(0,10,60,.55);
+    transform:skewX(-6deg);
+  }
+  .dhead.sat .cn{color:var(--cyan);}
+  .dhead.sun .cn{color:var(--red);}
+  .dhead.today{position:relative;height:44px;}
+  .dhead.today::before{
+    content:"";
+    position:absolute;
+    inset:0 2px 0;
+    background:var(--magenta);
+    clip-path:polygon(8% 0,100% 0,92% 100%,0 100%);
+    transform:rotate(-2deg);
+    box-shadow:2px 2px 0 rgba(0,20,80,.28);
+  }
+  .dhead.today .en,
+  .dhead.today .cn{position:relative;color:#18002F;text-shadow:none;}
+  .dhead.today .en{font-size:5.5px;letter-spacing:.08em;}
+
+  /* ============================================================
+     网格：无格线，课是浮块
+     ============================================================ */
+  .grid{
+    position:relative;
+    z-index:2;
+    display:grid;
+    grid-template-columns:34px repeat(7,1fr);
+    grid-template-rows:repeat(10,46px);
+    height:460px;
+    margin:0 12px;
+  }
+  .grid::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:repeating-linear-gradient(180deg, transparent 0 45px, rgba(158,197,255,.10) 45px 46px);
+    pointer-events:none;
+  }
+
+  .tcell{
+    position:relative;z-index:1;
+    grid-column:1;
+    display:flex;flex-direction:column;justify-content:center;
+    padding-right:4px;
+    border-right:1px solid rgba(158,197,255,.16);
+  }
+  .tcell b{
+    font-family:Impact,"Arial Black",sans-serif;
+    font-weight:400;font-size:13px;line-height:1;color:#DCEBFF;
+  }
+  .tcell span{
+    margin-top:2px;
+    font-family:"Segoe UI",sans-serif;
+    font-size:6.5px;letter-spacing:.02em;color:#7FA6E8;
+  }
+
+  .beam{
+    position:relative;z-index:0;
+    background:linear-gradient(180deg, rgba(24,216,248,.17) 0%, rgba(24,216,248,.06) 78%, rgba(24,216,248,.02) 100%);
+    border-left:1px solid rgba(24,216,248,.48);
+    border-right:1px solid rgba(24,216,248,.26);
+  }
+
+  .block{
+    position:relative;z-index:2;
+    margin:2px;
+    padding:4px 2px 3px 5px;
+    display:flex;flex-direction:column;justify-content:flex-start;
+    overflow:hidden;
+    background:linear-gradient(150deg, rgba(26,40,108,.95), rgba(8,16,56,.95));
+    border:1px solid rgba(94,139,255,.85);
+    box-shadow:0 2px 8px rgba(1,6,30,.35);
+  }
+  .block::before{
+    content:"";
+    position:absolute;left:0;top:0;bottom:0;width:2.5px;
+    background:var(--cyan);
+  }
+  .block .bn{
+    font-size:10px;font-weight:900;line-height:1.12;letter-spacing:.01em;
+    text-shadow:0 1px 2px rgba(0,0,0,.55);
+    word-break:break-all;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+  .block .br{
+    margin-top:auto;padding-top:2px;
+    font-size:7px;line-height:1.1;color:#9FC0FF;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .block.tall .bn{font-size:10.5px;}
+  .block.today{
+    border-color:var(--cyan);
+    background:linear-gradient(150deg, rgba(18,52,124,.96), rgba(8,22,66,.96));
+    box-shadow:0 0 12px rgba(24,216,248,.26), 0 2px 8px rgba(1,6,30,.35);
+  }
+  .block.today::before{background:var(--magenta);}
+
+  /* ============================================================
+     近五周密度条
+     ============================================================ */
+  .density{
+    position:relative;z-index:3;
+    height:50px;
+    margin:6px 12px 0;
+    padding:0 8px;
+    display:flex;align-items:center;gap:10px;
+    background:rgba(3,10,44,.52);
+    border-left:2px solid var(--cyan);
+    backdrop-filter:blur(2px);
+  }
+  .dens-label{width:44px;flex:none;}
+  .dens-label b{
+    display:block;
+    font-family:"Segoe UI",sans-serif;
+    font-size:6px;font-weight:700;letter-spacing:.16em;color:var(--cyan);
+  }
+  .dens-label span{font-size:9px;color:#DCEBFF;letter-spacing:.04em;}
+  .dens-weeks{flex:1;display:flex;justify-content:space-between;align-items:flex-end;}
+  .dw{height:42px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px;}
+  .dots{width:23px;height:33px;display:grid;grid-template-columns:repeat(7,2.3px);grid-template-rows:repeat(10,2.3px);gap:1.1px;}
+  .dot{display:block;width:2.3px;height:2.3px;border-radius:50%;background:rgba(159,188,242,.17);}
+  .dot.on{background:var(--cyan);}
+  .dw.cur .dot.on{background:#fff;box-shadow:0 0 4px rgba(24,216,248,.9);}
+  .dw i{font-style:normal;font-size:6px;color:#7FA6E8;letter-spacing:.04em;}
+  .dw.cur i{color:var(--cyan);font-weight:700;}
+
+  /* ============================================================
+     底部导航（和已经做好的 P3 导航一致）
+     ============================================================ */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;z-index:6;
+    height:56px;
+    display:flex;align-items:center;
+    padding:0 4px;
+    background:linear-gradient(180deg,#F4F7FD,#E9EFFA);
+    border-top:1px solid #C7D5EE;
+  }
+  .nitem{
+    flex:1;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    font-size:8px;letter-spacing:.03em;color:#7C8BAE;
+  }
+  .nitem svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .nitem.active{color:#0B2EA8;font-weight:700;}
+  .nitem.today{position:relative;color:#0B2EA8;}
+  .nitem.today .bubble{
+    position:absolute;top:-17px;
+    width:50px;height:50px;border-radius:50%;
+    background:#0B2EA8;
+    display:grid;place-items:center;color:#fff;
+    box-shadow:0 4px 12px rgba(11,46,168,.38);
+  }
+  .nitem.today .bubble svg{width:19px;height:19px;stroke:#fff;}
+  .nitem.today .lbl{margin-top:34px;}
+
+  /* ============================================================
+     弹卡状态
+     ============================================================ */
+  .scrim{position:absolute;inset:0;z-index:20;background:rgba(2,8,30,.64);}
+  .dialog{
+    position:absolute;left:25px;right:25px;top:148px;z-index:21;
+    padding:16px 16px 14px;
+    background:linear-gradient(160deg,#13265F 0%,#0A1740 100%);
+    border:1.5px solid #6FA8FF;
+    box-shadow:0 22px 60px rgba(0,0,0,.66);
+  }
+  .dlg-kicker{font-family:"Segoe UI",sans-serif;font-size:6.5px;font-weight:700;letter-spacing:.22em;color:var(--cyan);}
+  .dlg-title{margin-top:5px;font-size:17px;font-weight:900;letter-spacing:.02em;color:#fff;transform:skewX(-4deg);}
+  .dlg-sub{margin-top:4px;font-size:9px;color:#9FC0FF;letter-spacing:.03em;}
+  .dlg-rule{height:1px;margin:12px 0 2px;background:linear-gradient(90deg, rgba(111,168,255,.55), rgba(111,168,255,.08));}
+  .dcard{padding-top:10px;}
+  .dc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .dname{font-size:15px;font-weight:900;color:#fff;letter-spacing:.01em;}
+  .dbadge{flex:none;padding:2px 7px 3px;background:var(--cyan);color:#02124F;font-size:8px;font-weight:800;transform:skewX(-8deg);}
+  .dwhen{margin-top:3px;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--cyan);}
+  .drow{display:flex;align-items:baseline;margin-top:7px;font-size:9.5px;color:#DCEBFF;}
+  .drow span{width:38px;flex:none;font-size:8px;color:#7FA6E8;letter-spacing:.04em;}
+  .drow b{font-weight:600;color:#fff;}
+  .drow b.cy{color:var(--cyan);}
+  .dbtn{
+    margin-top:14px;height:34px;display:grid;place-items:center;
+    font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;
+    background:rgba(72,132,255,.22);
+    border:1px solid #6FA8FF;
+  }
+  .dhint{margin-top:8px;text-align:center;font-size:7.5px;color:#6F86B8;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="art">
+    <div class="cap"><b>WEEK</b><span>主界面 · 第 7 周</span></div>
+    <div class="phone" id="p1"></div>
+  </div>
+  <div class="art">
+    <div class="cap"><b>WEEK</b><span>点格弹卡 · 同一天的课</span></div>
+    <div class="phone" id="p2"></div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  //  数据：内置示例课表里第 8 周真实会上的一批课（不是随手编的）
+  // ============================================================
+  const TODAY = 3;   // 周三
+  const WEEK = 7;
+
+  const range = (a, b) => Array.from({length: b - a + 1}, (_, i) => a + i);
+
+  const COURSES = [
+    {day:1, n1:1, n2:2, name:"大学英语",              room:"教一-101", weeks:[...range(2,4), ...range(6,17)]},
+    {day:1, n1:3, n2:4, name:"高等数学",              room:"教一-203", weeks:[...range(2,4), ...range(6,17)]},
+    {day:1, n1:7, n2:8, name:"军事理论",              room:"教二-311", weeks:[...range(2,4), ...range(6,14)]},
+
+    {day:2, n1:3, n2:4, name:"程序设计基础",          room:"实验楼-201", weeks:[...range(2,7), ...range(9,17)]},
+    {day:2, n1:7, n2:8, name:"思想道德与法治",        room:"教一-108", weeks:[...range(2,7), ...range(9,17)]},
+
+    {day:3, n1:1, n2:2, name:"高等数学",              room:"教一-203", weeks:[...range(2,7), ...range(9,17)]},
+    {day:3, n1:3, n2:4, name:"形势与政策",            room:"教二-220", weeks:[5,6,7,9]},
+    {day:3, n1:9, n2:10, name:"人工智能导论",         room:"教三-401", weeks:[...range(3,7), ...range(9,11)]},
+
+    {day:4, n1:3, n2:4, name:"大学物理",              room:"教二-108", weeks:[...range(2,3), ...range(5,17)]},
+    {day:4, n1:5, n2:6, name:"大学生职业生涯规划",    room:"教一-215", weeks:[3,5,7,9]},
+    {day:4, n1:7, n2:8, name:"数据结构",              room:"实验楼-201", weeks:[3,5,7,9,11,13,15,17]},
+
+    {day:5, n1:3, n2:4, name:"高等数学",              room:"教一-203", weeks:[2, ...range(5,16)]},
+    {day:5, n1:5, n2:6, name:"思想道德与法治",        room:"教一-108", weeks:[2, ...range(5,12)]},
+    {day:5, n1:7, n2:8, name:"大学体育",              room:"操场 / 体育馆", weeks:[2, ...range(5,16)]},
+    {day:5, n1:9, n2:10, name:"音乐鉴赏",             room:"教三-102", weeks:[...range(5,12)]}
+  ];
+
+  const NODE_TIME = ["08:30","09:20","10:25","11:15","14:00","14:50","15:55","16:45","19:00","19:50"];
+  const WEEK_LABEL = ["一","二","三","四","五","六","日"];
+  const EN_LABEL   = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
+
+  const svgChevron = dir => dir === "l"
+    ? '<svg viewBox="0 0 16 16"><path d="M10.5 2.5 5 8l5.5 5.5"/></svg>'
+    : '<svg viewBox="0 0 16 16"><path d="M5.5 2.5 11 8l-5.5 5.5"/></svg>';
+
+  const svg = {
+    week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M9 9v11M15 9v11"/></svg>',
+    cal:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>',
+    clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg>'
+  };
+
+  function phoneHTML(cardOpen){
+    const days = WEEK_LABEL.map((cn, i) => {
+      const day = i + 1;
+      const cls = [
+        "dhead",
+        day === TODAY ? "today" : "",
+        day === 6 ? "sat" : "",
+        day === 7 ? "sun" : ""
+      ].join(" ").trim();
+      return `<div class="${cls}">
+        <span class="en">${day === TODAY ? "TODAY" : EN_LABEL[i]}</span><span class="cn">${cn}</span>
+      </div>`;
+    }).join("");
+
+    return `
+      <div class="status"><span>22:07</span><span>5G&nbsp;&nbsp;▮▮▮&nbsp;100%</span></div>
+
+      <div class="head">
+        <div class="tide t1"></div><div class="tide t2"></div><div class="tide t3"></div>
+        <div class="half"></div>
+        <div class="ghost">07</div>
+        <div class="slash"></div>
+        <h1 class="title">WEEK</h1>
+
+        <div class="datebar">
+          <span class="chip">10.19 – 10.25</span>
+          <span class="wk">第 7 周</span>
+        </div>
+        <div class="meta">今天：周三 · <b>A 型日</b> · <i>有早八</i></div>
+
+        <div class="keys">
+          <span class="key">${svgChevron("l")}</span>
+          <span class="key">${svgChevron("r")}</span>
+        </div>
+      </div>
+
+      <div class="days"><div class="th-time">节次</div>${days}</div>
+
+      <div class="grid">
+        <div class="beam" style="grid-column:${TODAY + 1};grid-row:1 / span 10"></div>
+      </div>
+
+      <div class="density">
+        <div class="dens-label"><b>WEEK DENSITY</b><span>近五周</span></div>
+        <div class="dens-weeks" id="density-${cardOpen ? "b" : "a"}"></div>
+      </div>
+
+      <div class="nav">
+        <div class="nitem active">${svg.week}<span>课表</span></div>
+        <div class="nitem">${svg.cal}<span>日历</span></div>
+        <div class="nitem today"><span class="bubble">${svg.clock}</span><span class="lbl">今天</span></div>
+        <div class="nitem">${svg.clock}<span>闹钟</span></div>
+        <div class="nitem">${svg.gear}<span>设置</span></div>
+      </div>
+
+      ${cardOpen ? `
+      <div class="scrim"></div>
+      <div class="dialog">
+        <div class="dlg-kicker">COURSE · 周三</div>
+        <div class="dlg-title">周三 · 第 1-2 节</div>
+        <div class="dlg-sub">全学期 1 门课 · 第 7 周有 1 门</div>
+        <div class="dlg-rule"></div>
+        <div class="dcard">
+          <div class="dc-head">
+            <span class="dname">高等数学</span>
+            <span class="dbadge">本周</span>
+          </div>
+          <div class="dwhen">周三 · 第 1-2 节</div>
+          <div class="drow"><span>时间</span><b>08:30 – 10:05</b></div>
+          <div class="drow"><span>教室</span><b class="cy">教一-203</b></div>
+          <div class="drow"><span>老师</span><b>李振华</b></div>
+          <div class="drow"><span>周次</span><b>2-7, 9-17 周</b></div>
+          <div class="dbtn">设置闹钟</div>
+        </div>
+        <div class="dhint">点空白处收起</div>
+      </div>` : ""}
+    `;
+  }
+
+  function mount(phone, cardOpen){
+    phone.innerHTML = phoneHTML(cardOpen);
+
+    const grid = phone.querySelector(".grid");
+
+    for (let n = 1; n <= 10; n++){
+      const cell = document.createElement("div");
+      cell.className = "tcell";
+      cell.style.gridRow = String(n);
+      cell.innerHTML = `<b>${n}</b><span>${NODE_TIME[n - 1]}</span>`;
+      grid.appendChild(cell);
+    }
+
+    COURSES
+      .filter(c => c.weeks.includes(WEEK))
+      .forEach(c => {
+        const block = document.createElement("div");
+        block.className = "block" +
+          (c.day === TODAY ? " today" : "") +
+          (c.n2 - c.n1 >= 1 ? " tall" : "");
+        block.style.gridColumn = String(c.day + 1);
+        block.style.gridRow = `${c.n1} / span ${c.n2 - c.n1 + 1}`;
+        block.innerHTML = `<div class="bn">${c.name}</div><div class="br">${c.room}</div>`;
+        grid.appendChild(block);
+      });
+
+    const box = phone.querySelector(".dens-weeks");
+    for (let w = WEEK - 2; w <= WEEK + 2; w++){
+      const col = document.createElement("div");
+      col.className = "dw" + (w === WEEK ? " cur" : "");
+
+      const dots = document.createElement("div");
+      dots.className = "dots";
+      for (let n = 1; n <= 10; n++){
+        for (let d = 1; d <= 7; d++){
+          const on = COURSES.some(c =>
+            c.day === d && c.weeks.includes(w) && n >= c.n1 && n <= c.n2);
+          const dot = document.createElement("i");
+          dot.className = "dot" + (on ? " on" : "");
+          dots.appendChild(dot);
+        }
+      }
+      col.appendChild(dots);
+      col.insertAdjacentHTML("beforeend", `<i>${w}</i>`);
+      box.appendChild(col);
+    }
+  }
+
+
+  mount(document.getElementById("p1"), false);
+  mount(document.getElementById("p2"), true);
+
+</script>
+</body>
+</html>

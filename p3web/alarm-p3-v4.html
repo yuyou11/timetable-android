@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ALARM · Persona 3 · 滚动重制样稿</title>
+<!--
+  闹钟页 v4：滚动叙事 + 旧闹钟卡背景 + 重新设计的「新建闹钟」按钮。
+
+  · 首屏（scrollTop = 0）只有表盘和数字时钟；白纸和列表都在首屏下面。
+  · 往下滚，表盘缩小、数字时钟淡出，白纸带着「此刻」卡、闹钟列表、
+    新建按钮滑上来 —— 白纸是 sticky 表盘上面的一层，滚动即转场。
+  · 「此刻」卡复刻上一代闹钟记录卡的背景：蓝色玻璃底 + 深藏青面板 +
+    白色时间条，只把缺角改成直角。
+  · 新建按钮重新设计：左侧青色 ＋ 块 + 右侧深藏青「新建闹钟 / 设置时间 ·
+    重复 · 铃声」+ 右箭头；矩形，按下去有 0.985 的压缩反馈。
+  · 响铃弹窗去掉品红描边和霓虹紫：深藏青面板 + 细蓝边 + 2px 暗红顶线，
+    停止按钮用暗红 #B23A48，贪睡留描边；整只表盘转柔和薄荷绿。
+-->
+<style>
+  :root{
+    --blue1:#1EA7FE;
+    --blue2:#0E49BE;
+    --blue3:#0524B1;
+    --ink:#04106B;
+    --cyan:#18D8F8;
+    --text:#F4F8FF;
+    --dim:#9FBCF2;
+    --paper:#F2F7FF;
+    --pink:#071033;
+    --psub:#5C6D8E;
+    --pline:#D5DFEF;
+    --card:#0C1A46;
+    --card-stroke:#4660DC;
+    --card-blue:#4884FF;
+    --green:#6FE0A0;
+    --danger:#B23A48;
+    --danger-soft:#C75B6A;
+    --clock:#EAF6FF;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;width:425px;height:854px;overflow:hidden;
+    background:#0B0E16;
+    font-family:"Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .stage{width:425px;padding:14px 16px 16px;display:flex;gap:26px;}
+  .art{width:393px;}
+  .cap{height:24px;display:flex;align-items:baseline;gap:8px;color:#8A93A6;font-size:10px;letter-spacing:.06em;}
+  .cap b{color:#E8EDF7;font-family:Impact,"Arial Black",sans-serif;font-weight:400;font-size:15px;letter-spacing:.08em;transform:skewX(-8deg);}
+  .cap span{font-size:9px;}
+
+  .phone{
+    position:relative;width:393px;height:800px;border-radius:22px;overflow:hidden;
+    color:var(--text);background:#0524B1;
+    box-shadow:0 24px 60px rgba(0,0,0,.62), 0 0 0 1px #0A1B5E;
+  }
+  .phone::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(120% 62% at 82% -8%, rgba(30,167,254,.98), transparent 62%),
+      radial-gradient(90% 55% at 4% 38%, rgba(9,80,220,.55), transparent 72%),
+      linear-gradient(180deg,var(--blue1) 0%,var(--blue2) 46%,var(--blue3) 100%);
+  }
+  .phone::after{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(116deg,rgba(255,255,255,.045) 0 1px,transparent 1px 13px);
+    opacity:.5;pointer-events:none;
+  }
+
+  .status{
+    position:absolute;left:0;right:0;top:0;z-index:12;
+    height:22px;padding:0 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:9px;letter-spacing:.04em;color:#EAF4FF;
+    text-shadow:0 1px 2px rgba(0,15,60,.5);
+  }
+
+  /* ============================================================
+     滚动区：表盘 sticky 在下面，白纸从下面盖上来
+     ============================================================ */
+  .scroller{
+    position:absolute;left:0;right:0;top:22px;bottom:56px;z-index:2;
+    overflow-y:auto;overflow-x:hidden;
+    scrollbar-width:none;
+  }
+  .scroller::-webkit-scrollbar{display:none;}
+
+  .hero{
+    position:sticky;top:0;z-index:1;
+    height:100%;
+    overflow:hidden;
+  }
+  .hero-inner{position:absolute;inset:0;will-change:transform;}
+
+  .tide{position:absolute;border-radius:50%;background:#0F86FF;mix-blend-mode:screen;pointer-events:none;}
+  .tide.a{width:240px;height:240px;left:-100px;top:-80px;opacity:.20;}
+  .tide.b{width:260px;height:260px;left:150px;top:-160px;opacity:.16;}
+  .tide.c{width:170px;height:170px;left:290px;top:200px;opacity:.14;}
+
+  .clock{
+    position:absolute;left:50%;top:120px;width:260px;height:260px;
+    transform:translateX(-50%);
+    color:var(--clock);
+    filter:drop-shadow(0 4px 8px rgba(0,10,50,.32));
+    transform-origin:50% 50%;
+  }
+  .phone.ringing .clock{color:var(--green);}
+
+  .digital{
+    position:absolute;left:0;right:0;top:390px;
+    text-align:center;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:84px;line-height:.9;letter-spacing:2px;
+    color:var(--cyan);
+    -webkit-text-stroke:2px var(--ink);
+    text-shadow:5px 5px 0 rgba(2,12,66,.24);
+    transform-origin:50% 0;
+  }
+  .phone.ringing .digital{
+    color:var(--green);
+    -webkit-text-stroke:1px rgba(6,35,28,.30);
+    text-shadow:0 0 24px rgba(111,224,160,.40);
+  }
+  .colon{animation:blink 2s steps(1) infinite;}
+  @keyframes blink{0%,49%{opacity:1;}50%,100%{opacity:.28;}}
+
+  .dateline{
+    position:absolute;left:0;right:0;top:486px;
+    text-align:center;
+    font-size:10px;letter-spacing:.18em;color:#DDEBFF;
+    text-shadow:0 1px 2px rgba(0,10,50,.5);
+  }
+  .phone.ringing .dateline{opacity:.55;}
+
+  .hint{
+    position:absolute;left:0;right:0;bottom:44px;
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    font-size:8px;letter-spacing:.22em;color:#BFD8FF;
+    opacity:.9;
+  }
+  .hint .chev{
+    display:block;font-size:16px;line-height:1;color:var(--cyan);
+    animation:bob 1.5s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0);opacity:.55;}50%{transform:translateY(4px);opacity:1;}}
+  .phone.ringing .hint{display:none;}
+  .thread{
+    position:absolute;left:50%;top:512px;width:1px;height:100px;
+    transform:translateX(-50%);
+    background:linear-gradient(180deg,rgba(24,216,248,.55),rgba(24,216,248,0));
+    pointer-events:none;
+  }
+  .thread::after{
+    content:"";position:absolute;left:-2.5px;bottom:-3px;
+    width:4px;height:4px;border:1px solid rgba(24,216,248,.65);border-radius:50%;
+  }
+
+  /* ============================================================
+     白纸
+     ============================================================ */
+  .sheet{
+    position:relative;z-index:2;
+    min-height:100%;
+    display:flex;flex-direction:column;
+    padding:18px 16px 22px;
+    color:var(--pink);
+    background:linear-gradient(180deg,var(--paper) 0%, #EDF4FF 100%);
+    box-shadow:0 -14px 36px rgba(0,0,0,.30);
+  }
+  .sheet::before{
+    content:"";position:absolute;left:0;right:0;top:0;height:2px;
+    background:var(--cyan);opacity:.9;
+  }
+
+  /* 「此刻」卡：上一代闹钟记录卡的背景（蓝玻璃底 + 深藏青面板 + 白时间条） */
+  .nowcard{position:relative;margin:2px 0 12px;}
+  .nowcard::before{
+    content:"";position:absolute;left:-12px;right:4px;top:-12px;bottom:4px;
+    background:linear-gradient(150deg,#4884FF 0%,#2F62FF 100%);
+    opacity:.68;
+  }
+  .nc{
+    position:relative;z-index:1;
+    padding:12px 14px 13px;
+    color:#fff;
+    background:linear-gradient(155deg,#12245E 0%,#0A1740 100%);
+    border:1.5px solid var(--card-stroke);
+  }
+  .nc-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .nc-bar{
+    padding:3px 10px 5px;border-radius:7px;background:#fff;
+    font-weight:900;font-size:22px;line-height:1;color:#101E96;
+    letter-spacing:.01em;
+  }
+  .nc-label{font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:700;letter-spacing:.22em;color:var(--cyan);}
+  .nc-row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-top:10px;}
+  .nc-next{font-size:8px;color:#A9BEE8;letter-spacing:.06em;}
+  .nc-next b{
+    display:block;margin-top:2px;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:34px;line-height:.9;letter-spacing:1px;color:#fff;
+  }
+  .nc-left{font-size:8px;font-weight:700;letter-spacing:.04em;color:var(--cyan);white-space:nowrap;padding-bottom:3px;}
+  .nc-sub{margin-top:6px;font-size:9px;letter-spacing:.02em;color:#A9BEE8;}
+  .nc-sub b{color:#fff;font-weight:700;}
+
+  .listhead{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-top:14px;margin-bottom:8px;
+  }
+  .listhead span{font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--pink);}
+  .listhead i{font-style:normal;font-size:7px;letter-spacing:.04em;color:#8A9AB8;}
+
+  .arow{
+    display:flex;align-items:center;gap:10px;
+    height:78px;margin-bottom:8px;padding:0 14px;
+    color:#fff;
+    background:linear-gradient(150deg,#12245E 0%,#0A1740 100%);
+    border:1px solid var(--card-stroke);
+  }
+  .arow.off{opacity:.44;}
+  .arow .l{flex:1;min-width:0;}
+  .atop{display:flex;align-items:baseline;gap:8px;}
+  .atime{
+    font-family:"Microsoft YaHei",sans-serif;font-weight:900;
+    font-size:23px;line-height:1;color:#fff;letter-spacing:.01em;
+    white-space:nowrap;
+  }
+  .arow.course .atime{font-size:17px;}
+  .alabel{font-size:8px;letter-spacing:.02em;color:#A9BEE8;white-space:nowrap;}
+  .asub{margin-top:5px;font-size:8.5px;letter-spacing:.02em;color:#A9BEE8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .anx{margin-top:3px;font-size:7.5px;letter-spacing:.02em;color:#7FA6E8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .sw{
+    position:relative;flex:none;width:40px;height:22px;border-radius:11px;
+    background:var(--cyan);box-shadow:inset 0 0 0 1px rgba(2,18,79,.18);
+  }
+  .sw::after{
+    content:"";position:absolute;right:2px;top:2px;
+    width:18px;height:18px;border-radius:50%;background:#06237A;
+  }
+  .sw.off{background:#C9D4E6;}
+  .sw.off::after{left:2px;right:auto;background:#fff;}
+
+  /* ============================================================
+     重新设计的「新建闹钟」：矩形、左青块 + 右深藏青
+     ============================================================ */
+  .newbtn{
+    display:flex;align-items:stretch;
+    width:100%;height:54px;
+    margin-top:14px;
+    color:#fff;text-align:left;
+    background:#0A1740;
+    border:1px solid #2F62FF;
+    transition:transform .12s ease, background .12s ease;
+  }
+  .newbtn:active{transform:scale(.985);background:#0D1E50;}
+  .newbtn .plus{
+    position:relative;flex:none;width:54px;
+    background:var(--cyan);
+  }
+  .newbtn .plus::before,
+  .newbtn .plus::after{
+    content:"";position:absolute;left:50%;top:50%;
+    background:#02124F;transform:translate(-50%,-50%);
+  }
+  .newbtn .plus::before{width:20px;height:3px;}
+  .newbtn .plus::after{width:3px;height:20px;}
+  .newbtn .txt{
+    flex:1;min-width:0;
+    display:flex;flex-direction:column;justify-content:center;
+    padding:0 12px;
+  }
+  .newbtn .t1{font-size:14px;font-weight:900;letter-spacing:.04em;color:#fff;}
+  .newbtn .t2{margin-top:2px;font-size:7px;letter-spacing:.04em;color:#9FC0FF;}
+  .newbtn .go{
+    flex:none;width:36px;
+    display:grid;place-items:center;
+    font-size:18px;line-height:1;color:#6FA8FF;
+  }
+
+  .last{
+    margin-top:9px;text-align:center;
+    font-size:7.5px;letter-spacing:.04em;color:#8A9AB8;
+  }
+  .foot{
+    position:relative;z-index:1;margin-top:auto;
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding-top:9px;border-top:1px solid var(--pline);
+    font-family:"Segoe UI",sans-serif;font-size:7px;letter-spacing:.12em;color:#8A9AB8;
+  }
+  .sheet > :not(.ghost4){position:relative;z-index:1;}
+
+  /* ============================================================
+     响铃：不再用品红描边 / 霓虹紫
+     ============================================================ */
+  .ring{
+    position:absolute;left:16px;right:16px;top:500px;z-index:30;
+    padding:14px 14px 12px;
+    color:#fff;
+    background:linear-gradient(155deg,#16295E 0%,#0F1E4C 100%);
+    border:1px solid rgba(150,185,255,.42);
+    box-shadow:0 18px 46px rgba(0,0,0,.52);
+    animation:ringIn .28s ease-out;
+  }
+  @keyframes ringIn{from{opacity:0;transform:translateY(8px) scale(.985);}to{opacity:1;transform:none;}}
+  .ring::before{
+    content:"";position:absolute;left:0;right:0;top:0;height:2px;
+    background:var(--danger);opacity:.85;
+  }
+  .ring .rtab{
+    font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:700;
+    letter-spacing:.24em;color:#FF9AA8;
+  }
+  .ring .rtime{
+    margin-top:5px;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:36px;line-height:.9;letter-spacing:1px;
+  }
+  .ring .rsub{margin-top:5px;font-size:9px;letter-spacing:.03em;color:#C9DBFF;}
+  .ring .rsub b{color:#fff;}
+  .ring .rbtns{display:flex;gap:8px;margin-top:13px;}
+  .ring .rbtns .stop,
+  .ring .rbtns .snooze{
+    flex:1;height:46px;display:grid;place-items:center;
+    font-size:13px;font-weight:800;letter-spacing:.04em;
+  }
+  .ring .stop{background:var(--danger);color:#fff;}
+  .ring .snooze{border:1px solid #6FA8FF;color:#fff;background:rgba(72,132,255,.12);}
+  .ring .runlock{margin-top:6px;text-align:center;font-size:8px;letter-spacing:.04em;color:#9FC0FF;}
+
+  /* ============================================================
+     底部导航
+     ============================================================ */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;z-index:10;height:56px;
+    display:flex;align-items:center;padding:0 4px;
+    background:linear-gradient(180deg,#F4F7FD,#E9EFFA);
+    border-top:1px solid #C7D5EE;
+  }
+  .nitem{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+    font-size:8px;letter-spacing:.03em;color:#7C8BAE;
+  }
+  .nitem svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .nitem.active{color:#0B2EA8;font-weight:700;}
+  .nitem.today{position:relative;color:#0B2EA8;}
+  .nitem.today .bubble{
+    position:absolute;top:-17px;width:50px;height:50px;border-radius:50%;
+    background:#0B2EA8;display:grid;place-items:center;color:#fff;
+    box-shadow:0 4px 12px rgba(11,46,168,.38);
+  }
+  .nitem.today .bubble svg{width:19px;height:19px;stroke:#fff;}
+  .nitem.today .lbl{margin-top:34px;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="art">
+    <div class="cap"><b>ALARM</b><span id="cap">滚动样稿 · 首屏</span></div>
+    <div class="phone" id="phone"></div>
+  </div>
+</div>
+
+<script>
+  const svg = {
+    week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M9 9v11M15 9v11"/></svg>',
+    cal:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>',
+    clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    today:'<svg viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10"/><circle cx="19" cy="17.5" r="1.8"/></svg>',
+    gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg>'
+  };
+
+  const ROMAN = ["XII","I","II","III","IV","V","VI","VII","VIII","IX","X","XI"];
+
+  function clockSVG(){
+    const spikes = Array.from({length:12}, (_, i) => {
+      const big = i % 3 === 0;
+      const base = big ? 2.9 : 1.9;
+      const tip = big ? -121 : -112;
+      return `<path d="M${-base},-104 L${base},-104 L0,${tip} Z"
+        transform="rotate(${i * 30})" fill="currentColor"/>`;
+    }).join("");
+    const nums = ROMAN.map((n, i) =>
+      `<text transform="rotate(${i * 30}) translate(0,-93)">${n}</text>`
+    ).join("");
+    return `
+      <svg class="clock" viewBox="-125 -125 250 250" fill="none">
+        <g stroke="currentColor" stroke-linecap="round">
+          <circle r="104" stroke-width="2.4"/>
+          <circle r="82" stroke-width="1.6" opacity=".9"/>
+        </g>
+        <g>${spikes}</g>
+        <g fill="currentColor" font-family="'Times New Roman',serif" font-size="18"
+           text-anchor="middle" dominant-baseline="middle" font-weight="700">${nums}</g>
+        <g fill="currentColor">
+          <path transform="rotate(303.5)"
+                d="M0,-8 L4.8,-2 L2.3,38 L0,47 L-2.3,38 L-4.8,-2 Z"/>
+          <path transform="rotate(42)"
+                d="M0,-10 L5.8,-3 L2.7,62 L0,75 L-2.7,62 L-5.8,-3 Z"/>
+        </g>
+        <line x1="0" y1="14" x2="0" y2="-84"
+              stroke="currentColor" stroke-width="1.2" opacity=".9"
+              transform="rotate(180)"/>
+        <circle r="4.2" fill="#0B3BB8" stroke="currentColor" stroke-width="2"/>
+      </svg>`;
+  }
+
+  const ROWS = [
+    {time:"06:40", label:"起床", sub:"工作日", next:"下次：周三 06:40", on:true},
+    {time:"07:10", label:"只响一次", sub:"10 月 28 日", next:"下次：周三 07:10", on:true},
+    {time:"课前 10 分钟", label:"高等数学", sub:"周三 第 1-2 节", next:"下次：周三 08:20", on:true, course:true},
+    {time:"22:30", label:"洗漱", sub:"每天", next:"已关闭", on:false}
+  ];
+
+  function rowsHTML(){
+    return ROWS.map(a => `
+      <div class="arow${a.course ? " course" : ""}${a.on ? "" : " off"}">
+        <div class="l">
+          <div class="atop">
+            <span class="atime">${a.time}</span>
+            <span class="alabel">${a.label}</span>
+          </div>
+          <div class="asub">${a.sub}</div>
+          <div class="anx">${a.next}</div>
+        </div>
+        <div class="sw${a.on ? "" : " off"}"></div>
+      </div>`).join("");
+  }
+
+  document.getElementById("phone").innerHTML = `
+    <div class="status"><span>22:07</span><span>5G&nbsp;&nbsp;▮▮▮&nbsp;100%</span></div>
+
+    <div class="scroller" id="scroller">
+      <div class="hero">
+        <div class="tide a"></div><div class="tide b"></div><div class="tide c"></div>
+        <div class="hero-inner" id="heroInner">
+          ${clockSVG()}
+          <div class="digital" id="digital">22<span class="colon">:</span>07</div>
+          <div class="dateline" id="dateline">周三 · 第 8 周 · 10/27</div>
+          <div class="thread" id="thread"></div>
+        </div>
+        <div class="hint" id="hint">下滑 · 查看闹钟<span class="chev">⌄</span></div>
+      </div>
+
+      <div class="sheet">
+        <div class="nowcard">
+          <div class="nc">
+            <div class="nc-top">
+              <span class="nc-bar">22:07</span>
+              <span class="nc-label">此刻</span>
+            </div>
+            <div class="nc-row">
+              <div class="nc-next">下次响铃<b>06:40</b></div>
+              <div class="nc-left">还有 8 小时 33 分</div>
+            </div>
+            <div class="nc-sub"><b>明天 · 周三</b> · 起床 · 工作日</div>
+          </div>
+        </div>
+
+        <div class="listhead"><span>闹钟 · 4</span><i>长按跳过下一次</i></div>
+        ${rowsHTML()}
+
+        <div class="newbtn" id="newbtn">
+          <div class="plus"></div>
+          <div class="txt">
+            <div class="t1">新建闹钟</div>
+            <div class="t2">设置时间 · 重复 · 铃声</div>
+          </div>
+          <div class="go">›</div>
+        </div>
+
+        <div class="last">上次响铃 06:40 · 起床</div>
+        <div class="foot"><span>ALARM LOG</span><span>3 开启 · 1 关闭</span></div>
+      </div>
+    </div>
+
+    <div class="ring" id="ring" style="display:none">
+      <div class="rtab">RINGING</div>
+      <div class="rtime">06:40</div>
+      <div class="rsub"><b>起床</b> · 工作日 · 已响 00:12</div>
+      <div class="rbtns">
+        <div class="stop">停止</div>
+        <div class="snooze">贪睡 10 分钟</div>
+      </div>
+      <div class="runlock">解锁手机（响铃继续）</div>
+    </div>
+
+    <div class="nav">
+      <div class="nitem">${svg.week}<span>课表</span></div>
+      <div class="nitem">${svg.cal}<span>日历</span></div>
+      <div class="nitem today">${svg.today}<span>今天</span></div>
+      <div class="nitem active">${svg.clock}<span>闹钟</span></div>
+      <div class="nitem">${svg.gear}<span>设置</span></div>
+    </div>
+  `;
+
+  const phone = document.getElementById("phone");
+  const scroller = document.getElementById("scroller");
+  const heroInner = document.getElementById("heroInner");
+  const capEl = document.getElementById("cap");
+
+  let raf = 0;
+  function update(){
+    raf = 0;
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    const y = scroller.scrollTop;
+    // 只做平移：钟和文字一起向上走，不缩放、不淡出
+    heroInner.style.transform = `translateY(${-y * 0.32}px)`;
+
+    if (capEl && max > 0){
+      capEl.textContent = y < 40 ? "滚动样稿 · 首屏"
+        : (y < max - 40 ? "滚动样稿 · 转场 " + Math.round(y / max * 100) + "%" : "滚动样稿 · 列表");
+    }
+  }
+
+  scroller.addEventListener("scroll", () => {
+    if (!raf) raf = requestAnimationFrame(update);
+  }, {passive:true});
+
+  const q = new URLSearchParams(location.search);
+  const pos = Math.min(1, Math.max(0, parseFloat(q.get("pos") || "0")));
+
+  if (q.get("ring") === "1"){
+    phone.classList.add("ringing");
+    document.getElementById("ring").style.display = "block";
+  }
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (q.get("ring") === "1"){
+      scroller.scrollTop = 0;
+    } else {
+      scroller.scrollTop = pos * (scroller.scrollHeight - scroller.clientHeight);
+    }
+    update();
+  }));
+</script>
+</body>
+</html>

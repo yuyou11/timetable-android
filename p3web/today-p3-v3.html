@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TODAY · Persona 3 · 整页重画样稿</title>
+<!--
+  今天页 P3 整页重画样稿（和 week-p3-v2 同一套语言）。
+  卡片 / 弹卡 / 按钮一律直角矩形，不做缺角 —— P3 的 UI 是硬边矩形，斜切只留给标题与胶带。
+  思路：上半屏是 P3 的「日期 HUD」，下半屏是一张斜边的白色日程纸。
+    · 蓝色 HUD 负责「今天是什么日子」：日期 / 星期 / 周次 / 日型 / 月相 / 此刻时间
+    · 白纸负责「今天怎么过」：24 小时色带 / 此刻 / 接下来 / 时间线 / 明天
+    · 常驻开关收成右上角一颗胶囊，不再占一整行
+  画布 393×800dp；所有数值即 dp，可直接对照 Android 端。
+-->
+<style>
+  :root{
+    --blue1:#1EA7FE;
+    --blue2:#0E49BE;
+    --blue3:#0524B1;
+    --ink:#04106B;
+    --cyan:#18D8F8;
+    --magenta:#FF3FD8;
+    --text:#F4F8FF;
+    --dim:#9FBCF2;
+    --paper:#F2F7FF;
+    --paper2:#E7EFFC;
+    --pink:#0A1230;
+    --psub:#5C6D8E;
+    --pline:#D5DFEF;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    width:850px;
+    height:854px;
+    overflow:hidden;
+    background:#0B0E16;
+    font-family:"Microsoft YaHei","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .stage{width:850px;padding:14px 16px 16px;display:flex;gap:26px;}
+  .art{width:393px;}
+  .cap{height:24px;display:flex;align-items:baseline;gap:8px;color:#8A93A6;font-size:10px;letter-spacing:.06em;}
+  .cap b{color:#E8EDF7;font-family:Impact,"Arial Black",sans-serif;font-weight:400;font-size:15px;letter-spacing:.08em;transform:skewX(-8deg);}
+  .cap span{font-size:9px;}
+
+  .phone{
+    position:relative;
+    width:393px;
+    height:800px;
+    border-radius:22px;
+    overflow:hidden;
+    color:var(--text);
+    background:#0524B1;
+    box-shadow:0 24px 60px rgba(0,0,0,.62), 0 0 0 1px #0A1B5E;
+  }
+  .phone::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(120% 62% at 82% -8%, rgba(30,167,254,.98), transparent 62%),
+      radial-gradient(90% 55% at 4% 38%, rgba(9,80,220,.55), transparent 72%),
+      linear-gradient(180deg, var(--blue1) 0%, var(--blue2) 46%, var(--blue3) 100%);
+  }
+  .phone::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:repeating-linear-gradient(116deg, rgba(255,255,255,.045) 0 1px, transparent 1px 13px);
+    opacity:.5;
+    pointer-events:none;
+  }
+
+  .status{
+    position:relative;z-index:5;
+    height:22px;
+    padding:0 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:9px;letter-spacing:.04em;color:#EAF4FF;
+    text-shadow:0 1px 2px rgba(0,15,60,.5);
+  }
+
+  /* ============================================================
+     上半屏：日期 HUD
+     ============================================================ */
+  .hero{position:relative;z-index:3;height:196px;}
+
+  .tide{position:absolute;border-radius:50%;background:#0F86FF;mix-blend-mode:screen;pointer-events:none;}
+  .tide.a{width:210px;height:210px;left:-90px;top:-60px;opacity:.22;}
+  .tide.b{width:240px;height:240px;left:140px;top:-140px;opacity:.18;}
+  .tide.c{width:150px;height:150px;left:280px;top:60px;opacity:.16;}
+
+  .kicker{
+    position:absolute;left:14px;top:30px;
+    font-family:"Segoe UI",sans-serif;font-size:8px;font-weight:700;
+    letter-spacing:.30em;color:var(--cyan);
+  }
+
+  .res{
+    position:absolute;right:14px;top:23px;
+    display:flex;align-items:center;gap:6px;
+    padding:4px 8px 4px 10px;
+    font-size:8px;letter-spacing:.06em;color:#EAF4FF;
+    background:rgba(255,255,255,.10);
+    border:1px solid rgba(220,238,255,.35);
+  }
+  .res .sw{
+    position:relative;width:24px;height:13px;border-radius:7px;
+    background:var(--cyan);
+  }
+  .res .sw::after{
+    content:"";position:absolute;right:2px;top:2px;
+    width:9px;height:9px;border-radius:50%;background:#06237A;
+  }
+
+  .date{
+    position:absolute;left:9px;top:44px;z-index:2;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:80px;line-height:.84;letter-spacing:1px;
+    color:#fff;
+    transform:skewX(-7deg);
+    -webkit-text-stroke:2.5px var(--ink);
+    text-shadow:6px 6px 0 rgba(2,12,66,.28);
+  }
+  .mark{position:absolute;left:203px;top:62px;z-index:3;width:56px;height:42.4px;}
+
+  .clock{position:absolute;right:17px;top:96px;z-index:3;text-align:right;}
+  .clock b{
+    display:block;
+    font-family:Impact,"Arial Black",sans-serif;font-weight:400;
+    font-size:39px;line-height:.9;letter-spacing:1px;
+    color:var(--cyan);
+    -webkit-text-stroke:1px rgba(4,16,107,.55);
+  }
+  .clock span{
+    display:flex;align-items:center;justify-content:flex-end;gap:4px;
+    margin-top:2px;
+    font-size:9px;letter-spacing:.22em;color:#DDEBFF;
+  }
+  .moonlet{
+    position:relative;display:inline-block;overflow:hidden;
+    width:10px;height:10px;border-radius:50%;background:#FFD93B;
+  }
+  .moonlet::after{
+    content:"";position:absolute;left:-3px;top:0;
+    width:9px;height:9px;border-radius:50%;background:#0C3AB8;
+  }
+
+  .wd{
+    position:absolute;left:14px;top:126px;z-index:3;
+    font-size:22px;font-weight:900;letter-spacing:.04em;
+    color:#fff;text-shadow:0 2px 4px rgba(0,10,50,.45);
+    transform:skewX(-5deg);
+  }
+  .chips{
+    position:absolute;left:14px;top:156px;z-index:3;
+    display:flex;align-items:center;gap:6px;
+    font-size:8.5px;letter-spacing:.06em;color:#DDEBFF;
+  }
+  .chips b{
+    padding:2px 7px 3px;background:var(--cyan);color:#02124F;
+    font-weight:800;transform:skewX(-8deg);
+  }
+  .chips i{font-style:normal;color:var(--magenta);font-weight:700;}
+
+  /* ============================================================
+     下半屏：白色日程纸
+     ============================================================ */
+  .paper{
+    position:absolute;left:0;right:0;top:196px;bottom:56px;z-index:2;
+    padding:20px 16px 0;
+    color:var(--pink);
+    background:linear-gradient(180deg,var(--paper) 0%, #EDF4FF 100%);
+    clip-path:polygon(0 18px, 100% 0, 100% 100%, 0 100%);
+    box-shadow:0 -14px 34px rgba(0,0,0,.26);
+  }
+  .paper .ghost27{
+    position:absolute;right:-6px;top:26px;z-index:0;
+    font-family:Impact,"Arial Black",sans-serif;font-size:150px;line-height:1;
+    color:#E1E9F6;letter-spacing:-4px;pointer-events:none;user-select:none;
+  }
+  .paper > *{position:relative;z-index:1;}
+
+  /* 24 小时色带 */
+  .daybar{height:10px;display:flex;overflow:hidden;border-radius:2px;background:#DCE6F5;}
+  .daybar i{display:block;height:100%;}
+  .daybar i.sleep{background:#071A5C;}
+  .daybar i.study{background:var(--cyan);}
+  .daybar i.class{background:var(--magenta);}
+  .daybar i.meal{background:#FFC44D;}
+  .daybar i.free{background:#9FB6D9;}
+  .daybar i.chore{background:#7C8FB5;}
+  .daybar i.transit{background:#4D6FA8;}
+
+  .barlabels{
+    position:relative;height:12px;margin-top:3px;
+    font-family:"Segoe UI",sans-serif;font-size:6px;color:#8A9AB8;
+    letter-spacing:.04em;
+  }
+  .barlabels span{position:absolute;transform:translateX(-50%);}
+  .barlabels span:first-child{transform:none;}
+  .barlabels span:last-child{transform:translateX(-100%);}
+  .nowmark{
+    position:absolute;top:-3px;width:2px;height:16px;background:var(--magenta);
+    box-shadow:0 0 6px rgba(255,63,216,.5);
+  }
+  .nowmark::before{
+    content:"";position:absolute;left:-3px;top:-4px;
+    border-left:4px solid transparent;border-right:4px solid transparent;
+    border-top:5px solid var(--magenta);
+  }
+
+  /* 此刻卡 */
+  .now{
+    position:relative;margin-top:15px;
+    padding:12px 14px 11px;
+    color:#fff;
+    background:linear-gradient(150deg,#16265F 0%,#0A1740 100%);
+    border:1px solid #6FA8FF;
+    box-shadow:0 8px 22px rgba(4,16,80,.20);
+  }
+  .now .tab{
+    position:absolute;left:0;top:0;
+    padding:3px 9px 4px;
+    background:var(--magenta);color:#18002F;
+    font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:800;
+    letter-spacing:.18em;
+  }
+  .now h2{
+    margin:10px 0 0;
+    font-size:25px;font-weight:900;line-height:1.05;
+    letter-spacing:.02em;
+    text-shadow:0 2px 3px rgba(0,0,0,.25);
+  }
+  .now .meta{
+    margin-top:4px;font-size:9px;letter-spacing:.03em;color:#A9C3F5;
+  }
+  .now .meta b{color:var(--cyan);font-weight:700;}
+  .now .track{
+    height:4px;margin-top:9px;background:rgba(255,255,255,.16);
+    overflow:hidden;
+  }
+  .now .track i{display:block;height:100%;background:var(--cyan);}
+  .now .next{
+    margin-top:8px;font-size:8.5px;color:#C9DBFF;letter-spacing:.02em;
+  }
+  .now .next b{color:#fff;font-weight:700;}
+
+  /* 时间线 */
+  .tl{margin-top:8px;position:relative;}
+  .tl-hint{
+    display:flex;align-items:center;gap:6px;
+    font-size:7px;color:#8A9AB8;letter-spacing:.10em;height:14px;
+  }
+  .tl-hint::after{content:"";flex:1;height:1px;background:var(--pline);}
+  .tl .rail{position:absolute;left:57px;top:16px;bottom:0;width:1px;background:#D3DEED;}
+  .trow{
+    position:relative;
+    display:grid;grid-template-columns:50px 14px 1fr auto;
+    align-items:center;
+    height:47px;
+    border-bottom:1px solid var(--pline);
+  }
+  .trow .t{
+    font-family:"Segoe UI",sans-serif;font-size:12px;font-weight:800;color:var(--pink);
+    line-height:1;
+  }
+  .trow .e{
+    display:block;margin-top:3px;
+    font-size:6.5px;font-weight:600;color:#8A9AB8;letter-spacing:.02em;
+  }
+  .trow .dot{
+    width:6px;height:6px;border-radius:50%;background:#B8C7DD;
+    justify-self:center;z-index:1;
+  }
+  .trow .body{min-width:0;padding-left:8px;}
+  .trow .name{
+    font-size:11.5px;font-weight:800;color:var(--pink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .trow .note{
+    margin-top:2px;font-size:7.5px;color:var(--psub);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .trow .dur{
+    font-family:"Segoe UI",sans-serif;font-size:7px;font-weight:700;color:#6A7C9C;
+    padding:2px 6px;background:#E3EBF8;
+  }
+  .trow.past{opacity:.52;}
+  .trow.past .dot{background:#C4D1E4;}
+  .trow.now{
+    margin:0 -10px;padding:0 10px;
+    background:linear-gradient(90deg,rgba(24,216,248,.16),rgba(24,216,248,.03));
+    border-left:2px solid var(--magenta);
+    border-bottom-color:transparent;
+  }
+  .trow.now .t{color:var(--magenta);}
+  .trow.now .dot{background:var(--cyan);box-shadow:0 0 0 3px rgba(24,216,248,.22);}
+  .trow.now .name{color:#071033;}
+  .trow.now .dur{background:var(--cyan);color:#02124F;}
+
+  /* 明天 */
+  .tom{
+    position:relative;margin-top:12px;
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;
+    color:#fff;
+    background:linear-gradient(150deg,#12245E 0%,#081234 100%);
+    border:1px solid #5E8BFF;
+  }
+  .tom .l{flex:1;min-width:0;}
+  .tom .k{
+    font-family:"Segoe UI",sans-serif;font-size:6.5px;font-weight:700;
+    letter-spacing:.18em;color:var(--cyan);
+  }
+  .tom .w{
+    margin-top:2px;font-size:15px;font-weight:900;letter-spacing:.01em;
+  }
+  .tom .m{
+    margin-top:2px;font-size:7.5px;color:#A9C3F5;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .tom .m b{color:#fff;}
+  .tom .m2{margin-top:1px;font-size:7px;color:#7FA6E8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tom .btn{
+    flex:none;
+    padding:7px 10px;
+    font-size:9px;font-weight:800;letter-spacing:.04em;color:#fff;
+    background:rgba(72,132,255,.22);
+    border:1px solid #6FA8FF;
+  }
+
+  /* ============================================================
+     底部导航（与周页同一套）
+     ============================================================ */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;z-index:6;
+    height:56px;
+    display:flex;align-items:center;
+    padding:0 4px;
+    background:linear-gradient(180deg,#F4F7FD,#E9EFFA);
+    border-top:1px solid #C7D5EE;
+  }
+  .nitem{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+    font-size:8px;letter-spacing:.03em;color:#7C8BAE;
+  }
+  .nitem svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .nitem.active{color:#0B2EA8;font-weight:700;}
+  .nitem.today{position:relative;color:#0B2EA8;}
+  .nitem.today .bubble{
+    position:absolute;top:-17px;
+    width:50px;height:50px;border-radius:50%;
+    background:#0B2EA8;
+    display:grid;place-items:center;color:#fff;
+    box-shadow:0 4px 12px rgba(11,46,168,.38);
+  }
+  .nitem.today .bubble svg{width:19px;height:19px;stroke:#fff;}
+  .nitem.today .lbl{margin-top:34px;}
+
+  /* ============================================================
+     弹卡
+     ============================================================ */
+  .scrim{position:absolute;inset:0;z-index:20;background:rgba(2,8,30,.64);}
+  .dialog{
+    position:absolute;left:25px;right:25px;top:142px;z-index:21;
+    padding:16px 16px 14px;
+    background:linear-gradient(160deg,#13265F 0%,#0A1740 100%);
+    border:1.5px solid #6FA8FF;
+    box-shadow:0 22px 60px rgba(0,0,0,.66);
+    color:#fff;
+  }
+  .dlg-kicker{font-family:"Segoe UI",sans-serif;font-size:6.5px;font-weight:700;letter-spacing:.22em;color:var(--cyan);}
+  .dlg-title{margin-top:5px;font-size:17px;font-weight:900;letter-spacing:.02em;transform:skewX(-4deg);}
+  .dlg-sub{margin-top:4px;font-size:9px;color:#9FC0FF;letter-spacing:.03em;}
+  .dlg-rule{height:1px;margin:12px 0 2px;background:linear-gradient(90deg,rgba(111,168,255,.55),rgba(111,168,255,.08));}
+  .dcard{padding-top:10px;}
+  .dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .dname{font-size:16px;font-weight:900;}
+  .dbadge{flex:none;padding:2px 7px 3px;background:var(--cyan);color:#02124F;font-size:8px;font-weight:800;transform:skewX(-8deg);}
+  .dwhen{margin-top:3px;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--cyan);}
+  .drow{display:flex;align-items:baseline;margin-top:7px;font-size:9.5px;color:#DCEBFF;}
+  .drow span{width:38px;flex:none;font-size:8px;color:#7FA6E8;letter-spacing:.04em;}
+  .drow b{font-weight:600;color:#fff;}
+  .drow b.cy{color:var(--cyan);}
+  .dbtn{
+    margin-top:14px;height:34px;display:grid;place-items:center;
+    font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;
+    background:rgba(72,132,255,.22);border:1px solid #6FA8FF;
+  }
+  .dhint{margin-top:8px;text-align:center;font-size:7.5px;color:#6F86B8;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="art">
+    <div class="cap"><b>TODAY</b><span>主界面 · 22:07 · 第 8 周</span></div>
+    <div class="phone" id="p1"></div>
+  </div>
+  <div class="art">
+    <div class="cap"><b>TODAY</b><span>点时间线 · 这一格是什么</span></div>
+    <div class="phone" id="p2"></div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  //  数据：内置 B 型日模板 + 第 8 周周二的真实课程
+  // ============================================================
+  const NOW = 22 * 60 + 7;       // 22:07
+  const WEEK = 8;
+  const WEEKDAY = "周二";
+
+  const DAY = [
+    {s:0,    e:445,  name:"睡觉",              note:"",                          kind:"sleep"},
+    {s:445,  e:460,  name:"起床、洗漱",        note:"比 A 型晚 30 分钟",          kind:"chore"},
+    {s:460,  e:480,  name:"早餐",              note:"20 分钟",                    kind:"meal"},
+    {s:480,  e:605,  name:"★ 黄金自习块",      note:"2 小时 5 分整块不打断",      kind:"study"},
+    {s:605,  e:625,  name:"大课间：收拾换楼",  note:"",                          kind:"transit"},
+    {s:625,  e:720,  name:"程序设计基础",      note:"实验楼-201 · 陈思远",        kind:"class"},
+    {s:720,  e:760,  name:"午餐",              note:"",                          kind:"meal"},
+    {s:760,  e:810,  name:"午睡（硬性）",      note:"",                          kind:"sleep"},
+    {s:810,  e:840,  name:"醒神 + 前往教室",   note:"",                          kind:"transit"},
+    {s:840,  e:935,  name:"第 5-6 节",         note:"自习",                      kind:"class"},
+    {s:935,  e:955,  name:"下午课间",          note:"",                          kind:"free"},
+    {s:955,  e:1050, name:"思想道德与法治",    note:"教一-108 · 郑海燕",          kind:"class"},
+    {s:1050, e:1110, name:"晚餐 + 散步",       note:"",                          kind:"meal"},
+    {s:1110, e:1140, name:"当日复盘 + 明日待办", note:"顺便确认明天有没有调课",    kind:"study"},
+    {s:1140, e:1235, name:"第 9-10 节",        note:"晚自习",                    kind:"class"},
+    {s:1235, e:1300, name:"晚自习",            note:"当天作业清零",              kind:"study"},
+    {s:1300, e:1360, name:"★ 自由时间",        note:"本周最稳定的一块，不设条件",  kind:"free"},
+    {s:1360, e:1390, name:"洗漱、收尾",        note:"",                          kind:"chore"},
+    {s:1390, e:1440, name:"睡觉",              note:"",                          kind:"sleep"}
+  ];
+
+  const NAMES = ["一","二","三","四","五","六","日"];
+
+  const svg = {
+    week:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M9 9v11M15 9v11"/></svg>',
+    cal:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>',
+    clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg>'
+  };
+
+  const fmt = m => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  const durText = m => m >= 60
+    ? `${Math.floor(m / 60)} 时${m % 60 ? " " + (m % 60) + " 分" : ""}`
+    : `${m} 分`;
+
+  function current(){
+    return DAY.find(b => b.s <= NOW && NOW < b.e) || DAY[DAY.length - 1];
+  }
+
+  function phoneHTML(cardOpen){
+    const cur = current();
+    const idx = DAY.indexOf(cur);
+    const left = cur.e - NOW;
+    const pct = Math.round((NOW - cur.s) / (cur.e - cur.s) * 100);
+
+    // 24h 色带：每段宽度 = 分钟数，flex 直接按比例分
+    const segs = DAY.map(b =>
+      `<i class="${b.kind}" style="flex:${b.e - b.s}"></i>`
+    ).join("");
+
+    // 时间线：从 19:00 那一格开始，显示 5 行（当前在中间）
+    const start = Math.max(0, idx - 2);
+    const rows = DAY.slice(start, start + 5).map((b, i) => {
+      const state = b.e <= NOW ? "past" : (b === cur ? "now" : "");
+      return `<div class="trow ${state}">
+        <div class="t">${fmt(b.s)}<span class="e">${fmt(b.e)}</span></div>
+        <div class="dot"></div>
+        <div class="body">
+          <div class="name">${b.name}</div>
+          ${b.note ? `<div class="note">${b.note}</div>` : ""}
+        </div>
+        <div class="dur">${durText(b.e - b.s)}</div>
+      </div>`;
+    }).join("");
+
+    const bars = [0, 6, 12, 18, 24].map(h =>
+      `<span style="left:${(h / 24) * 100}%">${String(h).padStart(2, "0")}</span>`
+    ).join("");
+
+    return `
+      <div class="status"><span>22:07</span><span>5G&nbsp;&nbsp;▮▮▮&nbsp;100%</span></div>
+
+      <div class="hero">
+        <div class="tide a"></div><div class="tide b"></div><div class="tide c"></div>
+        <div class="kicker">TODAY</div>
+        <div class="res">常驻 <span class="sw"></span></div>
+
+        <div class="date">10/27</div>
+        <svg class="mark" viewBox="344 46 62 47" preserveAspectRatio="none">
+          <defs>
+            <clipPath id="markerClipToday">
+              <polygon points="-20,0 406,46 375,93 -20,183"/>
+            </clipPath>
+          </defs>
+          <polygon points="344,46 406,46 375,93" fill="#0A1026"/>
+          <g clip-path="url(#markerClipToday)">
+            <text x="372" y="81" text-anchor="middle"
+                  font-family="Microsoft YaHei, sans-serif" font-size="34" font-weight="800"
+                  fill="#FFFFFF" stroke="#0A1026" stroke-width="3" paint-order="stroke">二</text>
+          </g>
+        </svg>
+
+        <div class="clock"><b>22:07</b><span><i class="moonlet"></i>夜晚</span></div>
+
+        <div class="wd">周二</div>
+        <div class="chips"><b>第 8 周</b><span>B 型日 · 无早八</span></div>
+      </div>
+
+      <div class="paper">
+        <div class="ghost27">27</div>
+
+        <div class="daybar">${segs}</div>
+        <div class="barlabels">${bars}<span class="nowmark" style="left:${(NOW / 1440) * 100}%"></span></div>
+
+        <div class="now">
+          <div class="tab">NOW</div>
+          <h2>${cur.name}</h2>
+          <div class="meta">${fmt(cur.s)} – ${fmt(cur.e)} · <b>还剩 ${left} 分钟</b></div>
+          <div class="track"><i style="width:${pct}%"></i></div>
+          <div class="next">接下来 ${fmt(DAY[idx + 1].s)} · <b>${DAY[idx + 1].name}</b></div>
+        </div>
+
+        <div class="tl">
+          <div class="tl-hint">更早</div>
+          <div class="rail"></div>
+          ${rows}
+        </div>
+
+        <div class="tom">
+          <div class="l">
+            <div class="k">TOMORROW · 10/28 周三</div>
+            <div class="w">06:55 起床</div>
+            <div class="m">第 8 周 · <b>A 型日</b> · 3 节课</div>
+            <div class="m2">第一项 06:55 起床、洗漱</div>
+          </div>
+          <div class="btn">设闹钟</div>
+        </div>
+      </div>
+
+      <div class="nav">
+        <div class="nitem">${svg.week}<span>课表</span></div>
+        <div class="nitem">${svg.cal}<span>日历</span></div>
+        <div class="nitem today active"><span class="bubble">${svg.clock}</span><span class="lbl">今天</span></div>
+        <div class="nitem">${svg.clock}<span>闹钟</span></div>
+        <div class="nitem">${svg.gear}<span>设置</span></div>
+      </div>
+
+      ${cardOpen ? `
+      <div class="scrim"></div>
+      <div class="dialog">
+        <div class="dlg-kicker">MOMENT · 周二</div>
+        <div class="dlg-title">21:40 – 22:40</div>
+        <div class="dlg-sub">B 型日模板 · 第 8 周</div>
+        <div class="dlg-rule"></div>
+        <div class="dcard">
+          <div class="dhead">
+            <span class="dname">自由时间</span>
+            <span class="dbadge">机动</span>
+          </div>
+          <div class="dwhen">周二 · 「B 型日」模板</div>
+          <div class="drow"><span>时间</span><b>21:40 – 22:40 · 1 时</b></div>
+          <div class="drow"><span>规律</span><b>每周二都会过一遍，时刻跟着模板走</b></div>
+          <div class="drow"><span>备注</span><b>本周最稳定的一块，不设条件</b></div>
+          <div class="dbtn">设置闹钟</div>
+        </div>
+        <div class="dhint">点空白处收起</div>
+      </div>` : ""}
+    `;
+  }
+
+  function mount(phone, cardOpen){
+    phone.innerHTML = phoneHTML(cardOpen);
+  }
+
+  mount(document.getElementById("p1"), false);
+  mount(document.getElementById("p2"), true);
+</script>
+</body>
+</html>

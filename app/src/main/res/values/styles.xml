@@ -112,15 +112,63 @@
         <item name="android:includeFontPadding">false</item>
     </style>
 
+    <!--
+      大分区标题（数据 / 功能 / 主题 / 关于）。
+
+      设置页以前是一串平级的 SectionLabel —— 八个「小灰字」排在一起，
+      谁也说不清哪些是一类。加这一档之后是两层：
+        15sp 深色  = 大类（只有四个）
+        11sp 灰字  = 大类下面的小标题
+      字号取 15sp 是为了复用现有字阶里的「卡片标题」那一档，不新增字号。
+    -->
+    <style name="GroupLabel">
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
     <style name="CardTitle">
         <item name="android:textSize">15sp</item>
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
+    <!-- 日历页星期表头的一格。七格等分，所以宽 0dp + weight 1 -->
+    <style name="CalendarWeekday">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
     <style name="NavLabel" parent="TextAppearance.Material3.LabelMedium">
         <item name="android:textSize">11sp</item>
         <item name="android:letterSpacing">0.02</item>
+    </style>
+
+    <!--
+      设置页分类栏里的一项。
+      foreground 放水波纹、background 留给「选中态」——
+      两个属性分开，代码里切选中态时才不会把点击反馈一起抹掉。
+    -->
+    <style name="NavItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginHorizontal">8dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:background">@null</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingHorizontal">14dp</item>
+        <item name="android:paddingVertical">14dp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">15sp</item>
     </style>
 
     <style name="CourseCardWindowAnim">

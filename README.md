@@ -11,6 +11,7 @@
 - **应用名**：Time Machine
 - **包名**：`com.yxz.timetable`
 - **支持系统**：Android 8.0（API 26）及以上
+- **界面**：五个页签 —— 今天 / 课表 / 日历 / 闹钟 / 设置
 - **源码**：本目录
 - **数据格式标准**（v5）：[docs/数据格式标准.md](docs/数据格式标准.md)
   ｜ [仅课表示例](docs/example-schedule.json) ｜ [完整示例 v5（含日型配置与七套模板）](docs/example-full-v5.json)
@@ -30,10 +31,11 @@
 | 周课表网格，**周一到周日七列**（点有课的格子，弹出详情卡看时间/教室/周次） | 课表页 |
 | **周次点阵预览**（近五周 × 节数的小点阵，有课高亮；设置页可关） | 课表页周次卡片 |
 | **点格子看全学期**（**空格子也能点**）：这一格全学期都上过哪些课，一门课一张卡（时间 / 教室 / 老师 / 周次，标出本周那门）；整学期都没课的格子给的是一张「自习卡」 | 课表页 |
+| **日历页**：一个月一屏，日期下方带农历 / 节日，今天整格高亮，左右翻月；固定 6 行，翻月时高度不跳 | 日历页 |
 | **闹钟页**：上半自绘时钟，下半闹钟列表；新建 / 编辑 / 删除，指定周几（周一–周五全选显示成「工作日」，**七天全不选 = 只响一次**）；**选时间是拖圆盘**（24 格小时盘 / 60 格分钟盘，指针跟手，松手吸附）；**响铃时直接弹出 App 窗口并停在闹钟页**（顶部一条「正在响铃 · 停止 / 贪睡」） | 闹钟页 |
 | **同分钟的多个闹钟一起响、一起贪睡**；**错过提示**（该响却没响会标出来，也保留「上次响铃」记录） | 闹钟页 |
 | **跳过下一次**：长按闹钟行，只跳过一次，过后自动恢复（临时放假不用整条关掉） | 闹钟页 |
-| **渐强响铃 + 响铃时长可调**（1 / 3 / 5 / 10 分钟） | 设置 → 闹钟 |
+| **渐强响铃**（**前 3 秒**音量从 25% 升到满，之后不变）+ 响铃时长可调（1 / 3 / 5 / 10 分钟） | 设置 → 闹钟 |
 | **卡片上的「设置闹钟」**：**0** / 1 / 5 / 10 / 20 / 自定义六档提前量（0 = 到点提醒）。课程卡只在这门课真的上的那几周才响 | 课表页 → 点格子 → 卡片底部 |
 | **今日页的格子也能设闹钟**：按「这一格的标签」响 —— 每周对应那天、时间轴上还有这一格时才响，时刻跟着模板走；可勾「只在某种日型响」 | 今日页 → 点格子 → 卡片底部 |
 | **智能识别节假日**（默认开，每个闹钟可关）：法定放假日不响、补班日按工作日响 | 闹钟编辑页 |
@@ -41,6 +43,7 @@
 | 课表 + 学期 + **作息模板**的导入导出 | 设置 → 数据 |
 | **用 AI 生成数据**（含可直接复制的提示词） | 设置 → 数据 → 用 AI 生成 |
 | **主题颜色**：**八套**（蓝 / 青 / 绿 / 紫 / 玫红 / 橙 / 红 / 靛蓝），设置页是一个色板，点色块直接换；跟随深色模式 | 设置 → 外观 |
+| **PERSONA 3 模式**（彩蛋）：**五个页签整套换皮**（日历 / 今天 / 课表 / 闹钟 / 设置首页 + 底部导航 + 两种弹卡），默认关；和强调色是两条独立的开关 | 设置 → 外观 |
 | 锁屏显示开关（含系统设置引导） | 设置 → 锁屏显示 |
 | 手动暂停 1 小时 / 彻底关闭 | 通知栏按钮或 App 内开关 |
 
@@ -48,10 +51,11 @@
 
 ## 一、装到手机
 
-1. 把 `dist/Time-Machine-v2.0.1.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
+1. 把 `dist/Time-Machine-v2.1.5-persona3.apk` 传到手机（微信文件传输助手 / QQ / 数据线都行）。
 2. 用手机上的文件管理器点开它安装。
    系统会提示「不允许安装未知来源应用」——按提示允许一次即可（这是所有非应用商店安装的必经步骤）。
-3. 打开 App，第一屏是「今天」。把最下面那个 **常驻通知栏** 开关打开。
+3. 打开 App 直接进「今天」页（没有开屏动画）。
+   把最下面那个 **常驻通知栏** 开关打开。
 
 ---
 
@@ -407,8 +411,11 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 
 ## 八、已知限制
 
-- **没有节假日日历**。国庆、中秋、调休不会自动识别。遇到假期请在设置页手动停掉当天的课，
-  或者用手动周次功能。要彻底解决需要接一个节假日数据源。
+- **日历页只负责「看」**。月视图能翻月、看农历 / 节日、看今天，但还不能在格子里记日程 ——
+  日程仍然只来自课表和作息模板；日历上的「今天」也只跟着手机日期走，不能手动改。
+- **P3 的今天页是一屏，但时间线本身可以上下滑**。打开时当前格在正中，往上翻能看
+  早上那几格、往下翻能看到睡前那段，右边一条细滚动条表示还剩多少。
+  同理，课表页在 P3 下不滚动 —— 行高按屏高现算，13 节的课表也放得下。
 - **日型总数上限 7 种**（id 空间 "1"-"7"），其中 "7" 恒为休息日：
   可以改名、可以改星期映射，但不能发明第八种日型（比如「考试周」）。
   真需要的话要扩 `DayType` 枚举再发新版。
@@ -443,66 +450,90 @@ $env:GRADLE_USER_HOME = 'D:\AndroidSDK\gradle-home'
 ## 九、代码结构
 
 ```
-app/src/main/java/com/yxz/timetable/          共 43 个 .kt / 12,854 行
-├── MainActivity.kt            418 行 四个页面的容器（hide/show 保状态）；闹钟响时由它弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
-├── data/                        数据层（16 个）
+app/src/main/java/com/yxz/timetable/          共 64 个 .kt / 19,920 行
+├── MainActivity.kt            616 行 五个页面的容器（hide/show 保状态）；换主题；闹钟响时弹出窗口并停在闹钟页，响铃结束再把窗口还给锁屏
+├── data/                        数据层（18 个）★ = 核心
 │   ├── ScheduleFormat.kt        ★ 1564 行 数据格式标准 v5：解析、校验、生成、错误信息
-│   ├── Store.kt                  828 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日；读取失败会留痕）
-│   ├── Templates.kt              398 行 七套内置模板（含休息日）+ TemplateSet（含按日型查占位格）
-│   ├── TimelineEngine.kt        ★ 327 行 核心：把模板和课表合成一条时间轴
-│   ├── AiPrompt.kt               300 行 三段 AI 提示词（课表 / 模板 / 报错修复）
+│   ├── Store.kt                 ★ 845 行 本地存储（设置 / 课程 / 模板 / 日型名 / 闹钟 / 节假日 / P3 开关；读取失败会留痕）
 │   ├── Alarms.kt                ★ 550 行 闹钟纯逻辑：周几、工作日、节假日、只响一次、跳过下一次、课程闹钟、按格子响、明天的起床闹钟、下次触发
+│   ├── Templates.kt              398 行 七套内置模板（含休息日）+ TemplateSet（含按日型查占位格）
+│   ├── TimelineEngine.kt        ★ 356 行 核心：把模板和课表合成一条时间轴
+│   ├── AiPrompt.kt               300 行 三段 AI 提示词（课表 / 模板 / 报错修复）
 │   ├── TextDecode.kt             189 行 导入文本容错（BOM / 全角 / 粘贴杂字符）
 │   ├── FormatDocs.kt             184 行 格式说明与示例 JSON 的文本（供界面展示与复制）
 │   ├── DayTypePolicy.kt          176 行 日型配置（v5：types / weekdayMap / earlyType + 旧格式迁移）
 │   ├── Holidays.kt               145 行 内置 2026 节假日表（放假 33 天 + 补班 6 天）+ 手动覆盖
 │   ├── TemplateImpact.kt         127 行 「导入模板后何时生效」的判定
-│   ├── SlotCourses.kt           ★ 109 行 按「星期 + 节次」聚合全学期的课；空格子的自习卡也在这里定
+│   ├── SlotCourses.kt            109 行 按「星期 + 节次」聚合全学期的课；空格子的自习卡也在这里定
+│   ├── Lunar.kt                   84 行 农历：走系统自带的 ICU 中国历，不打包万年历、不联网
 │   ├── Slots.kt                   83 行 第 1-10 节作息表（节次时间的唯一来源）
 │   ├── Periods.kt                 82 行 periods（如 "442" / "445"）：网格行展开与晚课外推
+│   ├── Festivals.kt               77 行 公历 / 农历节日（日历页与 P3 日历的节日文字）
 │   ├── BuiltinCourses.kt          77 行 内置课表（含周次、单双周、任课老师）
 │   └── Models.kt                  73 行 Block / Course / Moment 数据结构（Moment 带 courseId，今日页卡片靠它找回课程）
-├── notify/                      通知与闹钟（7 个）
-│   ├── Notifier.kt               298 行 常驻通知（含系统倒计时技巧）
+├── notify/                      通知与闹钟（8 个）
+│   ├── AlarmRinger.kt           ★ 348 行 响铃：自己放音、wakelock、音频焦点、自动停、通知带停止 / 贪睡；停止时通知窗口收尾
+│   ├── Notifier.kt               316 行 常驻通知（含系统倒计时技巧）
 │   ├── AlarmScheduler.kt        ★ 290 行 核心：两条链 —— 通知刷新点 + 用户闹钟（setAlarmClock）；记录「该响的那次」
-│   ├── AlarmRinger.kt           ★ 326 行 响铃：自己放音、渐强、wakelock、音频焦点、自动停、通知带停止 / 贪睡；停止时通知窗口收尾
 │   ├── ReminderNotifier.kt       155 行 课前提醒（会响的独立渠道）
 │   ├── AlarmReceiver.kt          118 行 到点入口（通知链 + 闹钟链；只响一次的响过就关掉）
 │   ├── ActionReceiver.kt          73 行 通知栏按钮（暂停 / 关闭 / 停止闹钟 / 贪睡）
-│   └── BootReceiver.kt            51 行 重启 / 改时间 / 换时区后重建两条链
-└── ui/                          界面（17 个）
-    ├── WeekFragment.kt           743 行 周课表网格 + 当前日高亮 + 周次卡片点阵（空格子可点）
-    ├── SettingsFragment.kt       838 行 设置、权限自检（含全屏响铃）、导入导出、闹钟默认铃声、响铃时长、节假日、主题色板
-    ├── ImportExport.kt           394 行 导入导出流程（预览、替换 / 合并、剪贴板）
-    ├── TodayFragment.kt          441 行 今日时间线（每格可点）+ 次日预告 + 明天的起床闹钟
-    ├── CardSheet.kt              323 行 两个页面共用的卡片面板：布局绑定、弹出 / 收起动画、提前量选择器
-    ├── SlotCoursesCard.kt        306 行 课表页点一格弹出的面板（一门一张卡；含「设置闹钟」六档提前量）
-    ├── MomentCard.kt             294 行 今日页点一格弹出的卡片（这一格是什么 + 按格子设闹钟）
-    ├── AlarmEditor.kt            426 行 新建 / 编辑闹钟（圆盘选时间、周几、工作日 / 只响一次预设、铃声、节假日开关、绑定类闹钟的提前量）
-    ├── TimeDialView.kt           379 行 自绘表盘：外圈 24 格小时（60 格分钟）可选、里圈 12 格刻度；拖动时指针连续跟手，松手才吸附
-    ├── TimeDialDialog.kt         118 行 两步选时间：小时盘 →「确定」→ 分钟盘 →「确定」，切换时整盘缩放淡入
-    ├── GenerateGuideActivity.kt  250 行 「用 AI 生成数据」向导页
-    ├── AlarmFragment.kt          523 行 闹钟页（时钟 + 列表 + 新建；响铃时的停止 / 贪睡 / 解锁；错过 / 权限提示；长按跳过下一次）
-    ├── PermissionGuide.kt        225 行 权限 / 电池 / 自启动 / 全屏通知引导（含直达通知渠道页）
-    ├── HolidayEditor.kt          176 行 手动维护放假 / 补班日
-    ├── ClockView.kt              140 行 自绘时钟（只在页面可见时每秒重画）
-    ├── WeekDotsView.kt           126 行 自绘周次点阵（近五周 × 节数，有课高亮）
-    ├── AppTheme.kt               132 行 主题配色（八套：蓝青绿紫玫红橙红靛蓝，跟随深色模式）
-    ├── SoundPicker.kt             80 行 铃声选择与试听（系统铃声选择器）
-    └── UiUtil.kt                  44 行 界面小工具
+│   ├── BootReceiver.kt            51 行 重启 / 改时间 / 换时区后重建两条链
+│   └── AlarmVolume.kt             49 行 渐强曲线：前 3 秒从 25% 升到 100%，之后保持不变（纯计算，可单测）
+├── ui/                          界面（23 个）
+│   ├── SettingsFragment.kt      1034 行 设置、权限自检（含全屏响铃）、导入导出、闹钟默认铃声、响铃时长、节假日、主题色板、P3 开关 + 分类菜单
+│   ├── AlarmFragment.kt          833 行 闹钟页（时钟 + 列表 + 新建；响铃时的停止 / 贪睡 / 解锁；错过提示；长按跳过下一次；P3 皮肤）
+│   ├── WeekFragment.kt          ★ 867 行 周课表网格 + 当前日高亮 + 周次卡片点阵（空格子可点）；P3 模式下换成 PersonaWeekView
+│   ├── TodayFragment.kt          600 行 今日时间线（每格可点）+ 次日预告 + 明天的起床闹钟；P3 模式下换成 PersonaTodayView
+│   ├── AlarmEditor.kt            431 行 新建 / 编辑闹钟（圆盘选时间、周几、工作日 / 只响一次预设、铃声、节假日开关、绑定类闹钟的提前量）
+│   ├── ImportExport.kt           393 行 导入导出流程（预览、替换 / 合并、剪贴板）
+│   ├── TimeDialView.kt           379 行 自绘表盘：外圈 24 格小时（60 格分钟）可选、里圈 12 格刻度；拖动时指针连续跟手，松手才吸附
+│   ├── CardSheet.kt              342 行 两个页面共用的卡片面板：布局绑定、弹出 / 收起动画（圆心可以是 View，也可以是屏幕矩形）、提前量选择器
+│   ├── SlotCoursesCard.kt        316 行 课表页点一格弹出的面板（一门一张卡；含「设置闹钟」六档提前量）
+│   ├── MomentCard.kt             305 行 今日页点一格弹出的卡片（这一格是什么 + 按格子设闹钟）
+│   ├── CalendarFragment.kt       226 行 日历页：自己拼的 6×7 网格；P3 模式下换成 PersonaCalendarView
+│   ├── PermissionGuide.kt        218 行 权限 / 电池 / 自启动 / 全屏通知引导（含直达通知渠道页）
+│   ├── GenerateGuideActivity.kt  210 行 「用 AI 生成数据」向导页
+│   ├── HolidayEditor.kt          176 行 手动维护放假 / 补班日
+│   ├── ClockView.kt              140 行 自绘时钟（只在页面可见时每秒重画）
+│   ├── WeekGrid.kt               138 行 「哪几格合成一块」+ 近五周点阵的数据：默认外观与 P3 外观共用一份（有单测）
+│   ├── AppTheme.kt               132 行 主题配色（八套：蓝青绿紫玫红橙红靛蓝，跟随深色模式）
+│   ├── WeekDotsView.kt           126 行 自绘周次点阵（近五周 × 节数，有课高亮）
+│   ├── TimeDialDialog.kt         118 行 两步选时间：小时盘 →「确定」→ 分钟盘 →「确定」，切换时整盘缩放淡入
+│   ├── SoundPicker.kt             80 行 铃声选择与试听（系统铃声选择器）
+│   ├── SwipeToOpenLayout.kt       64 行 卡片下滑关闭的手势容器
+│   ├── CardDialogBuilder.kt       53 行 统一圆角对话框壳
+│   └── UiUtil.kt                  44 行 界面小工具
+└── ui/persona/                  P3 换皮层（14 个，只在 p3Mode 下挂载）
+    ├── PersonaTodayView.kt      1134 行 今天页整页自绘：蓝 HUD（日期 / 三角旗 / 此刻）+ 斜口白纸（色带 / 此刻卡 / 时间线 / 明天）
+    ├── PersonaCalendarView.kt    740 行 日历整页自绘：深蓝水彩、白色弧面、巨号月份、撕纸「今天」
+    ├── PersonaWeekView.kt        717 行 课表页整页自绘：巨号 WEEK、幽灵周次、今天光柱、玻璃课块、近五周密度条
+    ├── PersonaDateHud.kt         485 行 旧的今天页 HUD（v3 起不再挂载；phaseOf / moonLitFraction 仍被新页复用）
+    ├── PersonaPageView.kt        471 行 今天 / 课表两页共用的底座：调色板、k 比例、蓝底布纹、描边标题、混色行、折行
+    ├── PersonaAlarmStyle.kt      412 行 闹钟页的 P3 皮肤：对话框卡、斜切按钮、标题条、配色表
+    ├── PersonaMenuView.kt        208 行 设置首页的 P3 菜单：01–04 编号 + 中文分类名 + 英文小标签
+    ├── PersonaSettingsSkin.kt    163 行 设置分类页的皮肤：卡片 / 勾选 / 开关 / 按钮 / 文字（按颜色与 ConstantState 认，不认 id）
+    ├── PersonaClockView.kt       301 行 P3 表盘（双圈、罗马数字、尖刺、纺锤指针；响铃转绿）
+    ├── PersonaDeepBlueBackground.kt 181 行 默认外观下半页的斜马赛克深蓝底
+    ├── PersonaCardSkin.kt        138 行 点格弹卡的 P3 皮肤（黑卡 + 青字 + 描边按钮），字段与绑定逻辑不动
+    ├── PersonaTodayModel.kt      117 行 今天页的纯逻辑：色带分段、时间线滚动位置、格子状态、时段配色（有单测）
+    ├── PersonaTodayBackground.kt 140 行 旧今天页的整页背景（v3 起不再用）
+    └── PersonaNavBubble.kt        53 行 底部导航的「底板 + 今天那颗圆」
 
-app/src/main/res/                共 40 个资源文件
-├── layout/    11 个 activity_main、fragment_{today,week,alarm,settings}、activity_generate_guide、
-│                  item_timeline、item_course_check、item_course_card、dialog_slot_courses、
-│                  dialog_alarm_edit
-├── drawable/  17 个 bg_* 9（卡片 / 格子 / 导航 / 主题色块…）+ ic_* 8（四个 tab / 箭头 / 通知 / 图标前景）
+app/src/main/res/                共 58 个资源文件
+├── layout/    13 个 activity_main、fragment_{today,week,calendar,alarm,settings}、
+│                  activity_generate_guide、item_{timeline,course_check,course_card}、
+│                  dialog_{slot_courses,alarm_edit,time_dial}
+├── drawable/  31 个 bg_* 21（卡片 / 格子 / 闹钟 / 导航 / 主题色块…）+ ic_* 10（五个 tab / 日历 / 箭头 / 通知 / 图标前景）
+├── drawable-nodpi/ 2 个 alarm_page_bg.jpg（闹钟 / 日历 / 今天页共用的 P3 手绘天空）、
+│                  p3_today_bg.jpg（旧今天页背景，v3 起未使用）
 ├── anim/       2 个 课程卡片淡入 / 淡出
-├── menu/       1 个 main_menu（四个 tab）
-├── values/     5 个 attrs / colors / styles / strings / themes
+├── menu/       1 个 main_menu（五个 tab）
+├── values/     6 个 attrs / colors / dimens / styles / strings / themes
 ├── values-night/  colors.xml（深色模式配色覆盖）
 └── mipmap-anydpi-v26/  ic_launcher.xml、ic_launcher_round.xml（自适应图标）
 
-app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 405 个 @Test / 5,812 行，全跑在电脑 JVM 上
+app/src/test/java/com/yxz/timetable/          共 23 个测试类 / 446 个 @Test / 6,371 行，全跑在电脑 JVM 上
 ├── data/   16 个类 / 390 条
 │   ├── ScheduleFormatTest.kt       114  格式解析、校验、生成、往返一致、字段顺序、teacher
 │   ├── DayTypePolicyTest.kt         47  日型三规则 + v4 迁移逐日一致
@@ -520,23 +551,30 @@ app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 405 个 @Tes
 │   ├── DayTypeDisplayTest.kt         9  界面日型标签不说假话
 │   ├── DocsExampleTest.kt            5  docs/ 示例文件永远可解析
 │   └── StoreCourseJsonTest.kt        4  Store 的本地 JSON 必须覆盖 Course / Alarm 的每个字段
-└── ui/     2 个类 / 15 个
-    ├── AppThemeTest.kt              13  主题配色取值 + 八个染色槽位必须每套都设满
-    └── TimelineRowLayoutTest.kt      2  时间轴行布局结构（地点单独一行）
+├── ui/     4 个类 / 35 个
+│   ├── AppThemeTest.kt              13  主题配色取值 + 八个染色槽位必须每套都设满
+│   ├── WeekGridTest.kt              13  哪几格合成一块（区间重叠命中、相邻同课合并、停课/别周不出现、首尾相接铺满整列）+ 近五周点阵
+│   ├── DialMathTest.kt               7  圆盘选时间的角度换算、吸附、12 点接缝
+│   └── TimelineRowLayoutTest.kt      2  时间轴行布局结构（地点单独一行）
+├── ui/persona/ 2 个类 / 15 个
+│   ├── PersonaTodayModelTest.kt     13  时间线露出哪几行（当前格在倒数第二行、首尾不越界）+ 24 小时色带（铺满 1440、裁剪、配色不撞）
+│   └── PersonaDateHudTest.kt         2  HUD 的时段文案边界与月相受照比例
+└── notify/ 1 个类 / 6 个
+    └── AlarmVolumeRampTest.kt        6  渐强曲线：前 3 秒升到满音量，之后保持不变
 ```
 
-共 **397 个单元测试**（18 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
+共 **446 个单元测试**（23 个测试类），全部跑在电脑上，几秒钟出结果，不需要手机。
 
 ### 测试覆盖了什么
 
-18 个测试类各守一块，数字是 `@Test` 个数：
+23 个测试类各守一块，数字是 `@Test` 个数：
 
 | 测试类 | 个数 | 守住什么 |
 |---|---|---|
 | `data/ScheduleFormatTest` | 114 | 周次语法的全部写法 + 全部错误路径（超范围、颠倒、多余逗号、步长非数字）；「格式化 → 再解析」往返一致；解析错误信息是否指明「第几门课、哪个字段、该改成什么」；冲突检测（周次重叠报警告、**不重叠不报警告**）；内置课表导出再导入完全一致；课程名含引号/反斜杠的转义；导出字段顺序固定 |
 | `data/DayTypePolicyTest` | 47 | 日型判定的三条规则（休息日 → 早八层 → 星期映射，含"停课自动退化"）；恒等配置必须与 v4 旧规则逐日一致（迁移金测试） |
 | `data/TimelineEngineTest` | 42 | 周次计算（第 1 / 2 / 17 周的起始日）；课表覆盖模板、连堂合并、单双周切换、仅某周上的课；**整学期 19 周 × 7 天 = 133 天，每天的时间轴必须首尾相接、无空洞、无重叠**；人为构造的"跨午餐的怪课"，验证裁剪逻辑不会错乱 |
-| `data/AlarmsTest` | 33 | 周几 / 节假日 / 补班日 / 只响一次 / 跳过下一次 / 课表替换后课程闹钟按自然键重映射 / 课程闹钟只在有课周次响 |
+| `data/AlarmsTest` | 50 | 周几 / 节假日 / 补班日 / 只响一次 / 跳过下一次 / 课表替换后课程闹钟按自然键重映射 / 课程闹钟只在有课周次响 / 按格子响 / 明天的起床闹钟 |
 | `data/SlotCoursesTest` | 19 | 「点一格 → 这一格全学期的课」：命中判据是**区间重叠**（不是起点相等）、同一格跨周次的多门课、同一门课被拆成多条记录时合并、停课的课仍然列出、排序稳定 |
 | `data/FormatTextTest` | 16 | 所有「用户会照着做」的格式文本，不会和真实格式脱节 |
 | `data/TextDecodeTest` | 16 | 导入文本的容错（BOM、全角、粘贴带进来的杂字符） |
@@ -549,8 +587,13 @@ app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 405 个 @Tes
 | `data/TemplatePlaceholderTest` | 10 | 内置模板的占位格时刻对齐内置作息表 `Slots`、该有的都要有；按**日型**查覆盖某节次的占位格（自习卡的文案来源，周末/休息日如实返回 null） |
 | `data/DocsExampleTest` | 5 | `docs/` 里那两份示例文件必须永远能被 App 解析成功 |
 | `data/StoreCourseJsonTest` | 4 | Store 的本地 JSON 必须覆盖 Course / Alarm 的每个字段 |
-| `ui/AppThemeTest` | 12 | 主题配色的取值（蓝 / 绿两套） |
+| `ui/AppThemeTest` | 13 | 主题配色的取值（八套）+ 八个染色槽位必须每套都设满 |
+| `ui/WeekGridTest` | 13 | 课表网格的合并规则（**两套外观共用一份实现**）：连堂课在它跨过的每一行都命中、起点不在行首的课不会消失、名称教室周次都相同的两条记录合并成一整块、停课和别的周不出现、块首尾相接铺满整列、节数结构变了块跟着行走；另加近五周点阵的占用表（停课 / 别周 / 越界节次） |
+| `ui/persona/PersonaTodayModelTest` | 13 | 时间线滚动：内容装得下时不许滚、初始位置把当前格摆在正中、深夜的最后一格和凌晨的第一格都夹在 `[0, max]` 内、每一格都有合法初始位置；格子状态（左闭右开：整点属于新格）、当前格下标（都不在区间时退回最后一格）；24 小时色带：铺满 1440 分钟、首尾相接、跨天/倒挂的时段被裁掉、八种时段配色两两不同 |
+| `ui/DialMathTest` | 7 | 圆盘的角度换算（0° 在 12 点、顺时针）、跨 12 点接缝、吸附走最短路、24 / 60 格往返一致 |
+| `ui/persona/PersonaDateHudTest` | 2 | 时段文案的边界（凌晨不是「上午」）；月相受照比例跟着农历日走（初一朔、十五望） |
 | `ui/TimelineRowLayoutTest` | 2 | 时间轴行的布局结构：**地点必须在标题下方单独一行** |
+| `notify/AlarmVolumeRampTest` | 6 | 渐强曲线的行为约定：起步不是静音、3 秒内一路上涨、**3 秒时升满、之后不再变**、越界时间不越界 |
 
 **其中最有价值的是那两条：**
 
@@ -561,3 +604,34 @@ app/src/test/java/com/yxz/timetable/          共 18 个测试类 / 405 个 @Tes
 > 另外：`ScheduleFormat.kt` 的输出是手写序列化，不是 `JSONObject.toString(2)`。
 > 原因是后者在 Android 和标准 JDK 上字段顺序不同（`LinkedHashMap` vs `HashMap`），
 > 会导致手机导出的文件和文档里的例子长得不一样。踩过这个坑，所以加了一条测试守着它。
+
+---
+
+## 十、Persona 3 彩蛋（P3 模式）
+
+设置 → 外观 → **PERSONA 3 模式**。默认关；打开会 `recreate()` 整个 Activity，
+和换强调色走同一条路 —— 因为它换的不是几个色值，而是整页的画法。
+
+| 页面 | 状态 |
+|---|---|
+| 日历 | ✅ 整页自绘（深蓝水彩 / 白色弧面 / 巨号月份 / 撕纸「今天」）；蓝底和闹钟页是同一张手绘天空（[真机截图](p3web/android-calendar-p3.png)） |
+| 今天 | ✅ **v3 整页重画**：上半屏蓝 HUD（**和闹钟页同一张手绘天空**，日期 / 三角旗 / 此刻 / 日型），下半屏斜口白纸（24 小时色带 / 此刻卡 / 时间线 / 明天）（[真机截图](p3web/android-today-p3.png)） |
+| 课表 | ✅ **v2 整页重画**：巨号 WEEK + 幽灵周次、两个键帽翻周、青色今天光柱、玻璃课块、底部近五周密度条（[真机截图](p3web/android-week-p3.png)） |
+| 闹钟 | ✅ v4 已落地：首屏只有表盘 + 数字钟，上滑白纸；「此刻」卡用旧闹钟记录卡三层背景；矩形列表 / 新按钮 / 低对比响铃（[实现稿](p3web/alarm-p3-v4-list.png)） |
+| 设置 | ✅ 首页是 P3 主菜单（01–04 编号 + 中文分类名 + 英文小标签），四个分类页整套换皮（深藏青直角卡片 / 青色勾选与开关 / 描边按钮），见 [首页](p3web/android-settings-home.png) · [数据页](p3web/android-settings-data.png) |
+| 底部导航 | ✅ 白纸栏 + 栏顶墨线 + 窄体粗斜标签；选中只靠颜色（墨蓝），没有其它装饰 |
+| 点格弹卡 | ✅ 黑卡 + 青字 + 描边按钮（[课表页](p3web/android-week-p3-card.png) / [今天页](p3web/android-today-p3-card.png)） |
+
+几条和「主题颜色」不同的规矩：
+
+- **P3 模式下主题色不生效**。P3 用固定的蓝 / 红 / 青，色板选了也不会变；
+  两个开关互相独立，关掉 P3 就回到你选的那套强调色。
+- 皮肤是**运行时刷到控件上**的，不进布局 XML。所以换页、重建、`onResume`
+  都要重新刷一遍（P3 的页面里都能看到这条注释），哪天漏了一处，表现就是
+  「P3 自己变回原样，再开一次又好了」。
+- 整页自绘的尺寸都乘一个全局比例 `k = min(宽/393dp, 高/800dp)`，夹在
+  `[0.78, 1.35]`，再配几条硬约束（行高、白纸下限、大字空间），换屏幕不散架。
+
+设计稿与实现的对照、每个元素的坐标来源、竖屏适配的取舍，见
+**[docs/persona3/README.md](docs/persona3/README.md)**；网页先行的 HUD 临摹在
+**[p3web/](p3web/)**（改版式先改那边，比反复装 APK 快）。

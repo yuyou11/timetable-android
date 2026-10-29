@@ -34,6 +34,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Timetable">
 
+        <!-- 主界面。桌面点图标直接进这里 —— 开屏动画已经去掉，
+             没有中间那一层了（之前是 SplashActivity 播 1.6 秒再进来） -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  闹钟页 P3 常驻背景：蓝色渐变打底 + 手绘天空图（alarm_page_bg，居中裁到 9:16 后 fill）
+  + 从上到下的深蓝压暗（顶部那块亮青上白字会糊，压到 55% 才看得清）。
+  解码失败（图被裁掉之类）时至少还有渐变，背景图是锦上添花。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#1EA7FE"
+                android:endColor="#0524B1" />
+        </shape>
+    </item>
+    <item>
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/alarm_page_bg" />
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#7304106B"
+                android:endColor="#00000000" />
+        </shape>
+    </item>
+</layer-list>

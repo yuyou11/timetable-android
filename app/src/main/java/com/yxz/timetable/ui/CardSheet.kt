@@ -2,6 +2,7 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.RectF
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -142,13 +143,31 @@ internal fun Dialog.applyCardWindow() {
  * 算 pivot 两边都得用 getLocationOnScreen —— 屏幕坐标才是同一个坐标系。
  */
 internal fun popInFrom(card: View, anchor: View) {
-    val cardLoc = IntArray(2)
-    card.getLocationOnScreen(cardLoc)
     val anchorLoc = IntArray(2)
     anchor.getLocationOnScreen(anchorLoc)
-    card.pivotX = (anchorLoc[0] + anchor.width / 2f - cardLoc[0])
+    popInFrom(
+        card,
+        RectF(
+            anchorLoc[0].toFloat(), anchorLoc[1].toFloat(),
+            (anchorLoc[0] + anchor.width).toFloat(),
+            (anchorLoc[1] + anchor.height).toFloat()
+        )
+    )
+}
+
+/**
+ * 同上，但圆心直接给**屏幕坐标**下的矩形。
+ *
+ * 整页自绘的页面（P3 的课表 / 今天页）没有「每个格子一个 View」——
+ * 命中靠一张手算的矩形表，没有 View 可以传进来。硬塞一个看不见的 View 去量位置，
+ * 反而要依赖布局时机，比直接给坐标脆。
+ */
+internal fun popInFrom(card: View, pivotRect: RectF) {
+    val cardLoc = IntArray(2)
+    card.getLocationOnScreen(cardLoc)
+    card.pivotX = (pivotRect.centerX() - cardLoc[0])
         .coerceIn(0f, card.width.toFloat())
-    card.pivotY = (anchorLoc[1] + anchor.height / 2f - cardLoc[1])
+    card.pivotY = (pivotRect.centerY() - cardLoc[1])
         .coerceIn(0f, card.height.toFloat())
     card.animate()
         .scaleX(1f).scaleY(1f).alpha(1f)

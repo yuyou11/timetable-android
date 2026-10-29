@@ -1,99 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:paddingHorizontal="10dp"
-    android:paddingTop="12dp"
-    android:paddingBottom="14dp">
+<!--
+  课表页。两套外观叠在同一个 Fragment 里：
 
-    <!-- 周次选择器 + 近五周点阵预览 -->
+  ┌ normalWeek  ← 默认外观（周次卡片 + 点阵 + 网格，一行行 LinearLayout 拼的）
+  └ p3Host      ← Persona 3 彩蛋（整页自绘，见 PersonaWeekView）
+
+  为什么用 FrameLayout 叠着而不是拆成两个 Fragment：周次偏移、课程数据、
+  点格弹卡那套状态都在 WeekFragment 里，换壳不应该把状态也换掉。两套外观
+  按 Store.p3Mode 二选一显示，另一套 GONE（GONE 的不会测量、不会绘制）。
+
+  这一层和日历页的 fragment_calendar.xml 是同一个结构 —— 五个页签里
+  只有这两页有「两套完全不同的画法」。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
     <LinearLayout
+        android:id="@+id/normalWeek"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_card"
+        android:layout_height="match_parent"
         android:orientation="vertical"
         android:paddingHorizontal="10dp"
-        android:paddingVertical="8dp">
+        android:paddingTop="12dp"
+        android:paddingBottom="14dp">
 
+        <!-- 周次选择器 + 近五周点阵预览 -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageButton
-                android:id="@+id/btnPrevWeek"
-                style="@style/NavIconButton"
-                android:contentDescription="上一周"
-                android:src="@drawable/ic_chevron_left" />
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/tvWeek"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/text_primary"
-                    android:textSize="20sp" />
-
-                <TextView
-                    android:id="@+id/tvWeekRange"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
-                    android:includeFontPadding="false"
-                    android:letterSpacing="0.08"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <ImageButton
-                android:id="@+id/btnNextWeek"
-                style="@style/NavIconButton"
-                android:contentDescription="下一周"
-                android:src="@drawable/ic_chevron_right" />
-        </LinearLayout>
-
-        <!-- 近五周点阵：当前浏览的周 ±2，7 天 × 节数，有课 = 强调色、无课 = 灰 -->
-        <com.yxz.timetable.ui.WeekDotsView
-            android:id="@+id/weekDots"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="10dp"
-            android:contentDescription="近五周课程密度预览" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/tvDayTypeHint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:lineSpacingExtra="3dp"
-        android:paddingHorizontal="4dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="11sp" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-        android:layout_weight="1">
-
-        <LinearLayout
-            android:id="@+id/gridContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="3dp" />
-    </ScrollView>
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp">
 
-</LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnPrevWeek"
+                    style="@style/NavIconButton"
+                    android:contentDescription="上一周"
+                    android:src="@drawable/ic_chevron_left" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvWeek"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp" />
+
+                    <TextView
+                        android:id="@+id/tvWeekRange"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.08"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/btnNextWeek"
+                    style="@style/NavIconButton"
+                    android:contentDescription="下一周"
+                    android:src="@drawable/ic_chevron_right" />
+            </LinearLayout>
+
+            <!-- 近五周点阵：当前浏览的周 ±2，7 天 × 节数，有课 = 强调色、无课 = 灰 -->
+            <com.yxz.timetable.ui.WeekDotsView
+                android:id="@+id/weekDots"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="10dp"
+                android:contentDescription="近五周课程密度预览" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvDayTypeHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:lineSpacingExtra="3dp"
+            android:paddingHorizontal="4dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:id="@+id/gridContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="3dp" />
+        </ScrollView>
+
+    </LinearLayout>
+
+    <!-- P3 彩蛋的宿主：运行时塞一个 PersonaWeekView 进来。
+         底色和那套蓝一致，万一首次绘制前有一帧空白也不会闪白 -->
+    <FrameLayout
+        android:id="@+id/p3Host"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF0524B1"
+        android:visibility="gone" />
+
+</FrameLayout>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>P3R · 今天 HUD（网页复刻）</title>
+<!--
+  复刻对象：docs/persona3/ref/今天.png
+  原图是 586×231 的视频帧，上边 48px 是黑边；这里画的是去掉黑边后的 586×183 画面区，
+  所有坐标 = 原图坐标 y-48，单位就是原图像素。
+-->
+<style>
+  html, body { margin: 0; background: #05080f; }
+  svg.hud { display: block; width: 586px; height: 183px; }
+
+  .weekday {
+    font-family: Impact, "Arial Black", sans-serif;
+    font-size: 150px;
+    letter-spacing: 0.01em;
+    fill: #162066;
+  }
+  .date {
+    font-family: "Arial Black", Impact, sans-serif;
+    font-size: 74.3px;
+    fill: #fff;
+  }
+  .phase {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-weight: 700;
+    font-size: 32px;
+    letter-spacing: 12px;
+    fill: #12e9f5;
+    stroke: #040e27;
+    stroke-width: 4;
+    paint-order: stroke fill;
+    stroke-linejoin: round;
+  }
+</style>
+</head>
+<body>
+<svg class="hud" viewBox="0 0 586 183" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a1030"/>
+      <stop offset="0.55" stop-color="#101a45"/>
+      <stop offset="1" stop-color="#182354"/>
+    </linearGradient>
+
+    <!-- 带子的「亮底」：半透明，所以底下的字还看得见 -->
+    <linearGradient id="bandLit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.00" stop-color="#63b4ff"/>
+      <stop offset="0.38" stop-color="#1c7bf2"/>
+      <stop offset="1.00" stop-color="#0b46cc"/>
+    </linearGradient>
+
+    <!-- 光带的边界：下沿是一条水平直线、带一点模糊；左边也是糊出去的。
+         上沿不裁 —— 那是圆的弧顶自己形成的。 -->
+    <linearGradient id="vEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.74" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.86" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <!-- 左边不是一条竖直的软边：淡化方向是斜的，边界从左上往右下斜过去，
+         所以上边收得靠右、下边伸得更左。 -->
+    <!-- 原图左边那条边量下来几乎是竖直的：y=45..99 时"蓝色的起点"都在 x=64~71，
+         所以这里就是一条 40→90 的短过渡，只是偏糊。 -->
+    <radialGradient id="sceneLight" cx="50%" cy="50%" r="50%">
+      <stop offset="0.00" stop-color="#9fdcff" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#5fb6ff" stop-opacity="0.55"/>
+      <stop offset="1.00" stop-color="#2f6fff" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 左边：斜着糊出去的短过渡。方向 (58,36)→(84,51)，等值线是斜的，
+         所以边界从左上斜到右下，宽度约 25px。 -->
+    <!-- 左边那条软边：方向取 W 的左沿（实测从 (56,10) 到 (66,90)，斜率 0.125），
+         渐变垂直于它，所以等值线和 W 的左边平行；
+         从 W 左沿再往外 60px 慢慢变透明。 -->
+    <linearGradient id="hEdge" gradientUnits="userSpaceOnUse" x1="37" y1="53" x2="61" y2="50">
+      <stop offset="0.00" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1.00" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="bandMask">
+      <rect x="0" y="0" width="586" height="183" fill="url(#hEdge)"/>
+    </mask>
+    <mask id="bandMaskV">
+      <rect x="0" y="0" width="586" height="183" fill="url(#vEdge)"/>
+    </mask>
+
+    <filter id="moonGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="moonEdge" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+
+    <!-- 三角标记的剪切区：只保留「三角形右边缘的左侧」 -->
+    <clipPath id="markerClip">
+      <polygon points="-20,0 406,46 375,93 -20,183"/>
+    </clipPath>
+
+    <!-- 月亮暗面：一个同心圆，左边被一块椭圆的左弧切掉 -->
+    <mask id="moonMask">
+      <rect x="0" y="0" width="586" height="183" fill="#fff"/>
+      <rect x="-100" y="-100" width="586" height="383" fill="#000"/>
+      <ellipse cx="486" cy="86.5" rx="24" ry="40" fill="#fff"/>
+    </mask>
+
+    <radialGradient id="moonY" cx="40%" cy="34%" r="95%">
+      <stop offset="0"    stop-color="#ffd52e"/>
+      <stop offset="0.55" stop-color="#f5ca00"/>
+      <stop offset="1"    stop-color="#e7b800"/>
+    </radialGradient>
+    <radialGradient id="moonDark" cx="45%" cy="40%" r="95%">
+      <stop offset="0"   stop-color="#2a2b35"/>
+      <stop offset="0.7" stop-color="#1f202a"/>
+      <stop offset="1"   stop-color="#191a23"/>
+    </radialGradient>
+    <radialGradient id="moonBlue" cx="18%" cy="30%" r="70%">
+      <stop offset="0"   stop-color="#2f8dff" stop-opacity="0.14"/>
+      <stop offset="0.6" stop-color="#2f8dff" stop-opacity="0.05"/>
+      <stop offset="1"   stop-color="#2f8dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 底：夜蓝 -->
+  <rect width="586" height="183" fill="url(#night)"/>
+
+  <!-- WEEKDAY：压在光带底下，上缘被画面切掉；它本身是实的、不斜 -->
+  <text class="weekday" x="52" y="92">WEEKDAY</text>
+
+  <!-- 潮汐水波纹：6 个同样颜色、同样透明度的正圆直接叠。
+       叠得越多，那块越蓝越实；压在 WEEKDAY 上时字被盖住一部分，透出深色的字影。 -->
+  <g mask="url(#bandMask)">
+    <g mask="url(#bandMaskV)">
+      <circle cx="-30" cy="480" r="420" fill="#1470ff" fill-opacity="0.55"/>
+      <circle cx="150" cy="450" r="400" fill="#1470ff" fill-opacity="0.55"/>
+      <circle cx="320" cy="505" r="440" fill="#1470ff" fill-opacity="0.55"/>
+      <circle cx="470" cy="455" r="410" fill="#1470ff" fill-opacity="0.55"/>
+      <circle cx="630" cy="492" r="430" fill="#1470ff" fill-opacity="0.55"/>
+      <circle cx="240" cy="435" r="380" fill="#1470ff" fill-opacity="0.55"/>
+    </g>
+  </g>
+
+  <!-- 三角标记：三角形 344..406 × 46..93。
+       三条白杠左边探到三角形外面（原图如此），右边被三角形右边缘切住。 -->
+  <polygon points="344,46 406,46 375,93" fill="#0a1026"/>
+  <g clip-path="url(#markerClip)">
+    <rect x="357" y="49" width="31" height="8" fill="#fff"/>
+    <rect x="359" y="62" width="27" height="8" fill="#fff"/>
+    <rect x="355" y="76" width="32" height="8" fill="#fff"/>
+  </g>
+
+  <!-- 月亮：右边是和黄盘同心的圆（留细黄边），左边是一个更大的椭圆把它的左边咬掉，
+       两段弧相交的地方留下明显的角。 -->
+  <circle cx="481.5" cy="86.5" r="43" fill="#f5ca00" opacity="0.22" filter="url(#moonGlow)"/>
+  <circle cx="481.5" cy="86.5" r="39.5" fill="url(#moonY)"/>
+  <circle cx="481.5" cy="86.5" r="39.5" fill="url(#moonBlue)"/>
+  <g mask="url(#moonMask)">
+    <circle cx="481.5" cy="86.5" r="36" fill="url(#moonDark)" filter="url(#moonEdge)"/>
+  </g>
+
+  <!-- 日期 -->
+  <g transform="translate(0,93) skewX(-8) translate(0,-93)">
+    <text class="date" x="192" y="93" textLength="142" lengthAdjust="spacingAndGlyphs">4/22</text>
+  </g>
+
+  <!-- 时段 -->
+  <text class="phase" x="318" y="126">夜晚</text>
+</svg>
+</body>
+</html>

@@ -34,8 +34,11 @@ android {
         //
         // 只改 versionName 不改 versionCode 是个很常见的坑：
         // 装上去看着是「新版本」，但系统层面新旧关系没变。
-        versionCode = 32
-        versionName = "2.0.1"
+        versionCode = 39
+        // 带后缀：这一版是「五个页签整套 P3 换皮」的收口版（今天页 v3 / 课表页 v2 /
+        // 弹卡皮肤 / 日历与今天共用闹钟页那张天空），留个能认出来的名字，
+        // 方便在「设置 → 关于」里一眼看出手机上装的是哪次构建。正式发版前改回纯版本号。
+        versionName = "2.1.5-persona3"
         // 只有中文界面。以前这里还写着 "en"，但工程里从来没有 values-en ——
         // 那等于对英文用户做了一个做不到的承诺，还会把依赖库的英文资源打进来。
         resourceConfigurations += listOf("zh")
@@ -90,6 +93,9 @@ android {
         // viewBinding：自动为每个 layout XML 生成一个类型安全的绑定类，
         // 以后写 binding.tvTitle 就行，不用 findViewById 也不用强转类型
         viewBinding = true
+        // buildConfig：设置页「关于」要显示 App 版本号，取 BuildConfig.VERSION_NAME。
+        // AGP 8 起默认关掉了，不显式打开就没有这个类。
+        buildConfig = true
     }
 }
 

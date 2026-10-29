@@ -2,6 +2,7 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.RectF
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +18,7 @@ import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.databinding.DialogSlotCoursesBinding
 import com.yxz.timetable.databinding.ItemCourseCardBinding
+import com.yxz.timetable.ui.persona.PersonaCardSkin
 import kotlin.math.roundToInt
 
 /**
@@ -78,7 +80,9 @@ object SlotCoursesCard {
         set: TemplateSet,
         viewedWeek: Int,
         currentWeek: Boolean,
-        selfStudy: Block? = null
+        selfStudy: Block? = null,
+        /** P3 自绘页给的动画圆心（屏幕坐标）；null 时按 [anchor] 的位置算 */
+        pivot: RectF? = null
     ): Dialog {
         val ctx = anchor.context
         val inflater = LayoutInflater.from(ctx)
@@ -117,10 +121,14 @@ object SlotCoursesCard {
         // 进场前先缩到最小并透明 —— 不留「先闪一帧原尺寸」的空隙
         shrinkBeforeEntrance(binding.card)
 
+        // P3 模式：黑卡 + 青字 + 描边按钮。字段和绑定逻辑一个字都不动，只换外观
+        if (store.p3Mode) PersonaCardSkin.apply(binding.root)
+
         val dialog = CardDialog(ctx, binding.card)
         dialog.setContentView(binding.root)
         dialog.setCanceledOnTouchOutside(true)
         dialog.applyCardWindow()
+        if (store.p3Mode) dialog.window?.setDimAmount(0.62f)
 
         // 面板自己要接住点击：不然点在卡片上会一路穿透到根布局的「点外面收起」，
         // 读着读着随手一碰就关了。
@@ -133,7 +141,9 @@ object SlotCoursesCard {
                 binding.scroll.layoutParams = binding.scroll.layoutParams.apply { height = maxList }
             }
         }
-        binding.card.doOnLayout { popInFrom(it, anchor) }
+        binding.card.doOnLayout { card ->
+            if (pivot != null) popInFrom(card, pivot) else popInFrom(card, anchor)
+        }
         dialog.show()
         return dialog
     }

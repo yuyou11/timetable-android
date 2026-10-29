@@ -1,599 +1,1088 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  设置页：落地在分类列表（pageHome），点大类进对应分类页；分类页里用标题边的
+  「‹」或系统返回回列表，右滑（或点右上角「≡ 分类」）拉出的抽屉用于快速切换。
+
+  为什么不是一条长列表：四类设置混在一屏里，用户要滚很久才能确认
+  「某个开关到底在哪」；拆成四页之后，每一页都很短，找东西靠分类一次定位。
+
+  内容区五块用 visibility 互斥，而不是五个 Fragment ——
+  设置项之间共享同一份 Store 和同一套刷新逻辑（refreshData / refreshPerm 等），
+  拆成五个 Fragment 就得把刷新拆散，还会在切页时重复读盘。
+
+  为什么抽屉在 start 侧却不用 DrawerLayout 自带的边缘滑动：
+  手势导航下左右边缘各 20dp 是系统的返回区，从边缘滑会被系统吃掉，
+  所以锁死抽屉手势，改由 SwipeToOpenLayout 在内容区拦右滑。
+-->
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawer"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <LinearLayout
+    <com.yxz.timetable.ui.SwipeToOpenLayout
+        android:id="@+id/content"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="@dimen/page_padding">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <!-- 存储读坏时的提示。默认隐藏，由 refreshLoadWarning() 决定显不显示 -->
-        <TextView
-            android:id="@+id/tvDataWarning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="@dimen/space_m"
-            android:background="@drawable/bg_card_accent"
-            android:lineSpacingExtra="2dp"
-            android:padding="12dp"
-            android:textColor="?attr/accentColor"
-            android:textSize="12sp"
-            android:visibility="gone" />
-
-        <!-- ============ 常驻开关 ============ -->
+        <!-- 当前分类 + 打开分类栏的入口。
+             进入某个分类后，左边多一枚「‹」返回分类列表（pageHome）；
+             落在分类列表本身时它和「≡ 分类」一起藏起来 —— 列表就是分类。
+             P3 模式下整个标题栏都会被藏起来（落地面换成 PersonaMenuView，
+             游戏菜单上没有这一行字），见 SettingsFragment.showPage。 -->
         <LinearLayout
+            android:id="@+id/titleBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="@dimen/card_padding">
+            android:paddingStart="@dimen/page_padding"
+            android:paddingTop="@dimen/space_l"
+            android:paddingEnd="@dimen/page_padding"
+            android:paddingBottom="@dimen/space_s">
 
-            <LinearLayout
+            <TextView
+                android:id="@+id/btnBackToCategories"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:contentDescription="@string/back_to_categories"
+                android:fontFamily="sans-serif-medium"
+                android:paddingVertical="6dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="10dp"
+                android:text="‹"
+                android:textColor="@color/text_primary"
+                android:textSize="26sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvPageTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/settings_title"
+                android:textColor="@color/text_primary"
+                android:textSize="22sp" />
 
-                <TextView
-                    style="@style/CardTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/resident_title" />
-
-                <TextView
-                    android:id="@+id/tvSwitchState"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/swEnabled"
+            <TextView
+                android:id="@+id/tvSwipeHint"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:paddingVertical="6dp"
+                android:paddingStart="12dp"
+                android:text="@string/settings_swipe_hint"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
         </LinearLayout>
 
-        <!-- ============ 运行权限 ============ -->
-        <TextView
-            style="@style/SectionLabel"
+        <ScrollView
+            android:id="@+id/scroll"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/perm_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:paddingVertical="2dp">
-
-            <!-- 通知权限 -->
-            <LinearLayout style="@style/PermRow">
-                <LinearLayout style="@style/PermTextCol">
-                    <TextView style="@style/PermTitle" android:text="@string/perm_notif" />
-                    <TextView android:id="@+id/tvNotifStatus" style="@style/PermStatus" />
-                </LinearLayout>
-                <Button android:id="@+id/btnNotif" style="@style/PermButton" android:text="去开启" />
-            </LinearLayout>
-
-            <View style="@style/PermDivider" />
-
-            <!-- 精确闹钟 -->
-            <LinearLayout style="@style/PermRow">
-                <LinearLayout style="@style/PermTextCol">
-                    <TextView style="@style/PermTitle" android:text="@string/perm_exact" />
-                    <TextView android:id="@+id/tvExactStatus" style="@style/PermStatus" />
-                </LinearLayout>
-                <Button android:id="@+id/btnExact" style="@style/PermButton" android:text="去开启" />
-            </LinearLayout>
-
-            <View style="@style/PermDivider" />
-
-            <!-- 电池优化 -->
-            <LinearLayout style="@style/PermRow">
-                <LinearLayout style="@style/PermTextCol">
-                    <TextView style="@style/PermTitle" android:text="@string/perm_battery" />
-                    <TextView android:id="@+id/tvBatteryStatus" style="@style/PermStatus" />
-                </LinearLayout>
-                <Button android:id="@+id/btnBattery" style="@style/PermButton" android:text="去设置" />
-            </LinearLayout>
-
-            <View style="@style/PermDivider" />
-
-            <!-- 自启动 -->
-            <LinearLayout style="@style/PermRow">
-                <LinearLayout style="@style/PermTextCol">
-                    <TextView style="@style/PermTitle" android:text="@string/perm_autostart" />
-                    <TextView android:id="@+id/tvAutostartStatus" style="@style/PermStatus" />
-                </LinearLayout>
-                <Button android:id="@+id/btnAutostart" style="@style/PermButton" android:text="去设置" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- ============ 锁屏显示 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/lockscreen_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="@dimen/space_l">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/page_padding">
+
+                <!-- ============ 分类列表（设置页的落地面） ============
+                     点设置页先进这里：四个大类各一张卡，点卡片进入对应分类页。
+                     原来直接落在「数据」页，别的分类只能靠抽屉发现；
+                     现在分类本身就是首页，抽屉降级为分类页之间的快速切换器。 -->
+                <LinearLayout
+                    android:id="@+id/pageHome"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:id="@+id/catData"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/card_padding">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/CardTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/group_data" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/settings_cat_data_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="8dp"
+                            android:text="›"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/catFeatures"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_m"
+                        android:background="@drawable/bg_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/card_padding">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/CardTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/group_features" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/settings_cat_features_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="8dp"
+                            android:text="›"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/catTheme"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_m"
+                        android:background="@drawable/bg_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/card_padding">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/CardTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/group_theme" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/settings_cat_theme_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="8dp"
+                            android:text="›"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/catAbout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_m"
+                        android:background="@drawable/bg_card"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/card_padding">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/CardTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/group_about" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/settings_cat_about_desc"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="8dp"
+                            android:text="›"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="20sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- P3 模式的分类菜单（游戏 SKILL/ITEM/… 那一屏的复刻）：
+                     整块自绘，点字跳分类；普通模式下隐藏，落地面还是上面那组卡片。 -->
+                <com.yxz.timetable.ui.persona.PersonaMenuView
+                    android:id="@+id/personaMenu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/pageData"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvDataWarning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/space_m"
+                android:background="@drawable/bg_card_accent"
+                android:lineSpacingExtra="2dp"
+                android:padding="12dp"
+                android:textColor="?attr/accentColor"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- ============ 学期 ============ -->
+            <TextView
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/term_title" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/term_name"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvTermName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:maxWidth="180dp"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnTermName"
+                        style="@style/FlatTextButton"
+                        android:text="改"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <View style="@style/PermDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowTermStart"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/term_start"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvTermStart"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="?attr/accentColor"
+                            android:textSize="12.5sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnTermStart"
+                        style="@style/FlatTextButton"
+                        android:text="选日期"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <View style="@style/PermDivider" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/term_total_weeks"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvTotalWeeksHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnTotalWeeksMinus"
+                        style="@style/FlatTextButton"
+                        android:text="-" />
+
+                    <TextView
+                        android:id="@+id/tvTotalWeeks"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:gravity="center"
+                        android:minWidth="56dp"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/btnTotalWeeksPlus"
+                        style="@style/FlatTextButton"
+                        android:text="+" />
+                </LinearLayout>
+
+                <View style="@style/PermDivider" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/week_override"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnWeekMinus"
+                        style="@style/FlatTextButton"
+                        android:text="-" />
+
+                    <TextView
+                        android:id="@+id/tvWeekOverride"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:minWidth="56dp"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnWeekPlus"
+                        style="@style/FlatTextButton"
+                        android:text="+" />
+                </LinearLayout>
 
                 <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="调课导致周次对不上时手动指定；点中间文字切回自动。"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- ============ 课程 ============ -->
+            <TextView
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/courses_title" />
+
+            <LinearLayout
+                android:id="@+id/courseContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:paddingVertical="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingHorizontal="2dp"
+                android:text="@string/courses_desc"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnClearCourses"
+                    style="@style/TonalButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/lockscreen_show"
+                    android:text="@string/clear_courses" />
+
+                <Button
+                    android:id="@+id/btnResetCourses"
+                    style="@style/TonalButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="@string/reset_courses" />
+            </LinearLayout>
+
+            <!-- ============ 数据导入导出 ============ -->
+            <TextView
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/data_title" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
+
+                <TextView
+                    android:id="@+id/tvDataSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
                     android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
+
+                <!-- 文案里有版本号，由代码填 —— 写死在 XML 里的话
+                     格式升级时这行会被忘掉，用户看到的版本号就永远停在旧版本 -->
+                <TextView
+                    android:id="@+id/tvDataDesc"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnImport"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/btn_import" />
+
+                    <Button
+                        android:id="@+id/btnExport"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/btn_export" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnCopyJson"
+                        style="@style/TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/btn_copy_json" />
+
+                    <Button
+                        android:id="@+id/btnFormatHelp"
+                        style="@style/TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/btn_format_help" />
+                </LinearLayout>
+
+                <!-- AI 向导入口。用高对比度的按钮，因为它是最省事的路径 -->
+                <Button
+                    android:id="@+id/btnAiGuide"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/btn_ai_guide" />
+
+                <View style="@style/PermDivider" />
+
+                <!-- 作息模板状态。点了可以恢复内置 -->
+                <TextView
+                    android:id="@+id/tvTemplateState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="2dp"
+                    android:paddingVertical="10dp"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="11.5sp" />
+            </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/pageFeatures"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+            <!-- ============ 常驻开关 ============ -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="@dimen/card_padding">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/CardTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/resident_title" />
+
+                    <TextView
+                        android:id="@+id/tvSwitchState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/swLockscreen"
+                    android:id="@+id/swEnabled"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
             </LinearLayout>
 
+            <!-- ============ 运行权限 ============ -->
             <TextView
-                android:id="@+id/tvLockscreenStatus"
+                style="@style/SectionLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:lineSpacingExtra="3dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="11.5sp" />
-
-            <Button
-                android:id="@+id/btnLockscreen"
-                style="@style/TonalButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="@string/btn_open_sys_lockscreen" />
-        </LinearLayout>
-
-        <!-- ============ 课前提醒 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/remind_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/perm_title" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:paddingVertical="2dp">
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/remind_lead"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/tvRemindStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11.5sp" />
+                <!-- 通知权限 -->
+                <LinearLayout style="@style/PermRow">
+                    <LinearLayout style="@style/PermTextCol">
+                        <TextView style="@style/PermTitle" android:text="@string/perm_notif" />
+                        <TextView android:id="@+id/tvNotifStatus" style="@style/PermStatus" />
+                    </LinearLayout>
+                    <Button android:id="@+id/btnNotif" style="@style/PermButton" android:text="去开启" />
                 </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnRemindMinus"
-                    style="@style/FlatTextButton"
-                    android:text="-" />
+                <View style="@style/PermDivider" />
 
-                <TextView
-                    android:id="@+id/tvRemindLead"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-medium"
-                    android:gravity="center"
-                    android:minWidth="66dp"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="15sp" />
+                <!-- 精确闹钟 -->
+                <LinearLayout style="@style/PermRow">
+                    <LinearLayout style="@style/PermTextCol">
+                        <TextView style="@style/PermTitle" android:text="@string/perm_exact" />
+                        <TextView android:id="@+id/tvExactStatus" style="@style/PermStatus" />
+                    </LinearLayout>
+                    <Button android:id="@+id/btnExact" style="@style/PermButton" android:text="去开启" />
+                </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnRemindPlus"
-                    style="@style/FlatTextButton"
-                    android:text="+" />
+                <View style="@style/PermDivider" />
+
+                <!-- 电池优化 -->
+                <LinearLayout style="@style/PermRow">
+                    <LinearLayout style="@style/PermTextCol">
+                        <TextView style="@style/PermTitle" android:text="@string/perm_battery" />
+                        <TextView android:id="@+id/tvBatteryStatus" style="@style/PermStatus" />
+                    </LinearLayout>
+                    <Button android:id="@+id/btnBattery" style="@style/PermButton" android:text="去设置" />
+                </LinearLayout>
+
+                <View style="@style/PermDivider" />
+
+                <!-- 自启动 -->
+                <LinearLayout style="@style/PermRow">
+                    <LinearLayout style="@style/PermTextCol">
+                        <TextView style="@style/PermTitle" android:text="@string/perm_autostart" />
+                        <TextView android:id="@+id/tvAutostartStatus" style="@style/PermStatus" />
+                    </LinearLayout>
+                    <Button android:id="@+id/btnAutostart" style="@style/PermButton" android:text="去设置" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/remind_desc"
+                android:layout_marginTop="8dp"
+                android:paddingHorizontal="2dp"
+                android:text="@string/hint_honor"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
-        </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingHorizontal="2dp"
-            android:text="@string/hint_honor"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
-
-        <!-- ============ 闹钟 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/alarm_section_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
-
-            <LinearLayout
-                android:id="@+id/rowAlarmSound"
+            <!-- ============ 锁屏显示 ============ -->
+            <TextView
+                style="@style/SectionLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/lockscreen_title" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                     <TextView
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="@string/alarm_sound_title"
+                        android:layout_weight="1"
+                        android:text="@string/lockscreen_show"
                         android:textColor="@color/text_primary"
                         android:textSize="14sp" />
 
-                    <TextView
-                        android:id="@+id/tvAlarmSound"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11.5sp" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/swLockscreen"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
                 </LinearLayout>
 
                 <TextView
-                    android:id="@+id/btnAlarmSound"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tvLockscreenStatus"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/bg_duration_chip"
-                    android:includeFontPadding="false"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="5dp"
-                    android:text="@string/alarm_sound_change"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="14dp"
-                android:background="@color/divider" />
-
-            <LinearLayout
-                android:id="@+id/rowHolidays"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/alarm_holiday_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/tvHolidayStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11.5sp" />
-                </LinearLayout>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:text="@string/alarm_holiday_manage"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="14dp"
-                android:background="@color/divider" />
-
-            <!-- 全屏响铃：Android 14 起的新权限。没开也能用（退化成横幅通知），
-                  所以文案是「开了更省事」而不是「必须开」 —— 权限自检不该吓唬人 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/alarm_fullscreen_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/tvRingStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11.5sp" />
-                </LinearLayout>
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="3dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11.5sp" />
 
                 <Button
-                    android:id="@+id/btnRingFullScreen"
-                    style="@style/PermButton"
-                    android:text="去开启" />
+                    android:id="@+id/btnLockscreen"
+                    style="@style/TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/btn_open_sys_lockscreen" />
             </LinearLayout>
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/divider" />
-
-            <!-- 响铃多久自动停：点一下在 1/3/5/10 分钟之间循环 -->
-            <LinearLayout
-                android:id="@+id/rowRingDuration"
+            <!-- ============ 课前提醒 ============ -->
+            <TextView
+                style="@style/SectionLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/remind_title" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/remind_lead"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvRemindStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnRemindMinus"
+                        style="@style/FlatTextButton"
+                        android:text="-" />
+
+                    <TextView
+                        android:id="@+id/tvRemindLead"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:gravity="center"
+                        android:minWidth="66dp"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/btnRemindPlus"
+                        style="@style/FlatTextButton"
+                        android:text="+" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/remind_desc"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- ============ 闹钟 ============ -->
+            <TextView
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/alarm_section_title" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
+
+                <LinearLayout
+                    android:id="@+id/rowAlarmSound"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/alarm_sound_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvAlarmSound"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btnAlarmSound"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_duration_chip"
+                        android:includeFontPadding="false"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="5dp"
+                        android:text="@string/alarm_sound_change"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="14dp"
+                    android:layout_marginBottom="14dp"
+                    android:background="@color/divider" />
+
+                <LinearLayout
+                    android:id="@+id/rowHolidays"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/alarm_holiday_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvHolidayStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:text="@string/alarm_holiday_manage"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="14dp"
+                    android:layout_marginBottom="14dp"
+                    android:background="@color/divider" />
+
+                <!-- 全屏响铃：Android 14 起的新权限。没开也能用（退化成横幅通知），
+                      所以文案是「开了更省事」而不是「必须开」 —— 权限自检不该吓唬人 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/alarm_fullscreen_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tvRingStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnRingFullScreen"
+                        style="@style/PermButton"
+                        android:text="去开启" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="4dp"
+                    android:background="@color/divider" />
+
+                <!-- 响铃多久自动停：点一下在 1/3/5/10 分钟之间循环 -->
+                <LinearLayout
+                    android:id="@+id/rowRingDuration"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="10dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="响铃时长"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvRingDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="13sp" />
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginStart="4dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_chevron_right" />
+                </LinearLayout>
+            </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/pageTheme"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+            <!-- ============ 外观 ============ -->
+            <TextView
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="@string/appearance_title" />
+
+            <LinearLayout
+                android:id="@+id/rowTheme"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingVertical="10dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="响铃时长"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/tvRingDuration"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="13sp" />
-
-                <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:layout_marginStart="4dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_chevron_right" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- ============ 外观 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/appearance_title" />
-
-        <LinearLayout
-            android:id="@+id/rowTheme"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="@dimen/card_padding">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_title"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/tvThemeStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11.5sp" />
-            </LinearLayout>
-
-            <!--
-              当前主题色的预览色块。它引用的是 ?attr/accentColor，
-              所以「这个圆点是什么颜色」和「界面其他强调色」永远一致
-            -->
-            <View
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/bg_theme_swatch" />
-
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_chevron_right" />
-        </LinearLayout>
-
-        <!-- 周点阵预览开关。默认开；关掉后课表页的周次卡片只剩标题行 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_card"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="@dimen/card_padding">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/week_dots_title"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/week_dots_desc"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11.5sp" />
-            </LinearLayout>
-
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/swWeekDots"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-        </LinearLayout>
-
-        <!-- ============ 学期 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/term_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/term_name"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/tvTermName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:maxWidth="180dp"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btnTermName"
-                    style="@style/FlatTextButton"
-                    android:text="改"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <View style="@style/PermDivider" />
-
-            <LinearLayout
-                android:id="@+id/rowTermStart"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingVertical="6dp">
+                android:padding="@dimen/card_padding">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -604,283 +1093,185 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/term_start"
+                        android:text="@string/theme_title"
                         android:textColor="@color/text_primary"
                         android:textSize="14sp" />
 
                     <TextView
-                        android:id="@+id/tvTermStart"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:textColor="?attr/accentColor"
-                        android:textSize="12.5sp" />
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnTermStart"
-                    style="@style/FlatTextButton"
-                    android:text="选日期"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <View style="@style/PermDivider" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingVertical="6dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/term_total_weeks"
-                        android:textColor="@color/text_primary"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/tvTotalWeeksHint"
+                        android:id="@+id/tvThemeStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnTotalWeeksMinus"
-                    style="@style/FlatTextButton"
-                    android:text="-" />
+                <!--
+                  当前主题色的预览色块。它引用的是 ?attr/accentColor，
+                  所以「这个圆点是什么颜色」和「界面其他强调色」永远一致
+                -->
+                <View
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginEnd="6dp"
+                    android:background="@drawable/bg_theme_swatch" />
 
-                <TextView
-                    android:id="@+id/tvTotalWeeks"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-medium"
-                    android:gravity="center"
-                    android:minWidth="56dp"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="15sp" />
-
-                <Button
-                    android:id="@+id/btnTotalWeeksPlus"
-                    style="@style/FlatTextButton"
-                    android:text="+" />
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_chevron_right" />
             </LinearLayout>
 
-            <View style="@style/PermDivider" />
-
+            <!-- 彩蛋：Persona 3 模式。放在主题下面而不是塞进八色画板 ——
+                 画板选的是「强调色」，这个换的是整页外观，两件事不该并排 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingVertical="6dp">
+                android:padding="@dimen/card_padding">
 
-                <TextView
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/week_override"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
+                    android:orientation="vertical">
 
-                <Button
-                    android:id="@+id/btnWeekMinus"
-                    style="@style/FlatTextButton"
-                    android:text="-" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/p3_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
 
-                <TextView
-                    android:id="@+id/tvWeekOverride"
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/p3_desc"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/swPersona3"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:minWidth="56dp"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btnWeekPlus"
-                    style="@style/FlatTextButton"
-                    android:text="+" />
+                    android:layout_height="wrap_content" />
             </LinearLayout>
 
-            <TextView
+            <!-- 周点阵预览开关。默认开；关掉后课表页的周次卡片只剩标题行 -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="调课导致周次对不上时手动指定；点中间文字切回自动。"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
-        </LinearLayout>
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="@dimen/card_padding">
 
-        <!-- ============ 课程 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/courses_title" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-        <LinearLayout
-            android:id="@+id/courseContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:paddingVertical="4dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/week_dots_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:paddingHorizontal="2dp"
-            android:text="@string/courses_desc"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/week_dots_desc"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11.5sp" />
+                </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/swWeekDots"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
 
-            <Button
-                android:id="@+id/btnClearCourses"
-                style="@style/TonalButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/clear_courses" />
+                </LinearLayout>
 
-            <Button
-                android:id="@+id/btnResetCourses"
-                style="@style/TonalButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="@string/reset_courses" />
-        </LinearLayout>
-
-        <!-- ============ 数据导入导出 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="@string/data_title" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
-
-            <TextView
-                android:id="@+id/tvDataSummary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp" />
-
-            <!-- 文案里有版本号，由代码填 —— 写死在 XML 里的话
-                 格式升级时这行会被忘掉，用户看到的版本号就永远停在旧版本 -->
-            <TextView
-                android:id="@+id/tvDataDesc"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
+                <LinearLayout
+                    android:id="@+id/pageAbout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="horizontal">
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
 
-                <Button
-                    android:id="@+id/btnImport"
-                    android:layout_width="0dp"
+                <TextView
+                    android:id="@+id/tvFooter"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/btn_import" />
+                    android:gravity="start"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
 
-                <Button
-                    android:id="@+id/btnExport"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="@string/btn_export" />
             </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnCopyJson"
-                    style="@style/TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/btn_copy_json" />
-
-                <Button
-                    android:id="@+id/btnFormatHelp"
-                    style="@style/TonalButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="@string/btn_format_help" />
+                </LinearLayout>
             </LinearLayout>
+        </ScrollView>
+    </com.yxz.timetable.ui.SwipeToOpenLayout>
 
-            <!-- AI 向导入口。用高对比度的按钮，因为它是最省事的路径 -->
-            <Button
-                android:id="@+id/btnAiGuide"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/btn_ai_guide" />
-
-            <View style="@style/PermDivider" />
-
-            <!-- 作息模板状态。点了可以恢复内置 -->
-            <TextView
-                android:id="@+id/tvTemplateState"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:lineSpacingExtra="2dp"
-                android:paddingVertical="10dp"
-                android:textColor="?attr/accentColor"
-                android:textSize="11.5sp" />
-        </LinearLayout>
+    <!--
+      分类栏。固定在左侧，由 SwipeToOpenLayout 的右滑手势打开（手势导航下
+      屏幕边缘属于系统的返回区，DrawerLayout 自带的边缘滑动收不到事件）。
+      点条目切页、点右边空白处收回。
+    -->
+    <LinearLayout
+        android:layout_width="132dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/card_bg"
+        android:elevation="12dp"
+        android:orientation="vertical"
+        android:paddingVertical="@dimen/space_l">
 
         <TextView
-            android:id="@+id/tvFooter"
+            style="@style/SectionLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp"
-            android:gravity="center"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:paddingStart="16dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp"
+            android:text="@string/settings_categories" />
 
+        <TextView
+            android:id="@+id/navData"
+            style="@style/NavItem"
+            android:text="@string/group_data" />
+
+        <TextView
+            android:id="@+id/navFeatures"
+            style="@style/NavItem"
+            android:text="@string/group_features" />
+
+        <TextView
+            android:id="@+id/navTheme"
+            style="@style/NavItem"
+            android:text="@string/group_theme" />
+
+        <TextView
+            android:id="@+id/navAbout"
+            style="@style/NavItem"
+            android:text="@string/group_about" />
     </LinearLayout>
-</ScrollView>
+</androidx.drawerlayout.widget.DrawerLayout>

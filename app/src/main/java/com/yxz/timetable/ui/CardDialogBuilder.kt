@@ -8,6 +8,7 @@ import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
 import com.yxz.timetable.R
+import com.yxz.timetable.data.Store
 
 /**
  * 应用里的对话框统一用**卡片那张皮**：圆角 @dimen/card_radius、底色 card_bg、
@@ -36,7 +37,9 @@ class CardAlertDialogBuilder(context: Context) : AlertDialog.Builder(context) {
 fun AlertDialog.matchCardCorners() {
     val w = window ?: return
     val density = context.resources.displayMetrics.density
-    val radius = context.resources.getDimension(R.dimen.card_radius)
+    // P3 的形状规则是硬边矩形：编辑器 / 跳过确认等对话框也去掉圆角
+    val radius = if (Store(context).p3Mode) 0f
+    else context.resources.getDimension(R.dimen.card_radius)
 
     val shape = MaterialShapeDrawable(
         ShapeAppearanceModel.builder()

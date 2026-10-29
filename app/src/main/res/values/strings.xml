@@ -7,8 +7,25 @@
     <string name="tab_alarm">闹钟</string>
     <string name="tab_settings">设置</string>
 
+    <!-- 日历页 -->
+    <string name="tab_calendar">日历</string>
+    <string name="calendar_month_title">%1$d年%2$d月</string>
+    <string name="calendar_prev">上个月</string>
+    <string name="calendar_next">下个月</string>
+
+    <!-- 彩蛋：Persona 3 模式 -->
+    <string name="p3_title">PERSONA 3 模式</string>
+    <string name="p3_desc">彩蛋：整套 P3 界面（日历 / 今天 / 课表 / 闹钟 / 设置首页）</string>
+
     <!-- 闹钟页 -->
     <string name="alarm_add">＋ 新建闹钟</string>
+    <string name="alarm_new_title">新建闹钟</string>
+    <string name="alarm_new_sub">设置时间 · 重复 · 铃声</string>
+    <string name="alarm_list_hint">长按跳过下一次</string>
+    <string name="alarm_next_label">下次响铃</string>
+    <string name="alarm_scroll_hint">下滑 · 查看闹钟</string>
+    <string name="alarm_ringing_tag">RINGING</string>
+    <string name="alarm_ringing_sub">正在响铃</string>
     <string name="alarm_set">设置闹钟</string>
     <string name="alarm_section_title">闹钟</string>
     <string name="alarm_sound_title">默认铃声</string>
@@ -57,12 +74,30 @@
     <string name="lockscreen_show">在锁屏上显示通知内容</string>
     <string name="btn_open_sys_lockscreen">去开启系统锁屏通知</string>
 
+    <!-- 设置页的四个大分区。之前是八个小标签平铺，看不出层次 -->
+    <string name="group_data">数据</string>
+    <string name="group_features">功能</string>
+    <string name="group_theme">主题</string>
+    <string name="group_about">关于</string>
+
+    <!-- 设置页：一页只显示一类，内容区右滑从左侧拉出分类栏 -->
+    <string name="settings_categories">分类</string>
+    <string name="settings_swipe_hint">≡ 分类</string>
+
+    <!-- 分类列表（设置页的落地面）：四个大类各一张卡，一行说明这是哪类东西 -->
+    <string name="settings_title">设置</string>
+    <string name="back_to_categories">返回分类</string>
+    <string name="settings_cat_data_desc">学期、课程、作息模板、导入导出</string>
+    <string name="settings_cat_features_desc">常驻通知、运行权限、课前提醒</string>
+    <string name="settings_cat_theme_desc">主题颜色、PERSONA 3 模式、周点阵</string>
+    <string name="settings_cat_about_desc">版本与使用说明</string>
+
     <string name="term_title">学期</string>
     <string name="term_name">学期名称</string>
     <string name="term_start">教学第 1 周的周一</string>
     <string name="week_override">手动指定周次</string>
 
-    <string name="data_title">数据</string>
+    <string name="data_title">导入导出</string>
     <string name="data_desc">统一 JSON 格式（v%1$s），点「格式说明」查看写法。</string>
     <!-- 导入导出的不只是课表：还带着学期、作息模板、日型配置。
          按钮上写「导入课表」会让只改模板的人以为这条路走不通 -->

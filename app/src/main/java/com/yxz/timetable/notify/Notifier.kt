@@ -157,6 +157,17 @@ object Notifier {
         val rangeText = "${Slots.fmt(cur.start)}–${Slots.fmt(cur.end)}"
         val whereText = if (cur.place.isNotBlank()) " · ${cur.place}" else ""
 
+        // 课间：夹在两节课之间那段空档。
+        // 这时候「09:15–09:25」本身没信息量，用户只想知道**下一节去哪个教室**，
+        // 所以折叠状态那行直接换成「下一节 · 教室」。
+        val breakNext = TimelineEngine.breakNextCourse(moments, minute)
+        val breakText = breakNext?.let { b ->
+            buildString {
+                append("下一节 ").append(Slots.fmt(b.start)).append(" · ").append(b.title)
+                if (b.place.isNotBlank()) append(" · ").append(b.place)
+            }
+        }
+
         // 明天那一行：日型 + 起床时间。放在展开视图里，
         // 晚上躺床上拉一下通知栏就能知道明天几点起、第一节什么课。
         val tomorrow = today.plusDays(1)
@@ -167,8 +178,11 @@ object Notifier {
         )
 
         val expanded = buildString {
-            append("▸ 现在　").append(cur.title)
+            append("▸ 现在　").append(if (breakNext != null) "课间" else cur.title)
             append('\n').append("　　").append(rangeText).append(whereText)
+            if (breakNext != null && breakText != null) {
+                append('\n').append("　　→ ").append(breakText)
+            }
             if (cur.note.isNotBlank()) append('\n').append("　　").append(cur.note)
             append("\n\n▸ 接着　")
             append(if (next != null) "${Slots.fmt(next.start)}　${next.title}" else "今天没有下一项了")
@@ -186,7 +200,10 @@ object Notifier {
         val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
             .setColor(themeCtx.accentColor())
-            .setContentTitle("现在：${cur.title}")
+            .setContentTitle(
+                if (breakNext != null) "课间 · 下一节 ${breakNext.title}"
+                else "现在：${cur.title}"
+            )
             // 折叠状态下只写「时间段 + 地点」。
             //
             // ⚠️ 这里本来还有一句「· 剩 N 分钟」，已经删掉了。
@@ -200,7 +217,7 @@ object Notifier {
             //
             // 想让它真的走，就得每分钟唤醒一次 App（一天 1440 次），
             // 等于把整个省电设计推翻 —— 详见文件顶部那段说明。
-            .setContentText(rangeText + whereText)
+            .setContentText(breakText ?: (rangeText + whereText))
             .setSubText(
                 "第 $week 周 · " +
                         TimelineEngine.dayTypeDisplay(today, week, courses, templates.config, names)

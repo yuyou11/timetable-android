@@ -324,4 +324,33 @@ object TimelineEngine {
     /** 下一格是什么 */
     fun nextAfter(moments: List<Moment>, minute: Int): Moment? =
         moments.firstOrNull { it.start > minute }
+
+    /**
+     * 课间：夹在两节课中间的短空档。
+     *
+     * 是课间就返回**下一节课**（今天页和通知栏都靠它显示教室），
+     * 不是课间返回 null。
+     *
+     * 判据三条，缺一不可：
+     *  1. 此刻这一格是空档（[Kind.FREE]）—— 课间在时间线上就是一段 gap；
+     *  2. 前后相邻的都是课 —— 只有「上完一节、还要上下一节」那段才叫课间，
+     *     早八前那段空档、午休、放学后都不算；
+     *  3. 空档不超过 [maxGapMinutes] 分钟 —— 中午两小时的空档也是「前后都是课」，
+     *     但它不该被当成课间。
+     *
+     * 注意这里用的是**相邻**关系而不是「下一节课」，所以课间长度怎么变、
+     * 中间有没有插进来一个固定日程，判断都不会错。
+     */
+    fun breakNextCourse(
+        moments: List<Moment>,
+        minute: Int,
+        maxGapMinutes: Int = 40
+    ): Moment? {
+        val idx = moments.indexOfFirst { minute >= it.start && minute < it.end }
+        if (idx < 0) return null
+        val cur = moments[idx]
+        if (cur.kind != Kind.FREE || cur.duration > maxGapMinutes) return null
+        if (moments.getOrNull(idx - 1)?.isCourse != true) return null
+        return moments.getOrNull(idx + 1)?.takeIf { it.isCourse }
+    }
 }

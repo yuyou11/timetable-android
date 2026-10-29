@@ -1,237 +1,309 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/scroll"
+<!--
+  今天页。两套外观叠在同一个 Fragment 里（和课表页、日历页同一个结构）：
+
+  ┌ normalToday ← 默认外观（滑动长页：日期 / 此刻 / 常驻开关 / 明天 / 全天时间线）
+  └ p3Host      ← Persona 3 彩蛋（整屏一页：上半 HUD + 下半白色日程纸，
+                  见 PersonaTodayView，样稿是 p3web/today-p3-v3.html）
+
+  为什么叠着而不是拆两个 Fragment：日期、教学周、此刻、明天的数据都在
+  TodayFragment 里算一遍，换壳不该把状态和数据也换掉。两套外观按 Store.p3Mode
+  二选一显示，另一套 GONE（GONE 的不测量、不绘制）。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="@dimen/page_padding">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-        <TextView
-            android:id="@+id/tvHeaderDate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:letterSpacing="0.02"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/tvHeaderDayType"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:fontFamily="sans-serif-medium"
-            android:textColor="@color/text_primary"
-            android:textSize="22sp" />
-
-        <!-- ============ 此刻（整页唯一的色块） ============ -->
+        <!-- 这一层故意不带内边距：内容自己按 @dimen/page_padding 缩进，
+             将来要贴边的东西（分隔条之类）才有地方放。
+             别在这里加 padding —— 会让下面那些卡片一起缩水。 -->
         <LinearLayout
+            android:id="@+id/page"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_l"
-            android:background="@drawable/bg_card_accent"
-            android:orientation="vertical"
-            android:padding="18dp">
+            android:orientation="vertical">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:letterSpacing="0.16"
-                android:text="@string/now_label"
-                android:textColor="?attr/accentColor"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvNowTitle"
+            <!-- 其余内容照旧内缩 @dimen/page_padding -->
+            <LinearLayout
+                android:id="@+id/content"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:textColor="@color/text_primary"
-                android:textSize="21sp" />
+                android:orientation="vertical"
+                android:padding="@dimen/page_padding">
 
             <TextView
-                android:id="@+id/tvNowMeta"
+                android:id="@+id/tvHeaderDate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.02"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvHeaderDayType"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:lineSpacingExtra="2dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <ProgressBar
-                android:id="@+id/nowProgress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="14dp"
-                android:max="100"
-                android:progress="0"
-                android:progressBackgroundTint="@color/divider"
-                android:progressTint="?attr/accentColor" />
-
-            <TextView
-                android:id="@+id/tvNowNext"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- ============ 常驻开关 ============ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_m"
-            android:background="@drawable/bg_card"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="@dimen/card_padding">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    style="@style/CardTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/resident_title" />
-
-                <TextView
-                    android:id="@+id/tvSwitchState"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/swEnabled"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_s"
-            android:lineSpacingExtra="2dp"
-            android:paddingHorizontal="2dp"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp"
-            android:visibility="gone" />
-
-        <!-- ============ 明日预告 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="明天" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="@dimen/card_padding">
-
-            <TextView
-                android:id="@+id/tvTomorrowHeader"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp" />
+                android:textSize="22sp" />
 
-            <!-- 起床时间 + 一键设闹钟 -->
+            <!-- ============ 此刻（整页唯一的色块） ============ -->
             <LinearLayout
-                android:id="@+id/rowWake"
+                android:id="@+id/nowCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_l"
+                android:background="@drawable/bg_card_accent"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:id="@+id/tvNowLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.16"
+                    android:text="@string/now_label"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvNowTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="21sp" />
+
+                <TextView
+                    android:id="@+id/tvNowMeta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <ProgressBar
+                    android:id="@+id/nowProgress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:layout_marginTop="14dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressBackgroundTint="@color/divider"
+                    android:progressTint="?attr/accentColor" />
+
+                <TextView
+                    android:id="@+id/tvNowNext"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout><!-- /nowCard -->
+
+            </LinearLayout><!-- /content：上半页（日期 / 日型 / 此刻卡）到此为止 -->
+
+            <!-- ============ 下半页：深蓝底 ============
+                 从常驻开关这张卡开始，背景换成**日历页上半部分那套深蓝**（同样的三段渐变 +
+                 同样两团柔光，见 PersonaDeepBlueBackground），一直铺到页面底部，和上面的
+                 浅色区形成一道硬隔断。
+
+                 这一层不带横向内边距，所以蓝色能左右顶到屏幕两岸；真实内容放在 blueInner 里，
+                 照旧内缩 @dimen/page_padding。 -->
+            <LinearLayout
+                android:id="@+id/blueSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/blueInner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/page_padding"
+                    android:paddingBottom="@dimen/page_padding">
+
+            <!-- ============ 常驻开关 ============ -->
+            <LinearLayout
+                android:id="@+id/cardResident"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_m"
+                android:background="@drawable/bg_card"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:padding="@dimen/card_padding">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvResidentTitle"
+                        style="@style/CardTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/resident_title" />
+
+                    <TextView
+                        android:id="@+id/tvSwitchState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/swEnabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_s"
+                android:lineSpacingExtra="2dp"
+                android:paddingHorizontal="2dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+            <!-- ============ 明日预告 ============ -->
+            <TextView
+                android:id="@+id/tvTomorrowLabel"
+                style="@style/SectionLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="明天" />
+
+            <LinearLayout
+                android:id="@+id/cardTomorrow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="@dimen/card_padding">
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tvTomorrowHeader"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="起床"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+
+                <!-- 起床时间 + 一键设闹钟 -->
+                <LinearLayout
+                    android:id="@+id/rowWake"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_m"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvWakeLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="起床"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvWakeTime"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="20sp" />
+
+                    <Button
+                        android:id="@+id/btnSetAlarm"
+                        style="@style/FlatTextButton"
+                        android:textSize="13sp"
+                        android:text="⏰ 设闹钟" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvTomorrowFirst"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_s"
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
 
                 <TextView
-                    android:id="@+id/tvWakeTime"
-                    android:layout_width="0dp"
+                    android:id="@+id/tvTomorrowCourses"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="?attr/accentColor"
-                    android:textSize="20sp" />
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp" />
 
-                <Button
-                    android:id="@+id/btnSetAlarm"
-                    style="@style/FlatTextButton"
-                    android:textSize="13sp"
-                    android:text="⏰ 设闹钟" />
+                <TextView
+                    android:id="@+id/tvTomorrowTail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
             </LinearLayout>
 
+            <!-- ============ 今日时间线 ============ -->
             <TextView
-                android:id="@+id/tvTomorrowFirst"
+                android:id="@+id/tvTimelineLabel"
+                style="@style/SectionLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_s"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:layout_marginTop="@dimen/section_gap"
+                android:layout_marginBottom="@dimen/space_s"
+                android:text="今天的时间线" />
 
-            <TextView
-                android:id="@+id/tvTomorrowCourses"
+            <LinearLayout
+                android:id="@+id/timelineContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp" />
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:paddingVertical="6dp" />
 
-            <TextView
-                android:id="@+id/tvTomorrowTail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                </LinearLayout><!-- /blueInner -->
+
+            </LinearLayout><!-- /blueSection -->
+
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <!-- ============ 今日时间线 ============ -->
-        <TextView
-            style="@style/SectionLabel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/section_gap"
-            android:layout_marginBottom="@dimen/space_s"
-            android:text="今天的时间线" />
+    <!-- P3 彩蛋的宿主：运行时塞一个 PersonaTodayView 进来。
+         底色和那套蓝一致，万一首次绘制前有一帧空白也不会闪白 -->
+    <FrameLayout
+        android:id="@+id/p3Host"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF0524B1"
+        android:visibility="gone" />
 
-        <LinearLayout
-            android:id="@+id/timelineContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:paddingVertical="6dp" />
-
-    </LinearLayout>
-</androidx.core.widget.NestedScrollView>
+</FrameLayout>

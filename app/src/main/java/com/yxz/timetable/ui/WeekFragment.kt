@@ -2,6 +2,7 @@ package com.yxz.timetable.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -31,6 +33,10 @@ import com.yxz.timetable.data.Store
 import com.yxz.timetable.data.TemplateSet
 import com.yxz.timetable.data.TimelineEngine
 import com.yxz.timetable.databinding.FragmentWeekBinding
+import com.yxz.timetable.ui.persona.PersonaP3
+import com.yxz.timetable.ui.persona.PersonaWeekView
+import com.yxz.timetable.ui.persona.SlotClock
+import com.yxz.timetable.ui.persona.TextRun
 import java.time.LocalDate
 
 /**
@@ -96,6 +102,12 @@ class WeekFragment : Fragment() {
     /** 正在展示的课程详情卡。页面销毁时必须关掉，否则它的窗口挂在 Activity 上会泄漏 */
     private var detailCard: Dialog? = null
 
+    /** P3 彩蛋打开时才有值（整页自绘的那张课表）；默认外观下是 null。见 [showPersona3] */
+    private var p3: PersonaWeekView? = null
+
+    /** 当前正在浏览的教学周。点格弹卡要用它（见 [openSlotPanel]） */
+    private var viewedWeek = 1
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -106,9 +118,67 @@ class WeekFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         store = Store(requireContext())
 
-        binding.btnPrevWeek.setOnClickListener { weekOffset--; render() }
-        binding.btnNextWeek.setOnClickListener { weekOffset++; render() }
+        // 两套外观二选一：默认是原网格，P3 模式下换成整页自绘（见 PersonaWeekView）。
+        // 后者没有「上一周 / 下一周」按钮，翻周靠标题区那两个键帽或横滑。
+        if (store.p3Mode) {
+            showPersona3()
+            return
+        }
 
+        binding.btnPrevWeek.setOnClickListener { stepWeek(-1) }
+        binding.btnNextWeek.setOnClickListener { stepWeek(1) }
+
+        render()
+    }
+
+    /**
+     * 翻周。
+     *
+     * 边界在**偏移量**上夹住，而不是只夹「本周 ± 偏移」的结果：第 1 周再点「上一周」
+     * 什么都不该发生，而不是显示成「第 1 周」却把偏移继续往负数记 ——
+     * 那样用户点三次上一周，就要点三次下一周才能回到本周。
+     */
+    private fun stepWeek(delta: Int) {
+        val thisWeek = store.weekOf(LocalDate.now())
+        val target = (thisWeek + weekOffset + delta).coerceIn(1, store.totalWeeks)
+        if (target == thisWeek + weekOffset) return
+        weekOffset = target - thisWeek
+        render()
+    }
+
+    /**
+     * 换上 P3 外观。
+     *
+     * 只换「怎么画」：翻周、点格弹卡、日型提示都还走下面那套方法 ——
+     * 自绘 View 通过回调把翻周和点击抛回来，和默认外观走同一条路径。
+     * 结构和 [com.yxz.timetable.ui.CalendarFragment.showPersona3] 一致。
+     */
+    private fun showPersona3() {
+        val view = PersonaWeekView(requireContext())
+        binding.normalWeek.visibility = View.GONE
+        binding.p3Host.visibility = View.VISIBLE
+        binding.p3Host.addView(
+            view,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        view.onWeekStep = { delta -> stepWeek(delta) }
+        view.onSlotClick = { day, nodes, pivot ->
+            // 课程和模板现取：设置页里改完课再切回来，这里要拿到新的那一份
+            openSlotPanel(
+                anchor = view,
+                day = day,
+                nodes = nodes,
+                week = viewedWeek,
+                courses = store.courses(),
+                set = store.templates(),
+                pivot = pivot
+            )
+        }
+        p3 = view
         render()
     }
 
@@ -132,6 +202,9 @@ class WeekFragment : Fragment() {
         super.onDestroyView()
         detailCard?.dismiss()
         detailCard = null
+        // p3 这个 View 挂在 p3Host 上，Fragment 的 View 销毁后必须一并丢掉，
+        // 否则 fragment 实例还活着时会一直攥着一个已经没人用的 View
+        p3 = null
         _binding = null
     }
 
@@ -143,6 +216,10 @@ class WeekFragment : Fragment() {
         val today = LocalDate.now()
         val thisWeek = store.weekOf(today)
         val week = (thisWeek + weekOffset).coerceIn(1, store.totalWeeks)
+        // 学期开始前 / 结束后，weekOf 会落在 1..totalWeeks 之外；夹回来的同时把偏移归位，
+        // 否则「本周」是第 0 周时，点一次下一周看起来毫无反应（差值被夹掉了）
+        if (week != thisWeek + weekOffset) weekOffset = week - thisWeek
+        viewedWeek = week
         val courses = store.courses()
 
         // 「今天」只存在于本周 —— 翻到别周后那一周里没有今天，
@@ -153,6 +230,14 @@ class WeekFragment : Fragment() {
 
         val monday = store.termStart.plusDays(((week - 1) * 7).toLong())
         val sunday = monday.plusDays(6)
+
+        // 两套外观的控件各自 GONE / VISIBLE，所以喂数据之前就分叉：
+        // 给 GONE 的控件赋值等于白算（它们不测量、不绘制）
+        val persona = p3
+        if (persona != null) {
+            submitPersona3(persona, week, thisWeek, todayDay, courses, monday, sunday)
+            return
+        }
 
         binding.tvWeek.text =
             if (week == thisWeek) "第 $week 周 · 本周" else "第 $week 周"
@@ -165,13 +250,100 @@ class WeekFragment : Fragment() {
         // 「这周上不上课」和「周末」在视觉上分开。
         binding.tvDayTypeHint.text = dayTypeHint(monday, week, courses, todayDay)
 
-        buildGrid(week, courses, todayDay)
+        buildGridViews(week, courses, todayDay)
         renderWeekDots(week, courses)
+    }
+
+    /**
+     * 把这一周喂给 P3 自绘页。
+     *
+     * 节次时刻取自**模板的占位格**（`set.slotStart/slotEnd`），不是写死的 `Slots` ——
+     * 和默认外观、今日页、通知栏同一个来源。课块怎么合并交给 [WeekGrid]，
+     * 两套外观用的必须是同一份判定。
+     */
+    private fun submitPersona3(
+        view: PersonaWeekView,
+        week: Int,
+        thisWeek: Int,
+        todayDay: Int?,
+        courses: List<Course>,
+        monday: LocalDate,
+        sunday: LocalDate
+    ) {
+        val set = store.templates()
+        val rows = Periods.rows(store.periods)
+        val slots = rows.map { SlotClock(it.node, set.slotStart(it.node), set.slotEnd(it.node)) }
+
+        // 近五周点阵：设置里关掉时整条不画（和默认外观的卡片收起是同一个开关）
+        val density = if (store.weekDotsEnabled) {
+            WeekDensity.weeks(
+                week = week,
+                totalWeeks = store.totalWeeks,
+                courses = courses,
+                rowCount = rows.size,
+                paired = Periods.isPairedSchedule(courses)
+            )
+        } else {
+            emptyList()
+        }
+
+        view.submit(
+            week = week,
+            todayDay = todayDay,
+            slots = slots,
+            courses = courses,
+            density = density,
+            meta = p3Meta(week, thisWeek, todayDay, courses, set),
+            rangeText = "${monday.monthValue}.${monday.dayOfMonth} – " +
+                    "${sunday.monthValue}.${sunday.dayOfMonth}",
+            dotsEnabled = store.weekDotsEnabled
+        )
+    }
+
+    /**
+     * 标题下那行说明：「今天：周三 · A 型日 · 有早八」。
+     *
+     * 翻到别的周时没有「今天」，改成「第 N 周 · 共 M 门课」——
+     * 宁可换一句话，也不要把本周的日型标到别的周上。
+     *
+     * 「有早八」单独拆出来染品红：日型名和「今天要不要早起」是两件事，
+     * 引擎把它们拼在同一个字符串里（见 [TimelineEngine.dayTypeDisplay]），
+     * 这里只负责上色。
+     */
+    private fun p3Meta(
+        week: Int, thisWeek: Int, todayDay: Int?, courses: List<Course>, set: TemplateSet
+    ): List<TextRun> {
+        if (todayDay == null) {
+            val count = courses.count { it.enabled && week in it.weeks }
+            return listOf(
+                TextRun("第 $week 周", PersonaP3.CYAN),
+                TextRun(" · 共 $count 门课", PersonaP3.DIM)
+            )
+        }
+        val date = store.termStart.plusDays(((week - 1) * 7 + todayDay - 1).toLong())
+        val display = TimelineEngine.dayTypeDisplay(
+            date, week, courses, set.config, store.dayTypeNames()
+        )
+        val parts = display.split(" · ")
+        val runs = mutableListOf(
+            TextRun("今天：", PersonaP3.DIM, bold = false),
+            TextRun(weekdayCn(todayDay), PersonaP3.TEXT)
+        )
+        runs += TextRun(" · ", PersonaP3.DIM, bold = false)
+        runs += TextRun(parts.firstOrNull().orEmpty(), PersonaP3.CYAN)
+        if (parts.size > 1) {
+            runs += TextRun(" · ", PersonaP3.DIM, bold = false)
+            runs += TextRun(parts.drop(1).joinToString(" · "), PersonaP3.MAGENTA)
+        }
+        return runs
     }
 
     /**
      * 周次卡片的近五周点阵。设置里关掉时整个预览收起（GONE），
      * 卡片回到只有标题行的样子。
+     *
+     * 数据本身在 [WeekDensity] 里算 —— P3 外观底部那条密度条用的是同一份，
+     * 两套外观不可能一个点亮一个不亮。
      */
     private fun renderWeekDots(week: Int, courses: List<Course>) {
         if (!store.weekDotsEnabled) {
@@ -179,49 +351,15 @@ class WeekFragment : Fragment() {
             return
         }
         binding.weekDots.visibility = View.VISIBLE
-        binding.weekDots.submit(weekDots(week, courses))
-    }
-
-    /**
-     * 近五周点阵预览的数据：**当前浏览的周 ±2 周**，每周一张「7 天 × 节数」占用表。
-     *
-     * 跟着浏览的周走（而不是钉死在真实本周）：翻周时预览也往前挪，
-     * 「下周会怎样」才是这排点阵真正回答的问题。
-     * 学期头尾会自动收窄（第 1 周只画 1-3 周），标签就是周次号。
-     *
-     * 「两课并一课」的标准课表（每门课都是 1-2、3-4 这种奇数起点的两节连堂）
-     * 会把点阵两行并一行 —— 一门连堂课亮一个点，而不是一竖条两个点。
-     * 识别和合并都在 [Periods]（纯逻辑，有测试盯着）。
-     */
-    private fun weekDots(week: Int, courses: List<Course>): List<WeekDotsView.Week> {
-        val rowCount = Periods.rows(store.periods).size
-        val paired = Periods.isPairedSchedule(courses)
-        return ((week - 2)..(week + 2))
-            .filter { it in 1..store.totalWeeks }
-            .map { w ->
-                var grid = occupancy(w, courses, rowCount)
-                if (paired) grid = Periods.mergePairs(grid)
-                WeekDotsView.Week(w, grid, w == week)
-            }
-    }
-
-    /**
-     * 第 [week] 周的占用表：`[星期一..星期日][第 1..N 节]`。
-     *
-     * 判「有课」和课表网格同一条规则（节点区间有重叠就算占用）——
-     * 两处口径不一致的话，点阵亮了下面的格子却是空的，比没这功能还糟。
-     */
-    private fun occupancy(
-        week: Int, courses: List<Course>, rowCount: Int
-    ): Array<BooleanArray> {
-        val grid = Array(7) { BooleanArray(rowCount) }
-        for (c in courses) {
-            if (!c.enabled || week !in c.weeks) continue
-            for (node in c.startNode..c.endNode) {
-                grid[c.dayOfWeek - 1][node - 1] = true
-            }
-        }
-        return grid
+        binding.weekDots.submit(
+            WeekDensity.weeks(
+                week = week,
+                totalWeeks = store.totalWeeks,
+                courses = courses,
+                rowCount = Periods.rows(store.periods).size,
+                paired = Periods.isPairedSchedule(courses)
+            )
+        )
     }
 
     /**
@@ -325,7 +463,7 @@ class WeekFragment : Fragment() {
     //  行天然对齐。
     // ==================================================================
 
-    private fun buildGrid(week: Int, courses: List<Course>, todayDay: Int?) {
+    private fun buildGridViews(week: Int, courses: List<Course>, todayDay: Int?) {
         val ctx = requireContext()
         val container = binding.gridContainer
         container.removeAllViews()
@@ -445,12 +583,9 @@ class WeekFragment : Fragment() {
         ctx: Context, rows: List<Periods.Row>, day: Int, week: Int, courses: List<Course>,
         today: Boolean, set: TemplateSet
     ): View {
-        val hits = rows.map { r ->
-            courses.firstOrNull { c ->
-                c.enabled && c.dayOfWeek == day && week in c.weeks &&
-                        c.startNode <= r.node && c.endNode >= r.node
-            }
-        }
+        // 合并规则在 [WeekGrid] 里 —— P3 外观（自绘）用的是同一份，
+        // 两套画法对「哪几格合成一块」不能有第二种答案
+        val spans = WeekGrid.spans(day, rows.map { it.node }, week, courses)
 
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -458,27 +593,18 @@ class WeekFragment : Fragment() {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
             if (today) background = todayColumnBg(ctx)
-            var i = 0
-            while (i < rows.size) {
-                val hit = hits[i]
-                var span = 1
-                if (hit != null) {
-                    while (i + span < rows.size) {
-                        val nxt = hits[i + span]
-                        if (nxt == null || !sameCourseVisual(nxt, hit)) break
-                        span++
-                    }
-                }
+            for (span in spans) {
                 // 详情卡要的节次范围是**合并块实际占的行** —— 一门课拆成
                 // 「1-2」「3-4」两条记录时显示上拼成了一整块，弹卡里也得写
                 // 「第 1-4 节」，而不是第一条记录自带的「第 1-2 节」。
                 // 空格子也有范围（就它自己那一行）—— 空格子同样能点：
                 // 「这一格别的周有没有课」是个真问题，而答案不在这张网格上。
-                val nodeRange =
-                    if (hit == null) rows[i].node..rows[i].node
-                    else rows[i].node..rows[i + span - 1].node
-                addView(makeCourseCell(ctx, set, hit, span, nodeRange, day, week, courses))
-                i += span
+                addView(
+                    makeCourseCell(
+                        ctx, set, span.course, span.merged,
+                        span.fromNode..span.toNode, day, week, courses
+                    )
+                )
             }
         }
     }
@@ -493,7 +619,7 @@ class WeekFragment : Fragment() {
      */
     private fun openSlotPanel(
         anchor: View, day: Int, nodes: IntRange, week: Int, courses: List<Course>,
-        set: TemplateSet
+        set: TemplateSet, pivot: RectF? = null
     ) {
         detailCard?.dismiss()
         val items = SlotCourses.at(day, nodes, courses, week)
@@ -512,13 +638,11 @@ class WeekFragment : Fragment() {
                 selfStudySlot(monday.plusDays((day - 1).toLong()), week, nodes.first, courses, set)
             } else {
                 null
-            }
+            },
+            // P3 外观没有「每格一个 View」，弹卡的动画圆心由自绘页按屏幕坐标给
+            pivot = pivot
         )
     }
-
-    /** 显示上算「同一门课」：同一条记录，或名称 / 教室 / 周次完全一致的相邻记录 */
-    private fun sameCourseVisual(a: Course, b: Course): Boolean =
-        a === b || (a.name == b.name && a.place == b.place && a.weeks == b.weeks)
 
     /**
      * 正在浏览的周是不是「真实的本周」。

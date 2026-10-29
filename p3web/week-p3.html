@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>P3 · 课表页（网页试稿）</title>
+<!--
+  课表页 P3 换皮的网页试稿 —— 对应 Android 端 WeekFragment 的换皮方案：
+    · 整页深蓝水彩 + 巨号周数压在网格后面（日历页「巨号月份」同款动作）
+    · 周次选择卡 = 深藏青玻璃矩形
+    · 表头 一~五白 / 六青 / 日红（PersonaCalendarView 已建立的规范），
+      今天那格挂品红 TODAY 撕纸
+    · 课程格 = 深藏青玻璃（#1B2270 @ 72% + 亮蓝细边），课名白、教室浅蓝
+    · 空格子全透明，蓝底直接透出来 —— 课程像芯片一样浮在蓝底上
+  色值与 PersonaAlarmPalette / PersonaCalendarView 同源，改一处记得同步。
+-->
+<style>
+  :root {
+    --blue-top: #1EA7FE;
+    --blue-mid: #0E49BE;
+    --blue-deep: #0524B1;
+    --card-fill: rgba(27, 34, 112, 0.72);
+    --card-stroke: rgba(70, 96, 220, 0.85);
+    --text: #FFFFFF;
+    --text-dim: #A9BEE8;
+    --cyan: #5BD9E8;
+    --red: #FF6B6B;
+    --today: #F0399B;
+    --ink: #0A1026;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 412px; height: 915px; overflow: hidden; }
+  body {
+    position: relative;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(180deg, var(--blue-top) 0%, var(--blue-mid) 45%, var(--blue-deep) 100%);
+    color: var(--text);
+  }
+  /* 左上天光 */
+  .glow {
+    position: absolute; inset: 0;
+    background: radial-gradient(420px 300px at 12% 4%, rgba(150,225,255,0.32), transparent 70%);
+    pointer-events: none;
+  }
+  /* 两道斜光带：压在巨号「7」**下方**的空白区，跟数字错开 ——
+     光带从数字身上穿过去的话，看起来就像数字长出了尾巴 */
+  .streak {
+    position: absolute; left: -20%; width: 140%; pointer-events: none;
+    transform: rotate(-24deg);
+    background: rgba(255,255,255,0.07);
+  }
+  .streak.s1 { top: 62%; height: 42px; }
+  .streak.s2 { top: 84%; height: 64px; background: rgba(255,255,255,0.045); }
+
+  /* 巨号周数：压在网格后面，日历页「巨号月份」同款 */
+  .weeknum {
+    position: absolute; top: 150px; right: -8px;
+    font-family: "Arial Black", Impact, sans-serif; font-style: italic;
+    font-size: 330px; line-height: 1; color: rgba(255,255,255,0.07);
+    pointer-events: none; user-select: none;
+  }
+
+  .page { position: relative; height: 100%; padding: 14px 12px 12px; display: flex; flex-direction: column; }
+
+  /* ---- 周次选择：对话框双层卡 ----
+     形状完全不变：顶点一比一照抄 PersonaDialogBackground（388×190 卡片，
+     百分比 × 尺寸 = 像素），四条边不平行、上尖峰都在：
+       · 蓝底层 (0,3.5%) (30.5%,0) (96.3%,21.6%) (89.7%,100%) (0.5%,89.5%)，#4884FF @ 69%；
+       · 深色面板 (4.2%,12.2%) (7.3%,94.1%) (95.1%,89.5%) (100%,15.3%) (27.1%,4.5%)，
+         #1B2270 @ 72%，描边 #4660DC · 1.6dp（= 3.2px）；
+     内容 padding（左 32 / 右 26 / 上 26 / 下 22）对齐面板内缩，别压到斜边上。 */
+  .selector { position: relative; margin: 6px 14px 12px 16px; }
+  .selector .shape { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .sel-body { position: relative; padding: 26px 26px 22px 32px; }
+  .selector .row { display: flex; align-items: center; }
+  .arrow {
+    width: 34px; height: 34px; border: none; background: transparent; color: var(--text);
+    font-size: 20px; cursor: pointer; opacity: 0.9;
+  }
+  .weekcenter { flex: 1; text-align: center; }
+  .tv-week { font-weight: 700; font-size: 18px; letter-spacing: 0.02em; }
+  .tv-range { margin-top: 2px; font-size: 10.5px; letter-spacing: 0.08em; color: var(--text-dim); }
+  /* 近五周点阵 */
+  .dots { display: flex; justify-content: center; gap: 14px; margin-top: 8px; }
+  .dotcol { text-align: center; }
+  .dotcol .dgrid { display: grid; grid-template-columns: repeat(2, 5px); gap: 2.5px; justify-content: center; }
+  .dotcol i { width: 5px; height: 5px; border-radius: 50%; background: rgba(169,190,232,0.25); }
+  .dotcol i.on { background: var(--cyan); }
+  .dotcol i.now { background: var(--text); }
+  .dotcol .dlabel { margin-top: 3px; font-size: 9px; color: var(--text-dim); }
+  .hint { margin-top: 7px; text-align: center; font-size: 10px; color: var(--text-dim); opacity: 0.85; }
+
+  /* ---- 网格：行高按真机密度（约 32dp@2x），不拉伸 ---- */
+  .gridwrap { position: relative; margin-top: 10px; }
+  table.grid { width: 100%; border-collapse: separate; border-spacing: 2px; table-layout: fixed; }
+  .grid th {
+    height: 30px; font-size: 11px; font-weight: 700; color: var(--text-dim);
+    position: relative;
+  }
+  .grid th.wd { color: var(--text); }
+  .grid th.sat { color: var(--cyan); }
+  .grid th.sun { color: var(--red); }
+  /* TODAY 撕纸：品红小三角，挂在今天表头的左上角（PersonaCalendarView 同款意象） */
+  .today-flag {
+    position: absolute; top: -7px; left: 50%; margin-left: -13px;
+    width: 0; height: 0;
+    border-left: 13px solid transparent; border-right: 13px solid transparent;
+    border-top: 15px solid var(--today);
+    filter: drop-shadow(0 1px 1px rgba(10,16,38,0.4));
+  }
+  .today-flag::after {
+    content: "TODAY"; position: absolute; top: -13px; left: -12px;
+    font-size: 5.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--text);
+  }
+  .grid td.time {
+    width: 46px; height: 34px; font-size: 9px; line-height: 1.25; color: var(--text-dim);
+    text-align: left; vertical-align: middle; padding-left: 2px;
+  }
+  .grid td.time b { display: block; font-size: 9.5px; color: var(--text-dim); font-weight: 700; }
+  .grid td.cell { border-radius: 6px; height: 34px; }
+  /* 课程格：深藏青玻璃 */
+  .grid td.course {
+    background: var(--card-fill);
+    border: 1px solid var(--card-stroke);
+    text-align: center; vertical-align: middle; padding: 2px 1px;
+  }
+  .grid td.course .name {
+    font-size: 10px; font-weight: 700; color: var(--text); line-height: 1.25;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .grid td.course .place {
+    margin-top: 2px; font-size: 8.5px; color: var(--text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* 今日列的淡带：白 9%，压在玻璃后面的「这一列是今天」 */
+  .grid td.todaycol { box-shadow: inset 0 0 0 100px rgba(255,255,255,0.09); }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="streak s1"></div>
+  <div class="streak s2"></div>
+  <div class="weeknum">7</div>
+
+  <div class="page">
+    <!-- 周次选择：对话框双层卡（顶点照抄 PersonaDialogBackground，尖角改圆角） -->
+    <div class="selector">
+      <svg class="shape" id="selShape" viewBox="0 0 388 190" preserveAspectRatio="none"></svg>
+      <div class="sel-body">
+        <div class="row">
+          <button class="arrow">‹</button>
+          <div class="weekcenter">
+            <div class="tv-week">第 7 周</div>
+            <div class="tv-range">10/19 – 10/25 · B 型日</div>
+          </div>
+          <button class="arrow">›</button>
+        </div>
+        <div class="dots" id="dots"></div>
+        <div class="hint">点阵：近五周课程密度，有课高亮</div>
+      </div>
+    </div>
+
+    <!-- 网格：表头 + 节次列 + 七天 -->
+    <div class="gridwrap">
+      <table class="grid" id="grid"></table>
+    </div>
+  </div>
+
+<script>
+// 近五周点阵：每周 2×5 的小点阵，第 7 周是本周
+(function () {
+  var wrap = document.getElementById('dots');
+  var weeks = [3, 4, 5, 6, 7];
+  var density = { 3: 8, 4: 12, 5: 6, 6: 10, 7: 9 };   // 有课的节次数（随手拟的）
+  weeks.forEach(function (wk) {
+    var col = document.createElement('div'); col.className = 'dotcol';
+    var g = document.createElement('div'); g.className = 'dgrid';
+    for (var i = 0; i < 10; i++) {
+      var d = document.createElement('i');
+      if (i < density[wk]) d.className = wk === 7 ? 'on now' : 'on';
+      g.appendChild(d);
+    }
+    var lb = document.createElement('div'); lb.className = 'dlabel';
+    lb.textContent = wk === 7 ? '本周' : '第' + wk + '周';
+    col.appendChild(g); col.appendChild(lb); wrap.appendChild(col);
+  });
+})();
+
+// 课表：节次时间（B 型日）+ 课程数据（照内置示例课表的口吻拟的）
+var TIMES = ['08:30', '09:20', '10:20', '11:10', '14:00', '14:50', '16:10', '17:00', '18:40', '19:30'];
+var COURSES = [
+  { day: 1, s: 1, e: 2, name: '高等数学（一）', place: '子良楼203' },
+  { day: 1, s: 5, e: 6, name: '大学英语（二）', place: '文科楼B305' },
+  { day: 2, s: 3, e: 4, name: 'C语言与人工智能基础', place: '子良楼507' },
+  { day: 2, s: 7, e: 8, name: '体育（篮球）', place: '体育馆' },
+  { day: 3, s: 1, e: 2, name: '经济舞台上的探龙：市场与政府的走步', place: '文科楼A101' },
+  { day: 3, s: 5, e: 6, name: '高等数学（一）', place: '子良楼203' },
+  { day: 4, s: 3, e: 4, name: '数据结构导论', place: '子良楼305' },
+  { day: 4, s: 9, e: 10, name: '周复盘 + 下周待办', place: '' },
+  { day: 5, s: 1, e: 2, name: 'C语言与人工智能基础', place: '子良楼507' },
+  { day: 5, s: 6, e: 7, name: '大学物理', place: '实验楼201' }
+];
+var TODAY = 7;   // 今天周日：整列空课，正好演示 TODAY 撕纸和淡带
+
+(function () {
+  var grid = document.getElementById('grid');
+  // 表头
+  var head = grid.insertRow();
+  var th0 = document.createElement('th'); th0.innerHTML = '节次'; head.appendChild(th0);
+  var NAMES = ['', '一', '二', '三', '四', '五', '六', '日'];
+  for (var d = 1; d <= 7; d++) {
+    var th = document.createElement('th');
+    th.className = d === 6 ? 'sat' : d === 7 ? 'sun' : 'wd';
+    if (d === TODAY) {
+      th.className = 'sun';
+      var flag = document.createElement('div'); flag.className = 'today-flag';
+      th.appendChild(flag);
+    }
+    th.appendChild(document.createTextNode(NAMES[d]));
+    head.appendChild(th);
+  }
+  // 行：先铺 10 行（节次列 + 7 个空格子），课程格再合并上去
+  for (var r = 1; r <= 10; r++) {
+    var row = grid.insertRow();
+    var t = row.insertCell(); t.className = 'time';
+    t.innerHTML = '<b>' + r + '</b>' + TIMES[r - 1];
+    for (d = 1; d <= 7; d++) {
+      var c = row.insertCell(); c.className = 'cell' + (d === TODAY ? ' todaycol' : '');
+    }
+  }
+  // 课程格：跨行合并，覆在空格子上
+  COURSES.forEach(function (cs) {
+    var row = grid.rows[cs.s];            // 第 s 节（表头是 rows[0]）
+    var cell = row.cells[cs.day];         // 第 day+1 列（节次列是 cells[0]）
+    cell.rowSpan = cs.e - cs.s + 1;
+    cell.className = 'cell course' + (cs.day === TODAY ? ' todaycol' : '');
+    cell.innerHTML = '<div class="name">' + cs.name + '</div>' +
+                     (cs.place ? '<div class="place">' + cs.place + '</div>' : '');
+    // 被合并吃掉的行里原来的空格子删掉
+    for (var rr = cs.s + 1; rr <= cs.e; rr++) grid.rows[rr].deleteCell(cs.day);
+  });
+})();
+</script>
+</body>
+</html>

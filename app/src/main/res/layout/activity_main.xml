@@ -9,11 +9,21 @@
   因为 weight 的算法是「先算完所有固定高度，再把剩余空间按权重分配」。
   如果写成 wrap_content，容器会先按内容撑一次，权重再分一次，结果不可预测。
   这跟 flex 里 flex-basis:auto 会导致内容撑开是同一个道理。
+
+  ============================================================
+  底部导航为什么不是 BottomNavigationView
+  ============================================================
+
+  需求是「今天」放在正中间、外面套一颗强调色大圆、图标文字全白。
+  BottomNavigationView 的图标着色是**全局一份** ColorStateList（itemIconTint），
+  没法只把中间那一项换成白色；itemBackground 同样是五项统一。
+  与其绕（把中间那项藏起来再盖一个按钮上去），不如五个项自己排。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:orientation="vertical">
 
     <FrameLayout
@@ -22,16 +32,205 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNav"
+    <!--
+      P3 彩蛋的底板：高度 0，不占排版空间；它的孩子（PersonaNavBackdrop）
+      按「栏高 + 探出高度」画在导航栏的位置上。
+      层级是「页面 → 它 → 导航栏」，所以它盖住页面、又被导航栏的图标盖住。
+      为什么不在导航栏里面画：实测圆会被 nav_today 裁掉上下两截，
+      而这一层只要自己够大就不需要任何 clip 例外。
+    -->
+    <FrameLayout
+        android:id="@+id/navBackdropHost"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <com.yxz.timetable.ui.persona.PersonaNavBackdrop
+            android:id="@+id/personaBackdrop"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_gravity="bottom"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/card_bg"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:elevation="8dp"
-        app:itemIconSize="22dp"
-        app:itemTextAppearanceActive="@style/NavLabel"
-        app:itemTextAppearanceInactive="@style/NavLabel"
-        app:labelVisibilityMode="labeled"
-        app:menu="@menu/main_menu" />
+        android:orientation="horizontal"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp">
+
+        <!-- 课表 -->
+        <LinearLayout
+            android:id="@+id/nav_week"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/iconWeek"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@string/tab_week"
+                android:src="@drawable/ic_tab_week" />
+
+            <TextView
+                android:id="@+id/labelWeek"
+                style="@style/NavLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_week" />
+        </LinearLayout>
+
+        <!-- 日历 -->
+        <LinearLayout
+            android:id="@+id/nav_calendar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/iconCalendar"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@string/tab_calendar"
+                android:src="@drawable/ic_tab_calendar" />
+
+            <TextView
+                android:id="@+id/labelCalendar"
+                style="@style/NavLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_calendar" />
+        </LinearLayout>
+
+        <!-- 今天：正中间，强调色大圆 + 白图标白字。
+             P3 模式下这颗 54dp 的实心圆背景会被置空，改由 navBackdropHost 那层
+             画一个更大的圆（能探出导航栏），图标和文字留在这里、尺寸不变。 -->
+        <FrameLayout
+            android:id="@+id/nav_today"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:clipChildren="false"
+            android:focusable="true"
+            android:paddingVertical="2dp">
+
+            <LinearLayout
+                android:id="@+id/todayBubble"
+                android:layout_width="54dp"
+                android:layout_height="54dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_today_bubble"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/iconToday"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/tab_today"
+                    android:src="@drawable/ic_tab_today"
+                    android:tint="#FFFFFFFF" />
+
+                <TextView
+                    android:id="@+id/labelToday"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.02"
+                    android:text="@string/tab_today"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- 闹钟 -->
+        <LinearLayout
+            android:id="@+id/nav_alarm"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/iconAlarm"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@string/tab_alarm"
+                android:src="@drawable/ic_tab_alarm" />
+
+            <TextView
+                android:id="@+id/labelAlarm"
+                style="@style/NavLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_alarm" />
+        </LinearLayout>
+
+        <!-- 设置 -->
+        <LinearLayout
+            android:id="@+id/nav_settings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/iconSettings"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@string/tab_settings"
+                android:src="@drawable/ic_tab_settings" />
+
+            <TextView
+                android:id="@+id/labelSettings"
+                style="@style/NavLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_settings" />
+        </LinearLayout>
+
+    </LinearLayout>
 
 </LinearLayout>

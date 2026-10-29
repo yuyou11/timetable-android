@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  日历页。两套外观叠在同一个 Fragment 里：
+
+  ┌ normalCalendar  ← 默认外观（卡片 + 网格，和课表页同一套语言）
+  └ p3Host          ← Persona 3 彩蛋（整页自绘，见 PersonaCalendarView）
+
+  为什么用 FrameLayout 叠着而不是拆成两个 Fragment：翻月、农历、节日
+  那套状态都在 CalendarFragment 里，换壳不应该把状态也换掉。两套外观
+  按 Store.p3Mode 二选一显示，另一套 GONE（GONE 的不会测量、不会绘制）。
+
+  默认外观的版式对齐课表页：顶部一张卡片放「年月 + 左右箭头」，
+  下面一张卡片装整个网格。箭头用 ImageButton + ic_chevron（和课表页同一个
+  style、同一套图标）：之前写的「‹ / ›」文本箭头在 48dp 方块里总是偏下一点点 ——
+  这是字形的基线决定的光学重心，跟控件居中没关系，换矢量图最省事。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/normalCalendar"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingHorizontal="10dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp">
+
+            <ImageButton
+                android:id="@+id/btnPrev"
+                style="@style/NavIconButton"
+                android:contentDescription="@string/calendar_prev"
+                android:src="@drawable/ic_chevron_left" />
+
+            <TextView
+                android:id="@+id/tvMonth"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp" />
+
+            <ImageButton
+                android:id="@+id/btnNext"
+                style="@style/NavIconButton"
+                android:contentDescription="@string/calendar_next"
+                android:src="@drawable/ic_chevron_right" />
+        </LinearLayout>
+
+        <!-- 网格卡片：星期表头 + 分隔线 + 42 格。外层套 ScrollView 和课表页一致，
+             小屏上格子挤不下时能滚，大屏上卡片就是刚好包住内容的高度 -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="3dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingVertical="8dp">
+
+                    <TextView style="@style/CalendarWeekday" android:text="一" />
+                    <TextView style="@style/CalendarWeekday" android:text="二" />
+                    <TextView style="@style/CalendarWeekday" android:text="三" />
+                    <TextView style="@style/CalendarWeekday" android:text="四" />
+                    <TextView style="@style/CalendarWeekday" android:text="五" />
+                    <TextView style="@style/CalendarWeekday" android:text="六" />
+                    <TextView style="@style/CalendarWeekday" android:text="日" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <!-- 格子由 CalendarFragment 拼进来：固定行高 + 1dp 格线，
+                     和课表页同一套做法 -->
+                <LinearLayout
+                    android:id="@+id/gridContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- P3 彩蛋的宿主：运行时塞一个 PersonaCalendarView 进来 -->
+    <FrameLayout
+        android:id="@+id/p3Host"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF0524B1"
+        android:visibility="gone" />
+
+</FrameLayout>

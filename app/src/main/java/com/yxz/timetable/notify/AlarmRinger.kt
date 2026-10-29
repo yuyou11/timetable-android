@@ -50,10 +50,6 @@ object AlarmRinger {
     const val CHANNEL_ID = "alarm_ring"
     private const val NOTIF_ID = 3001
 
-    /** 渐强：从 15% 在 20 秒内升到 100% */
-    private const val FADE_MS = 20_000f
-    private const val FADE_FROM = 0.15f
-
     /** 通知按钮的动作（转发给 [ActionReceiver]） */
     const val ACTION_STOP = "com.yxz.timetable.ALARM_STOP"
     const val ACTION_SNOOZE = "com.yxz.timetable.ALARM_SNOOZE"
@@ -101,7 +97,6 @@ object AlarmRinger {
         lastKey = key
 
         val store = Store(ctx)
-        ringingIds = due.map { it.id }
         snoozeMinutes = due.minOf { it.snoozeMinutes }.coerceAtLeast(Alarms.MIN_SNOOZE_MINUTES)
         // 「上次响铃」留一条记录：自动停之后页面上还能看到它响过
         store.lastRangAt = System.currentTimeMillis()
@@ -109,7 +104,32 @@ object AlarmRinger {
 
         ensureChannel(ctx)
         startSound(ctx, due.first(), store)
+        // ringingIds 必须在 startSound **之后**置：它开头那次静默清理
+        // (stopInternal) 会把 ringingIds 清空 —— 先置等于白置。
+        // 后果：isSessionActive() 恒为 false、currentIds() 是空的，
+        // 于是页面判成「没在响」（钟不转绿、响铃卡不出、时间显示 --:--），
+        // MainActivity 还会在 onResume 里把还响着的窗口收掉。
+        ringingIds = due.map { it.id }
         notify(ctx, due, store)
+
+        // 通知监听者「开始响了」。MainActivity 用它把页面切到闹钟页 ——
+        // full-screen intent 只对后台 / 锁屏生效，App 已经在前台时系统不会
+        // 再拉起一次 Activity，光靠 onNewIntent 通知不到。
+        // 切页要碰 UI，统一 post 到主线程：ring() 也可能从后台线程调进来。
+        handler.post {
+            for (l in startListeners.toList()) runCatching { l() }
+        }
+    }
+
+    /** 开始响铃的监听者（目前只有 [MainActivity] 用：把页面切到闹钟页）。 */
+    private val startListeners = mutableListOf<() -> Unit>()
+
+    fun addStartListener(l: () -> Unit) {
+        if (l !in startListeners) startListeners += l
+    }
+
+    fun removeStartListener(l: () -> Unit) {
+        startListeners -= l
     }
 
     /**
@@ -185,7 +205,9 @@ object AlarmRinger {
                 setWakeMode(ctx, PowerManager.PARTIAL_WAKE_LOCK)
                 setDataSource(ctx, uri)
                 isLooping = true
-                setVolume(FADE_FROM, FADE_FROM)
+                // 从起步音量开始，交给 startFade 往上推 —— 别在 prepare 前留满音量，
+                // 否则 prepare 那几十毫秒会先炸一下满音量，渐强就白做了
+                setVolume(AlarmVolume.FADE_FROM, AlarmVolume.FADE_FROM)
                 prepare()
                 start()
             }
@@ -203,9 +225,10 @@ object AlarmRinger {
             .build()
 
     /**
-     * 渐强音量：20 秒从 15% 升到 100%。
+     * 渐强音量：曲线见 [AlarmVolume]（前 3 秒升到 100%，之后保持不变）。
      *
-     * 突然满音量会把人吓醒，半夜也容易惊到室友；渐进是正经闹钟应用的标配。
+     * 突然满音量会把人吓醒，半夜也容易惊到室友；但渐强拖太久就等于
+     * 「闹钟没在叫你」，所以 3 秒之后必须停在满音量。
      */
     private fun startFade() {
         fadeStart = System.currentTimeMillis()
@@ -216,11 +239,10 @@ object AlarmRinger {
     private val fade = object : Runnable {
         override fun run() {
             val p = player ?: return
-            val ratio = ((System.currentTimeMillis() - fadeStart).toFloat() / FADE_MS)
-                .coerceIn(0f, 1f)
-            val volume = FADE_FROM + (1f - FADE_FROM) * ratio
+            val volume = AlarmVolume.at(System.currentTimeMillis() - fadeStart)
             runCatching { p.setVolume(volume, volume) }
-            if (ratio < 1f) handler.postDelayed(this, 250L)
+            // 升满之后就停手：再排一次队也只是反复写同一个 1.0
+            if (volume < 1f) handler.postDelayed(this, AlarmVolume.STEP_MS)
         }
     }
 

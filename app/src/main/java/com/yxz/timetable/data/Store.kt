@@ -418,6 +418,23 @@ class Store(context: Context) {
         get() = sp.getString("theme", "").orEmpty()
         set(v) = sp.edit().putString("theme", v).apply()
 
+    // ---------------- 彩蛋 ----------------
+
+    /**
+     * Persona 3 彩蛋模式，默认关。
+     *
+     * 打开后使用 P3 外观的那几页会换皮（目前只有日历页，见
+     * [com.yxz.timetable.ui.persona.PersonaCalendarView]）。
+     *
+     * 为什么不复用 [themeKey]：主题枚举管的是「强调色」，换的是
+     * `?attr/accentColor` 那几个色值；P3 不是换色，是整页重画 —— 把两件事
+     * 塞进一个字段，选择器里就会同时出现「紫色」和「P3」，用户在两种完全
+     * 不同量级的东西之间做选择。分开存，主题选择器保持干净。
+     */
+    var p3Mode: Boolean
+        get() = sp.getBoolean("p3_mode", false)
+        set(v) = sp.edit().putBoolean("p3_mode", v).apply()
+
     // ---------------- 导入 / 导出 ----------------
 
     /**
